@@ -66,9 +66,11 @@ docker-compose.yml
 ```
 
 ### Commands
-Fill these in as the code lands; keep them accurate.
-- Backend dev: `cd backend && uvicorn app.main:app --reload`
-- Backend tests / lint: `cd backend && pytest` · `ruff check . && ruff format .`
+Keep these accurate as the code changes.
+- Backend setup: `cd backend && python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"`
+- Backend dev: `cd backend && .venv/bin/uvicorn app.main:create_app --factory --reload`
+  (reads the repo-root `.env`; set `RUN_BOT=false` to run the API without the bot)
+- Backend tests / lint: `cd backend && .venv/bin/pytest` · `.venv/bin/ruff check . && .venv/bin/ruff format .`
 - Frontend dev / build: `cd frontend && npm run dev` · `npm run build`
 
 ## Conventions

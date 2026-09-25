@@ -43,16 +43,33 @@ each other privately. Hosting is covered by voluntary donations.
 
 ## Setup
 
-Setup instructions will be added once the first milestone lands. In short:
+Requirements: Python 3.12, a Telegram bot token from [@BotFather](https://t.me/BotFather)
+(use a separate test bot for development), and `cloudflared` or `ngrok` for HTTPS.
 
-1. Create a bot with [@BotFather](https://t.me/BotFather) and copy its token.
-2. Copy `.env.example` to `.env` and fill in the values.
-3. Run the backend and frontend, expose them over HTTPS (`cloudflared` or `ngrok`
-   for local development), and set that URL as the bot's Mini App / menu button URL.
+```bash
+# 1. Configure: copy the example and fill in BOT_TOKEN, WEBAPP_URL, ADMIN_IDS
+cp .env.example .env
+
+# 2. Install the backend
+cd backend
+python3.12 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
+
+# 3. Expose port 8000 over HTTPS (in another terminal) and put the URL in WEBAPP_URL
+cloudflared tunnel --url http://localhost:8000
+
+# 4. Run the API and the bot
+.venv/bin/uvicorn app.main:create_app --factory --reload
+```
+
+Send `/start` to your bot and tap **Open exchange board**. Until the frontend exists, this
+opens a small test page that greets you by name if Telegram login works.
+
+Run the tests with `.venv/bin/pytest`, and lint with `.venv/bin/ruff check .`.
 
 ## Roadmap
 
-- [ ] Backend skeleton: database, migrations, Telegram auth, bot `/start`
+- [x] Backend skeleton: database, migrations, Telegram auth, bot `/start`
 - [ ] Board, new request, request detail
 - [ ] Deal flow: take → accept / decline → contact
 - [ ] My requests (edit / extend / close) and expiry reminders
