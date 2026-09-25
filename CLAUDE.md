@@ -214,7 +214,7 @@ codes to strings in `i18n.ts`.
 - Python: type hints, ruff for lint/format, pytest. Test matching, expiry, initData
   validation, deal state transitions, and username refresh.
 - TypeScript: strict mode, no `any` without reason.
-- All UI strings in `frontend/src/i18n.ts` (UI language to be decided).
+- UI language is English only. Keep all UI strings in `frontend/src/i18n.ts` anyway.
 - Keep the README current: problem, screenshots, stack, setup, usage stats.
 
 ## Milestones
