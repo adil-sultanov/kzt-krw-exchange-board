@@ -1,42 +1,56 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type DealAction, errorCode } from "../api";
+import { RequestExchange } from "../components/Exchange";
+import { CheckIcon } from "../components/icons";
 import { ReceiveHint } from "../components/ReceiveHint";
-import { RequestCard } from "../components/RequestCard";
 import { ErrorBox, Loading, Row, TitleWithRefresh } from "../components/ui";
-import { formatKst } from "../format";
+import { describeRateGain, formatKst, formatRatePair, formatSide, rateTone } from "../format";
 import { t } from "../i18n";
-import { useNav, useReactivated } from "../nav";
+import { useReactivated } from "../nav";
 import { FAST_POLL_MS, usePolling } from "../polling";
 import { confirm, copyText, haptic, type MainButtonConfig, openTelegramLink, useMainButton } from "../telegram";
-import { type Contact, type Deal, dealReceives, isActiveDeal } from "../types";
+import { type Contact, type Deal, isActiveDeal, viewerRateGain, viewerSides } from "../types";
 
 type Busy = DealAction | "contact" | null;
+/** `action` asks something of the viewer, `neutral` is waiting or over. */
+type BannerTone = "action" | "neutral" | "success";
 
 const COPIED_MS = 2000;
 
 /** What the viewer is told about the deal's state. */
-function explain(deal: Deal): string {
+function banner(deal: Deal): { text: { title: string; body: string }; tone: BannerTone } {
+  const b = t.deal.banner;
   switch (deal.status) {
     case "pending":
       return deal.role === "author"
-        ? t.deal.authorPending(t.card.deals(deal.other_completed_deals))
-        : t.deal.responderPending;
+        ? { text: b.authorPending, tone: "action" }
+        : { text: b.responderPending, tone: "neutral" };
     case "accepted":
-      if (deal.my_confirmed) return t.deal.waitingForThem;
-      return deal.other_confirmed ? t.deal.otherConfirmed : t.deal.accepted;
-    case "declined":
+      if (deal.my_confirmed) return { text: b.waitingForThem, tone: "neutral" };
+      return { text: deal.other_confirmed ? b.otherConfirmed : b.accepted, tone: "action" };
+    case "declined": {
+      const author = deal.role === "author";
       if (deal.request.status === "closed") {
-        return deal.role === "author" ? t.deal.cancelledAuthor : t.deal.cancelledResponder;
+        return { text: author ? b.cancelledAuthor : b.cancelledResponder, tone: "neutral" };
       }
-      if (deal.request.status === "expired") return t.deal.expired;
-      return deal.role === "author" ? t.deal.declinedAuthor : t.deal.declinedResponder;
+      if (deal.request.status === "expired") return { text: b.expired, tone: "neutral" };
+      return { text: author ? b.declinedAuthor : b.declinedResponder, tone: "neutral" };
+    }
     case "completed":
-      return t.deal.completed;
+      return { text: b.completed, tone: "success" };
   }
 }
 
+function Check(props: { done: boolean; children: string }) {
+  return (
+    <div className={props.done ? "check-row done" : "check-row"}>
+      <span className="check-mark">{props.done && <CheckIcon />}</span>
+      <span>{props.children}</span>
+    </div>
+  );
+}
+
 export function DealScreen(props: { id: number; active: boolean }) {
-  const nav = useNav();
   const [deal, setDeal] = useState<Deal | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -139,16 +153,25 @@ export function DealScreen(props: { id: number; active: boolean }) {
   if (error) return <div className="screen"><ErrorBox code={error} onRetry={load} /></div>;
   if (!deal) return <div className="screen"><Loading /></div>;
 
+  const { pay, get } = viewerSides(deal.request);
+  const gain = viewerRateGain(deal.request);
+  const { text, tone } = banner(deal);
   return (
     <div className="screen">
-      <TitleWithRefresh title={t.deal.title} onRefresh={load} />
-      <p className="notice">{explain(deal)}</p>
+      <TitleWithRefresh eyebrow={t.deal.title} title={t.buy[get.currency]} onRefresh={load} />
+
+      <div className={`banner ${tone}`}>
+        <p className="banner-title">{text.title}</p>
+        <p className="banner-body">{text.body}</p>
+      </div>
       {actionError && <ErrorBox code={actionError} />}
-      {authorPending && <ReceiveHint currency={dealReceives(deal.request.direction, deal.role)} />}
+      {isActiveDeal(deal) && <ReceiveHint currency={get.currency} />}
+
+      <RequestExchange request={deal.request} />
 
       {accepted && contact && (
         <div className="pay-to">
-          <span className="hint small">{t.deal.payTo(contact.pay_currency)}</span>
+          <span className="pay-to-label">{t.deal.payTo(formatSide(pay))}</span>
           {contact.pay_account ? (
             <>
               {contact.pay_bank && <span className="pay-to-bank">{contact.pay_bank}</span>}
@@ -156,7 +179,7 @@ export function DealScreen(props: { id: number; active: boolean }) {
                 <span className="pay-to-value">{contact.pay_account}</span>
                 <button
                   type="button"
-                  className="copy-button"
+                  className={copied ? "copy-button copied" : "copy-button"}
                   onClick={() => void copyAccount(contact.pay_account ?? "")}
                 >
                   {copied ? t.deal.copied : t.deal.copy}
@@ -169,15 +192,19 @@ export function DealScreen(props: { id: number; active: boolean }) {
         </div>
       )}
 
-      <RequestCard
-        request={deal.request}
-        status={t.dealRole[deal.role]}
-        highlight={accepted}
-        onOpen={() => nav.push({ name: "request", id: deal.request.id })}
-      />
+      {accepted && (
+        <div className="detail">
+          <Check done={deal.other_confirmed}>{t.deal.progress.theyReceived(pay.currency)}</Check>
+          <Check done={deal.my_confirmed}>{t.deal.progress.youReceived(get.currency)}</Check>
+        </div>
+      )}
 
       <div className="detail">
-        <Row label={t.deal.theirDeals}>{t.card.deals(deal.other_completed_deals)}</Row>
+        <Row label={t.detail.rate}>
+          {deal.request.effective_rate !== null && <span>{formatRatePair(deal.request.effective_rate)}</span>}
+          <span className={`rate-tag ${rateTone(gain)}`}>{describeRateGain(gain)}</span>
+        </Row>
+        <Row label={t.deal.theirDeals}>{t.deals(deal.other_completed_deals)}</Row>
         <Row label={t.deal.started}>{formatKst(deal.created_at)}</Row>
       </div>
 
@@ -194,13 +221,15 @@ export function DealScreen(props: { id: number; active: boolean }) {
       {accepted && !deal.my_confirmed && (
         <button
           type="button"
-          className="secondary-button"
+          className="secondary-button strong"
           disabled={busy !== null}
           onClick={() => void act("confirm", t.deal.confirmQuestion)}
         >
+          <CheckIcon />
           {t.deal.confirm}
         </button>
       )}
+      {accepted && <p className="hint small center">{t.deal.noCancel}</p>}
     </div>
   );
 }

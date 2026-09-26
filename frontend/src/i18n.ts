@@ -1,12 +1,6 @@
 // All UI strings. The UI is English only; keep every user-visible string here.
-import type {
-  BoardSort,
-  Currency,
-  DealRole,
-  DealStatus,
-  Direction,
-  RequestStatus,
-} from "./types";
+// Everything is worded from the viewer's side: what *you* pay and get.
+import type { BoardSort, Currency, DealStatus, RequestStatus } from "./types";
 
 export const t = {
   appTitle: "KZT ↔ KRW Exchange Board",
@@ -18,16 +12,15 @@ export const t = {
     body: "This board works only inside Telegram. Open it from the bot's menu button.",
   },
 
-  flag: { KZT: "🇰🇿", KRW: "🇰🇷" } satisfies Record<Currency, string>,
-  // A request is named by what its author buys: KZT_KRW pays KZT to buy KRW.
-  direction: {
-    KZT_KRW: "Buy KRW 🇰🇷",
-    KRW_KZT: "Buy KZT 🇰🇿",
-  } satisfies Record<Direction, string>,
-  directionLong: {
-    KZT_KRW: "Buying KRW 🇰🇷 with KZT 🇰🇿",
-    KRW_KZT: "Buying KZT 🇰🇿 with KRW 🇰🇷",
-  } satisfies Record<Direction, string>,
+  /** What the viewer buys: on the Board by taking a request, in New request by posting one. */
+  buy: { KRW: "Buy KRW 🇰🇷", KZT: "Buy KZT 🇰🇿" } satisfies Record<Currency, string>,
+
+  side: {
+    pay: "You pay",
+    get: "You get",
+    approx: (money: string) => `≈ ${money}`,
+    unknown: (symbol: string) => `— ${symbol}`,
+  },
 
   status: {
     open: "Open",
@@ -38,35 +31,36 @@ export const t = {
   } satisfies Record<RequestStatus, string>,
 
   rate: {
-    reference: "Reference rate",
-    perKzt: (rate: string) => `🇰🇿 1 KZT = ${rate} KRW 🇰🇷`,
-    perKrw: (rate: string) => `🇰🇷 1 KRW = ${rate} KZT 🇰🇿`,
-    unavailable: "Reference rate unavailable right now",
-    updated: (time: string) => `Updated ${time}`,
-    attribution: "Rates by ExchangeRate-API",
+    title: "Market rate",
+    pair: (rate: string) => `1 ₸ = ${rate} ₩`,
+    inverse: (rate: string) => `1 ₩ = ${rate} ₸`,
+    unavailable: "Market rate unavailable right now.",
+    attribution: "ExchangeRate-API",
+    // Always for the viewer: "better" means they get more than at the market rate.
     market: "Market rate",
-    above: (percent: string) => `${percent} above market`,
-    below: (percent: string) => `${percent} below market`,
-    now: (rate: string, value: string) => `${rate} (≈ ${value} now)`,
+    better: (percent: string) => `${percent} better rate`,
+    worse: (percent: string) => `${percent} worse rate`,
   },
 
   board: {
     all: "All",
     filters: "Filters",
-    hideFilters: "Hide filters",
-    minAmount: (currency: string) => `Min amount, ${currency}`,
-    maxAmount: (currency: string) => `Max amount, ${currency}`,
-    amountNeedsDirection: "Pick Buy KRW or Buy KZT to filter by amount.",
-    sortBy: "Sort by",
     sort: {
       newest: "Newest",
-      amount_asc: "Amount: low to high",
-      amount_desc: "Amount: high to low",
-      rate_asc: "Rate: low to high",
-      rate_desc: "Rate: high to low",
+      best_rate: "Best rate",
+      amount_desc: "Largest",
+      amount_asc: "Smallest",
     } satisfies Record<BoardSort, string>,
-    empty: "No open requests match these filters.",
-    emptyHint: "Post your own request, and people will find you.",
+    sortBy: "Sort by",
+    amount: (currency: string) => `Amount you get, ${currency}`,
+    from: "From",
+    to: "To",
+    any: "Any",
+    amountNeedsDirection: "Pick Buy KRW or Buy KZT to filter by amount.",
+    clear: "Clear",
+    empty: "No requests here yet",
+    emptyFiltered: "Nothing matches these filters",
+    emptyHint: "Post your own, and people will find you.",
     loadMore: "Load more",
     newRequest: "Post a request",
     myDeals: "My deals",
@@ -76,34 +70,37 @@ export const t = {
   },
 
   card: {
-    wants: (amount: string) => `for ≈ ${amount}`,
-    deals: (count: number) => (count === 1 ? "1 completed deal" : `${count} completed deals`),
+    deals: (count: number) => (count === 1 ? "1 deal" : `${count} deals`),
     timeLeft: (left: string) => `${left} left`,
   },
 
   detail: {
-    title: "Request",
-    gives: "Gives",
-    wants: "Wants about",
+    yours: "Your request",
     rate: "Rate",
     author: "Author",
-    posted: "Posted",
-    expires: "Expires",
-    own:
-      "This is your request. When someone wants to take it, the bot will message you " +
-      "and you'll see them in My deals.",
-    notOpen: (status: string) => `This request is no longer on the board (${status.toLowerCase()}).`,
+    timeLeft: "Time left",
+    until: (time: string) => `until ${time}`,
+    status: "Status",
+    own: "It's on the board. The bot will message you when someone takes it.",
+    responded: {
+      pending: "You took this request. Waiting for the author to answer.",
+      accepted: "You took this request, and the author accepted.",
+      declined: "You took this request, but the author declined or chose someone else.",
+      completed: "You completed this deal.",
+    } satisfies Record<DealStatus, string>,
+    notOpen: "This request is no longer on the board.",
     take: "I'll take it",
-    takeConfirm:
-      "The author will get a message that you want to take this request. " +
-      "If they accept, you'll both see each other's Telegram contact and payment details. Continue?",
-    responded: (status: string) => `You responded to this request: ${status.toLowerCase()}.`,
+    takeConfirm: (get: string, pay: string) =>
+      `You get ${get} and pay ${pay}.\n\n` +
+      "The author gets a message. If they accept, you'll see each other's contact and payment details.",
     openDeal: "Open my deal",
     usernameRequired:
-      "You need a Telegram username to take a request: it's how the author contacts you " +
-      "once you both agree. Set one in Telegram Settings → Username, then reopen this app.",
+      "You need a Telegram username to take a request: it's how the author contacts you. " +
+      "Set one in Telegram Settings, then reopen the app.",
     banned: "Your account can't take requests.",
   },
+
+  deals: (count: number) => (count === 1 ? "1 completed deal" : `${count} completed deals`),
 
   dealStatus: {
     pending: "Waiting for the author",
@@ -111,91 +108,90 @@ export const t = {
     declined: "Declined",
     completed: "Completed",
   } satisfies Record<DealStatus, string>,
-  dealRole: {
-    author: "Your request",
-    responder: "You took it",
-  } satisfies Record<DealRole, string>,
 
   deal: {
     title: "Deal",
     needsAnswer: "Waiting for your answer",
-    needsConfirm: "Confirm you received the money",
-    request: "Request",
+    needsConfirm: "Confirm you got the money",
     theirDeals: "Their record",
     started: "Started",
-    authorPending: (deals: string) =>
-      `Someone wants to take your request. They have ${deals}. ` +
-      "Accept to swap Telegram contacts and payment details with them.",
-    responderPending:
-      "Waiting for the author to accept. The bot will message you when they do.",
-    accepted:
-      "Deal accepted! Message the other person on Telegram to agree on the details. " +
-      "This app never handles money: you pay each other directly. " +
-      "When their money arrives, tap “I received the money”. " +
-      "An accepted deal can't be cancelled: it ends when you both confirm.",
-    waitingForThem:
-      "You confirmed you received their money. Waiting for them to confirm they received yours.",
-    otherConfirmed:
-      "They confirmed they received your money. Once theirs is in your account, confirm below " +
-      "to complete the deal.",
-    declinedAuthor: "You declined this response.",
-    declinedResponder: "The author declined, or the request went to someone else.",
-    cancelledAuthor: "You cancelled this request, so this response was declined.",
-    cancelledResponder: "The author cancelled this request.",
-    expired: "The request expired before this response was accepted.",
-    completed: "This deal is completed.",
+    banner: {
+      authorPending: {
+        title: "Someone wants to take your request",
+        body: "Accept to swap Telegram contacts and payment details.",
+      },
+      responderPending: {
+        title: "Waiting for the author",
+        body: "The bot will message you when they accept.",
+      },
+      accepted: {
+        title: "Deal accepted",
+        body: "Message them to agree on the details, then pay each other directly.",
+      },
+      waitingForThem: {
+        title: "Waiting for them",
+        body: "You confirmed their payment. Now they need to confirm yours.",
+      },
+      otherConfirmed: {
+        title: "They got your money",
+        body: "Confirm below once theirs is in your account.",
+      },
+      completed: { title: "Deal completed", body: "You both confirmed receiving the money." },
+      declinedAuthor: { title: "Declined", body: "You declined this person." },
+      declinedResponder: { title: "Declined", body: "The author declined or chose someone else." },
+      cancelledAuthor: { title: "Request cancelled", body: "You cancelled the request." },
+      cancelledResponder: { title: "Request cancelled", body: "The author cancelled it." },
+      expired: { title: "Request expired", body: "It expired before an answer." },
+    },
+    progress: {
+      theyReceived: (currency: string) => `They received your ${currency}`,
+      youReceived: (currency: string) => `You received their ${currency}`,
+    },
+    noCancel: "An accepted deal can't be cancelled: it ends when you both confirm.",
     accept: "Accept",
     acceptConfirm:
-      "Accept this person? You'll see each other's Telegram contact, and your request " +
-      "leaves the board. Anyone else waiting will be declined. " +
-      "Once accepted, the deal can't be cancelled.",
+      "Accept this person? You'll swap contacts, and your request leaves the board. " +
+      "Anyone else waiting is declined. An accepted deal can't be cancelled.",
     decline: "Decline",
-    declineConfirm:
-      "Decline this person? They'll see it in My deals, and can't respond to this request again.",
+    declineConfirm: "Decline this person? They can't take this request again.",
     contact: "Message on Telegram",
     confirm: "I received the money",
     confirmQuestion:
-      "Only confirm once their money is actually in your account. This can't be undone. " +
-      "When you both confirm, the deal is completed.",
-    payTo: (currency: string) => `Send your ${currency} here`,
+      "Only confirm once their money is in your account. This can't be undone.",
+    payTo: (money: string) => `Send ${money} to`,
     payToMissing: (currency: string) =>
       `They haven't added where they receive ${currency} yet. Ask them in chat.`,
     copy: "Copy",
-    copied: "Copied ✓",
+    copied: "Copied",
   },
 
   refresh: "Refresh",
 
   cancelRequest: {
     button: "Cancel request",
-    confirm:
-      "Cancel this request? It's removed from the board, and anyone waiting for your answer " +
-      "is declined.",
+    confirm: "Cancel this request? It leaves the board, and anyone waiting is declined.",
   },
 
   receiveHint: {
     missing: (currency: string) =>
-      `Add where you receive ${currency} in your profile, so the other person knows where to pay you.`,
-    open: "Open profile",
+      `Add where you receive ${currency}, so the other person knows where to pay you.`,
+    open: "Add details",
   },
 
   profile: {
-    title: "Profile",
-    record: "Your record",
     receiving: "Where you receive money",
-    receivingHint:
-      "Shown only to the other person once a deal is accepted, so they know where to pay you.",
-    bank: "Bank and account holder",
+    receivingHint: "Shown only to the other side of an accepted deal.",
+    bank: "Bank and name",
     account: "Account, card or phone number",
     details: {
       KZT: {
-        title: "🇰🇿 Receiving KZT ₸",
-        bankPlaceholder: "e.g. Kaspi, Adil",
+        title: "KZT ₸",
+        bankPlaceholder: "e.g. Kaspi, Adil S.",
         accountPlaceholder: "e.g. +7 707 123 45 67",
       },
       KRW: {
-        title: "🇰🇷 Receiving KRW ₩",
-        bankPlaceholder: "e.g. Toss Bank, Zhibek",
+        title: "KRW ₩",
+        bankPlaceholder: "e.g. Toss Bank, Zhibek A.",
         accountPlaceholder: "e.g. 1000-1234-5678",
       },
     } satisfies Record<Currency, { title: string; bankPlaceholder: string; accountPlaceholder: string }>,
@@ -203,11 +199,10 @@ export const t = {
     saved: "Saved",
     about: "About",
     aboutBody:
-      "A free noticeboard for students exchanging KZT ↔ KRW. It never holds or moves money: " +
-      "you agree and pay each other directly, at your own risk.",
-    author: "Author",
-    terms: "Terms of use",
-    privacy: "Privacy policy",
+      "A free noticeboard for students exchanging KZT\u00a0↔\u00a0KRW. It never holds or moves money: " +
+      "you pay each other directly, at your own risk.",
+    terms: "Terms",
+    privacy: "Privacy",
   },
 
   footer: {
@@ -216,10 +211,10 @@ export const t = {
 
   myDeals: {
     title: "My deals",
-    empty: "No deals yet.",
-    emptyHint: "Take a request from the board, or wait for someone to take yours.",
+    empty: "No deals yet",
+    emptyHint: "Take a request on the board, or post your own.",
     onBoard: "Your requests on the board",
-    active: "Active deals",
+    active: "Active",
     noActive: "No active deals right now.",
     completed: "Completed",
     declined: "Declined",
@@ -227,53 +222,44 @@ export const t = {
 
   form: {
     title: "New request",
-    direction: "What do you want?",
-    amount: (currency: string) => `Amount you give, ${currency}`,
-    amountPlaceholder: "e.g. 100,000",
-    amountHint: (amount: string) => `You'll get ≈ ${amount}`,
+    amountPlaceholder: "0",
     rate: "Rate",
     rateChoice: {
       market: "Market",
-      above: "Above market",
-      below: "Below market",
-    } satisfies Record<"market" | "above" | "below", string>,
-    percentLabel: {
-      above: "How much above the market rate, %",
-      below: "How much below the market rate, %",
-    },
-    percentPlaceholder: "e.g. 1.5",
-    rateHint: (rate: string) => `Right now that's ≈ ${rate} KRW per 1 KZT.`,
-    rateExplainer:
-      "The rate follows the market: it's recalculated from the reference rate shown on the board.",
-    duration: "Show on the board for",
+      ask: "Ask more",
+      offer: "Offer more",
+    } satisfies Record<"market" | "ask" | "offer", string>,
+    rateHint: {
+      market: "Follows the market rate as it moves.",
+      ask: "You get more, but it may take longer to find someone.",
+      offer: "The other person gets a better rate, so it's taken sooner.",
+    } satisfies Record<"market" | "ask" | "offer", string>,
+    percentLabel: "By how much",
+    percentPlaceholder: "1.5",
+    rateNow: (rate: string) => `Now ${rate}`,
+    duration: "Keep on the board",
     days: (days: number) => (days === 1 ? "1 day" : `${days} days`),
-    durationHint:
-      "It's removed from the board once you accept someone or cancel it (in My deals), " +
-      "or when this time runs out.",
-    submit: "Publish request",
+    durationHint: "It leaves the board early once you accept someone or cancel it.",
+    submit: "Post request",
     errors: {
       amount: "Enter an amount.",
       amountTooLarge: "That amount is too large.",
       percent: "Enter a percentage.",
-      percentRange: (max: number) => `The percentage can be at most ${max}%.`,
+      percentRange: (max: number) => `At most ${max}%.`,
     },
     usernameRequired:
-      "You need a Telegram username to post a request: it's how the other person contacts you " +
-      "once you both agree. Set one in Telegram Settings → Username, then reopen this app.",
+      "You need a Telegram username to post a request: it's how the other person contacts you. " +
+      "Set one in Telegram Settings, then reopen the app.",
     banned: "Your account can't post requests.",
-    disclaimer:
-      "This board never handles money. You agree on the details and pay each other directly, " +
-      "at your own risk.",
+    disclaimer: "The app never handles money: you pay each other directly, at your own risk.",
   },
 
   created: {
-    title: "Your request is live",
-    body:
-      "It's on the board now. When someone wants to take it, the bot will message you " +
-      "and you'll see them in My deals.",
-    matches: "Requests going the other way",
-    noMatches: "No matching requests yet. We'll show yours to people looking for it.",
-    backToBoard: "Back to the board",
+    title: "Request posted",
+    body: "The bot will message you when someone takes it.",
+    matches: "Matches you can take now",
+    noMatches: "No matches yet. People looking for it will see yours on the board.",
+    done: "Done",
   },
 
   time: {
@@ -287,25 +273,24 @@ export const t = {
 const errorMessages: Record<string, string> = {
   auth_required: "Please open this app from Telegram.",
   init_data_invalid: "Couldn't verify your Telegram login. Please reopen the app.",
-  init_data_expired: "Your session has expired. Please close and reopen the app.",
+  init_data_expired: "Your session has expired. Please reopen the app.",
   invalid_input: "Some fields are invalid. Please check and try again.",
   username_required: t.form.usernameRequired,
   user_banned: t.form.banned,
-  too_many_open_requests: "You already have 5 open requests. Close one before posting another.",
+  too_many_open_requests: "You already have 5 open requests. Cancel one to post another.",
   rate_limited: "You're posting too often. Please try again in an hour.",
   request_not_found: "This request doesn't exist or was removed.",
   own_request: "This is your own request.",
-  already_responded: "You've already responded to this request.",
+  already_responded: "You've already taken this request.",
   request_not_open: "This request is no longer open.",
   deal_not_found: "This deal doesn't exist.",
   not_request_author: "Only the request's author can do this.",
-  deal_not_pending: "This response was already handled.",
+  deal_not_pending: "This was already answered.",
   deal_not_accepted: "This deal isn't active any more.",
-  deal_state_changed: "This deal just changed. Please reload it.",
+  deal_state_changed: "This deal just changed. Please refresh.",
   contact_unavailable: "The contact is shown once the deal is accepted.",
   contact_no_username:
-    "The other person has no Telegram username right now, so there's no link to open. " +
-    "Try again later.",
+    "They have no Telegram username right now, so there's no link to open. Try again later.",
   network_error: "No connection. Check your internet and try again.",
   unknown_error: "Something went wrong. Please try again.",
 };

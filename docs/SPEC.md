@@ -3,18 +3,24 @@
 Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `backend/app/migrations/`.
 
 ## Screens (Mini App)
-- **Board** — open requests, filterable by direction ("Buy KRW 🇰🇷" = `KZT_KRW`,
-  "Buy KZT 🇰🇿" = `KRW_KZT`; a request is named by what its author buys) and amount range;
-  sortable by amount, rate, newest. Shows the reference rate both ways at the top
-  (1 KZT = X KRW and 1 KRW = Y KZT). Large **My deals** and **Profile** buttons with icons,
-  and a **Refresh** button next to Filters. Hides the viewer's own requests and requests from
-  banned users.
-- **Request detail** — amount, rate, author's completed-deals count,
+- Every screen speaks from the viewer's side: a request shows **You pay** / **You get** (for its
+  author, or for whoever takes it), and its rate as better / worse than the market *for them*
+  (or "Market rate"). The amount converted at the market rate is marked "≈".
+- **Board** — open requests in tabs by what the viewer would buy by taking one ("Buy KRW 🇰🇷"
+  lists `KRW_KZT` requests, "Buy KZT 🇰🇿" lists `KZT_KRW`), filterable by the amount they'd get
+  (once a tab is picked); sortable by newest, best rate for the viewer, or amount (once a tab is
+  picked). Cards show pay / get, the rate compared to the market, the author's completed deals
+  and time left. Shows the reference rate both ways at the top (1 ₸ = X ₩ and 1 ₩ = Y ₸).
+  Large **My deals** and **Profile** buttons with icons, and a **Refresh** button next to
+  Filters. Hides the viewer's own requests and requests from banned users.
+- **Request detail** — what the viewer pays and gets, rate, author's completed-deals count,
   time left. Buttons: **I'll take it** (creates a pending deal, see Deal flow), **Report**;
   on the author's own open request, **Cancel request**.
   Usernames are never shown before the author accepts.
-- **New request** — form: direction, amount, rate (Market (default) / Above market % /
-  Below market %, up to 20%; always relative to the reference rate, no fixed rates),
+- **New request** — form: what the author buys ("Buy KRW" posts `KZT_KRW`, "Buy KZT" posts
+  `KRW_KZT`), the amount they pay with a live "You get ≈" preview, rate (Market (default) /
+  Ask more % (better for the author) / Offer more % (better for whoever takes it), up to 20%;
+  always relative to the reference rate, no fixed rates),
   duration (1 / 3 days), with a note that the request leaves the board once the author accepts
   someone or cancels it, or when the time runs out. No free-text note, no payment methods
   (where to pay comes from the receiving details once a deal is accepted).
@@ -31,9 +37,9 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   **Refresh** button.
 - **Alerts** — saved searches, e.g. "KRW→KZT over 300,000 KRW"; new matching requests are
   highlighted in the app (no bot message).
-- **Profile / About** — completed deals count, receiving details per currency (KZT, KRW): bank
-  and account holder, and account / card / phone number (max 100 chars each), disclaimer,
-  author, links to Terms and Privacy.
+- **Profile / About** — name, username and completed deals count, receiving details per
+  currency (KZT, KRW): bank and account holder, and account / card / phone number (max 100 chars
+  each), disclaimer, links to Terms and Privacy (the footer credits the author).
 - The Board's **My deals** link shows a badge with the number of deals waiting on the viewer
   (a pending responder to answer, or a payment to confirm once the other side has).
 - A small gray "Made by @moonpie24" footer under every screen.

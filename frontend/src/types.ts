@@ -2,13 +2,15 @@
 
 export type Direction = "KZT_KRW" | "KRW_KZT";
 export type RequestStatus = "open" | "in_progress" | "completed" | "closed" | "expired";
-export type BoardSort = "newest" | "amount_asc" | "amount_desc" | "rate_asc" | "rate_desc";
+export type BoardSort = "newest" | "best_rate" | "amount_desc" | "amount_asc";
 export type Currency = "KZT" | "KRW";
 export type DealStatus = "pending" | "accepted" | "declined" | "completed";
 export type DealRole = "author" | "responder";
 
-export const DIRECTIONS: Direction[] = ["KZT_KRW", "KRW_KZT"];
-export const BOARD_SORTS: BoardSort[] = ["newest", "amount_asc", "amount_desc", "rate_asc", "rate_desc"];
+export const CURRENCIES: Currency[] = ["KRW", "KZT"];
+export const BOARD_SORTS: BoardSort[] = ["newest", "best_rate", "amount_desc", "amount_asc"];
+/** Amounts of different currencies don't compare, so these need a direction picked. */
+export const AMOUNT_SORTS: BoardSort[] = ["amount_desc", "amount_asc"];
 export const DURATIONS = [1, 3] as const;
 export type DurationDays = (typeof DURATIONS)[number];
 
@@ -113,9 +115,51 @@ export function getCurrency(direction: Direction): Currency {
   return direction === "KZT_KRW" ? "KRW" : "KZT";
 }
 
-/** The currency one side of a deal receives. The author receives what the request wants. */
-export function dealReceives(direction: Direction, role: DealRole): Currency {
-  return role === "author" ? getCurrency(direction) : giveCurrency(direction);
+// The UI always speaks from the viewer's side: what *you* pay and get. The author of a
+// request pays its `amount` in the give currency; whoever takes it gets that amount.
+
+/** Requests on the Board that get the viewer `currency` when they take one. */
+export function boardDirection(currency: Currency): Direction {
+  return currency === "KZT" ? "KZT_KRW" : "KRW_KZT";
+}
+
+/** The direction of a new request whose author wants to get `currency`. */
+export function postDirection(currency: Currency): Direction {
+  return currency === "KRW" ? "KZT_KRW" : "KRW_KZT";
+}
+
+/** What the author gets for their amount at `rate` (KRW per 1 KZT). */
+export function convert(amount: number, from: Currency, rate: number): number {
+  return from === "KZT" ? amount * rate : amount / rate;
+}
+
+/** One side of an exchange. `amount` is null while there's no reference rate to convert at. */
+export interface Side {
+  currency: Currency;
+  amount: number | null;
+  /** Converted at the current market rate, so it moves with it. */
+  approx: boolean;
+}
+
+/** What the viewer pays and gets: as its author, or by taking it. */
+export function viewerSides(request: ExchangeRequest): { pay: Side; get: Side } {
+  const give = giveCurrency(request.direction);
+  const fixed: Side = { currency: give, amount: request.amount, approx: false };
+  const converted: Side = {
+    currency: getCurrency(request.direction),
+    amount: request.effective_rate === null ? null : convert(request.amount, give, request.effective_rate),
+    approx: true,
+  };
+  return request.is_own ? { pay: fixed, get: converted } : { pay: converted, get: fixed };
+}
+
+/**
+ * How much better (positive) or worse than the market rate the request is for the viewer,
+ * in percent. The author of a KZT_KRW request gets KRW, so a higher rate is better for them.
+ */
+export function viewerRateGain(request: Pick<ExchangeRequest, "direction" | "rate_value" | "is_own">): number {
+  const authorGain = request.direction === "KZT_KRW" ? request.rate_value : -request.rate_value;
+  return request.is_own ? authorGain : -authorGain;
 }
 
 /** Whether the viewer has saved where they receive a currency. */

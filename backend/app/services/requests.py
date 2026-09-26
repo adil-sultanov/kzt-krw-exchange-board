@@ -41,9 +41,11 @@ _BOARD_ORDER = {
     "newest": "r.id DESC",
     "amount_asc": "r.amount ASC, r.id DESC",
     "amount_desc": "r.amount DESC, r.id DESC",
-    # Every rate is the market rate plus an offset, so the offset orders them.
-    "rate_asc": "r.rate_value ASC, r.id DESC",
-    "rate_desc": "r.rate_value DESC, r.id DESC",
+    # Best for whoever takes it first. Every rate is the market rate plus an offset, and a
+    # higher rate (more KRW per KZT) is better for the taker of a KRW_KZT request, who pays KZT.
+    "best_rate": (
+        "CASE r.direction WHEN 'KRW_KZT' THEN r.rate_value ELSE -r.rate_value END DESC, r.id DESC"
+    ),
 }
 
 

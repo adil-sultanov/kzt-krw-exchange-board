@@ -27,7 +27,8 @@ when stored data or behavior changes.
 ## Conventions
 - Rate = KRW per 1 KZT. Amount = integer, currency being given. Requests are market-rate only:
   `rate_value` is a ±% offset from the reference rate (no fixed rates, notes or payment methods).
-- UI names a request by what its author buys: `KZT_KRW` = "Buy KRW", `KRW_KZT` = "Buy KZT".
+- UI speaks from the viewer's side: a request reads as what *you* pay and get. "Buy KRW" = you get
+  KRW: the Board's tab lists `KRW_KZT` requests (taking one gets you KRW); New request posts `KZT_KRW`.
 - Timestamps UTC ISO 8601; display in KST.
 - API errors: `{"detail": "<machine_code>"}`; frontend maps codes in `frontend/src/i18n.ts`.
 - UI English only; all UI strings in `i18n.ts`. Use Telegram theme vars, MainButton, BackButton.

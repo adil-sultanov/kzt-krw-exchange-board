@@ -156,18 +156,23 @@ def test_board_sorting(client: TestClient, settings: Settings) -> None:
     below = create(client, BEK, rate_value=-3, amount=300)["id"]
     above = create(client, BEK, rate_value=5, amount=100)["id"]
     market = create(client, BEK, rate_value=0, amount=200)["id"]
+    krw = create(client, BEK, direction="KRW_KZT", rate_value=2, amount=400)["id"]
 
-    # Rates sort by their offset, even without a reference rate.
-    assert board_ids(client, AIDA, sort="rate_desc") == [above, market, below]
+    # Best rate for the taker first, even without a reference rate: the taker of a KZT_KRW
+    # request pays KRW, so a lower rate is better; of a KRW_KZT one, a higher rate.
+    assert board_ids(client, AIDA, sort="best_rate") == [below, krw, market, above]
 
     sql(settings, "INSERT INTO reference_rate VALUES (1, 2.7, 'test', '2026-01-01T00:00:00+00:00')")
-    items = board(client, AIDA, sort="rate_asc")
+    items = board(client, AIDA, sort="best_rate", direction="KZT_KRW")
     assert [item["id"] for item in items] == [below, market, above]
     assert [item["effective_rate"] for item in items] == pytest.approx([2.619, 2.7, 2.835])
 
-    assert board_ids(client, AIDA, sort="amount_asc") == [above, market, below]
-    assert board_ids(client, AIDA, sort="amount_desc") == [below, market, above]
-    assert board_ids(client, AIDA) == [market, above, below]  # newest first
+    assert board_ids(client, AIDA, sort="amount_asc") == [above, market, below, krw]
+    assert board_ids(client, AIDA, sort="amount_desc") == [krw, below, market, above]
+    assert board_ids(client, AIDA) == [krw, market, above, below]  # newest first
+    assert client.get(
+        "/api/requests", params={"sort": "rate_asc"}, headers=auth_as(AIDA)
+    ).json() == {"detail": "invalid_input"}
 
 
 def test_board_pagination(client: TestClient) -> None:

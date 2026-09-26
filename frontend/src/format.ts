@@ -1,13 +1,14 @@
 import { t } from "./i18n";
-import type { Currency, ExchangeRequest } from "./types";
+import type { Currency, Side } from "./types";
 
-const SYMBOL: Record<Currency, string> = { KZT: "₸", KRW: "₩" };
+export const SYMBOL: Record<Currency, string> = { KZT: "₸", KRW: "₩" };
 
 const integer = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const rateFormat = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 4,
 });
+const percentFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const kstFormat = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Seoul",
   day: "numeric",
@@ -15,6 +16,12 @@ const kstFormat = new Intl.DateTimeFormat("en-GB", {
   hour: "2-digit",
   minute: "2-digit",
 });
+const kstTime = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Seoul",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const kstDay = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Seoul", dateStyle: "short" });
 
 export function formatNumber(value: number): string {
   return integer.format(value);
@@ -24,34 +31,48 @@ export function formatMoney(amount: number, currency: Currency): string {
   return `${integer.format(amount)} ${SYMBOL[currency]}`;
 }
 
+/** An amount someone pays or gets, e.g. "≈ 270,450 ₩" when it follows the market rate. */
+export function formatSide(side: Side): string {
+  if (side.amount === null) return t.side.unknown(SYMBOL[side.currency]);
+  const money = formatMoney(side.amount, side.currency);
+  return side.approx ? t.side.approx(money) : money;
+}
+
 export function formatRate(rate: number): string {
   return rateFormat.format(rate);
 }
 
+/** "1 ₸ = 2.7045 ₩". Rates are always KRW per 1 KZT. */
+export function formatRatePair(rate: number): string {
+  return t.rate.pair(formatRate(rate));
+}
+
 export function formatPercent(percent: number): string {
-  return `${percent}%`;
+  return `${percentFormat.format(percent)}%`;
 }
 
-/** How the request's rate reads, e.g. "Market rate (≈ 2.70)" or "1.5% above market (≈ 2.74)". */
-export function describeRate(request: Pick<ExchangeRequest, "rate_value" | "effective_rate">): string {
-  const offset = request.rate_value;
-  const base =
-    offset > 0
-      ? t.rate.above(formatPercent(offset))
-      : offset < 0
-        ? t.rate.below(formatPercent(-offset))
-        : t.rate.market;
-  return request.effective_rate === null ? base : t.rate.now(base, formatRate(request.effective_rate));
+export type RateTone = "market" | "better" | "worse";
+
+/** How the rate compares to the market for the viewer (see viewerRateGain). */
+export function rateTone(gain: number): RateTone {
+  return gain > 0 ? "better" : gain < 0 ? "worse" : "market";
 }
 
-/** What the author gets for their amount at `rate` (KRW per 1 KZT). */
-export function convert(amount: number, from: Currency, rate: number): number {
-  return from === "KZT" ? amount * rate : amount / rate;
+export function describeRateGain(gain: number): string {
+  const tone = rateTone(gain);
+  return tone === "market" ? t.rate.market : t.rate[tone](formatPercent(Math.abs(gain)));
 }
 
 /** Timestamps are UTC in the API and shown in Korea time. */
 export function formatKst(iso: string): string {
   return t.time.kst(kstFormat.format(new Date(iso)));
+}
+
+/** Just the time if it's today in Korea, else the date and time. */
+export function formatKstShort(iso: string, now: number = Date.now()): string {
+  const date = new Date(iso);
+  const today = kstDay.format(date) === kstDay.format(new Date(now));
+  return t.time.kst((today ? kstTime : kstFormat).format(date));
 }
 
 export function timeLeft(expiresAt: string, now: number = Date.now()): string | null {

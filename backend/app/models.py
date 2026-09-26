@@ -89,7 +89,7 @@ def _clean_detail(value: str | None, max_length: int) -> str:
 Direction = Literal["KZT_KRW", "KRW_KZT"]
 Currency = Literal["KZT", "KRW"]
 RequestStatus = Literal["open", "in_progress", "completed", "closed", "expired"]
-BoardSort = Literal["newest", "amount_asc", "amount_desc", "rate_asc", "rate_desc"]
+BoardSort = Literal["newest", "amount_asc", "amount_desc", "best_rate"]
 DealStatus = Literal["pending", "accepted", "declined", "completed"]
 DealRole = Literal["author", "responder"]
 

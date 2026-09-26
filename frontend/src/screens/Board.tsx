@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, BOARD_PAGE_SIZE, errorCode } from "../api";
-import { DealsIcon, ProfileIcon } from "../components/icons";
+import { DealsIcon, FiltersIcon, ProfileIcon } from "../components/icons";
 import { RequestCard } from "../components/RequestCard";
-import { AmountInput, ErrorBox, Loading, RefreshButton, Segmented } from "../components/ui";
-import { formatKst, formatRate, parseAmount } from "../format";
+import { AmountInput, Empty, ErrorBox, RefreshButton, Segmented, SkeletonList } from "../components/ui";
+import { formatKstShort, formatRate, formatRatePair, parseAmount, SYMBOL } from "../format";
 import { t } from "../i18n";
 import { useNav, useReactivated } from "../nav";
 import { SLOW_POLL_MS, usePolling } from "../polling";
 import { openLink, useMainButton } from "../telegram";
 import {
+  AMOUNT_SORTS,
   BOARD_SORTS,
   type BoardFilters,
-  type BoardSort,
-  type Direction,
-  DIRECTIONS,
+  boardDirection,
+  type Currency,
+  CURRENCIES,
   type ExchangeRequest,
   giveCurrency,
   needsMyAction,
@@ -30,6 +31,33 @@ const NO_FILTERS: BoardFilters = {
   maxAmount: null,
   sort: "newest",
 };
+
+function RateCard(props: { rate: Rate | null }) {
+  const { rate } = props;
+  return (
+    <div className="rate-card">
+      <div className="rate-head">
+        <span className="rate-title">{t.rate.title}</span>
+        {rate?.fetched_at && (
+          <span className="hint small">
+            {formatKstShort(rate.fetched_at)} ·{" "}
+            <button type="button" className="link-button" onClick={() => openLink(RATE_SOURCE_URL)}>
+              {t.rate.attribution}
+            </button>
+          </span>
+        )}
+      </div>
+      {rate?.rate ? (
+        <div className="rate-pair">
+          <span className="rate-value">{formatRatePair(rate.rate)}</span>
+          <span className="rate-inverse">{t.rate.inverse(formatRate(1 / rate.rate))}</span>
+        </div>
+      ) : (
+        <span className="hint">{rate ? t.rate.unavailable : t.loading}</span>
+      )}
+    </div>
+  );
+}
 
 export function Board(props: { active: boolean }) {
   const nav = useNav();
@@ -130,21 +158,35 @@ export function Board(props: { active: boolean }) {
     }
   };
 
-  const setDirection = (direction: Direction | null) => {
-    // Amounts are in the currency being given, so they don't carry over between directions.
+  /** The tab is the currency the viewer wants to get by taking a request. */
+  const setTab = (currency: Currency | null) => {
+    // Amounts are in the currency you get, so they don't carry over between tabs; nor does
+    // sorting by amount, which needs one currency.
     setMinText("");
     setMaxText("");
-    setFilters((f) => ({ ...f, direction, minAmount: null, maxAmount: null }));
+    setFilters((f) => ({
+      ...f,
+      direction: currency && boardDirection(currency),
+      minAmount: null,
+      maxAmount: null,
+      sort: !currency && AMOUNT_SORTS.includes(f.sort) ? "newest" : f.sort,
+    }));
+  };
+
+  const clearFilters = () => {
+    setMinText("");
+    setMaxText("");
+    setFilters((f) => ({ ...f, minAmount: null, maxAmount: null, sort: "newest" }));
   };
 
   useMainButton(
     props.active ? { text: t.board.newRequest, onClick: () => nav.push({ name: "new" }) } : null,
   );
 
+  const getting = filters.direction && giveCurrency(filters.direction);
+  const sorts = getting ? BOARD_SORTS : BOARD_SORTS.filter((sort) => !AMOUNT_SORTS.includes(sort));
   const activeFilterCount =
-    (filters.minAmount !== null ? 1 : 0) +
-    (filters.maxAmount !== null ? 1 : 0) +
-    (filters.sort !== "newest" ? 1 : 0);
+    (filters.minAmount !== null || filters.maxAmount !== null ? 1 : 0) + (filters.sort !== "newest" ? 1 : 0);
 
   return (
     <div className="screen">
@@ -163,87 +205,83 @@ export function Board(props: { active: boolean }) {
           <span>{t.board.profile}</span>
         </button>
       </div>
-      <div className="rate-card">
-        <div className="hint small">{t.rate.reference}</div>
-        {rate?.rate ? (
-          <>
-            <div className="rate-value">{t.rate.perKzt(formatRate(rate.rate))}</div>
-            <div className="rate-value">{t.rate.perKrw(formatRate(1 / rate.rate))}</div>
-          </>
-        ) : (
-          <div className="hint">{rate ? t.rate.unavailable : t.loading}</div>
-        )}
-        {rate?.fetched_at && (
-          <div className="hint small">
-            {t.rate.updated(formatKst(rate.fetched_at))} ·{" "}
-            <button type="button" className="link-button" onClick={() => openLink(RATE_SOURCE_URL)}>
-              {t.rate.attribution}
-            </button>
-          </div>
-        )}
-      </div>
 
-      <Segmented<Direction | "all">
+      <RateCard rate={rate} />
+
+      <Segmented<Currency | "all">
         options={[
           { value: "all", label: t.board.all },
-          ...DIRECTIONS.map((d) => ({ value: d, label: t.direction[d] })),
+          ...CURRENCIES.map((currency) => ({ value: currency, label: t.buy[currency] })),
         ]}
-        value={filters.direction ?? "all"}
-        onChange={(value) => setDirection(value === "all" ? null : value)}
+        value={getting ?? "all"}
+        onChange={(value) => setTab(value === "all" ? null : value)}
       />
 
       <div className="toolbar">
-        <button type="button" className="link-button filters-toggle" onClick={() => setShowFilters(!showFilters)}>
-          {showFilters ? t.board.hideFilters : t.board.filters}
-          {!showFilters && activeFilterCount > 0 && ` (${activeFilterCount})`}
+        <button
+          type="button"
+          className={showFilters || activeFilterCount > 0 ? "chip-button on" : "chip-button"}
+          aria-expanded={showFilters}
+          onClick={() => setShowFilters(!showFilters)}
+        >
+          <FiltersIcon />
+          {t.board.filters}
+          {activeFilterCount > 0 && <span className="chip-count">{activeFilterCount}</span>}
         </button>
         <RefreshButton onRefresh={refresh} />
       </div>
 
       {showFilters && (
         <div className="filters">
-          <label className="field">
+          <div className="field">
             <span className="field-label">{t.board.sortBy}</span>
-            <select
-              className="input"
+            <Segmented
+              label={t.board.sortBy}
+              options={sorts.map((sort) => ({ value: sort, label: t.board.sort[sort] }))}
               value={filters.sort}
-              onChange={(event) => setFilters({ ...filters, sort: event.target.value as BoardSort })}
-            >
-              {BOARD_SORTS.map((sort) => (
-                <option key={sort} value={sort}>
-                  {t.board.sort[sort]}
-                </option>
-              ))}
-            </select>
-          </label>
-          {filters.direction ? (
-            <div className="field-row">
-              <AmountInput
-                label={t.board.minAmount(giveCurrency(filters.direction))}
-                value={minText}
-                onChange={setMinText}
-              />
-              <AmountInput
-                label={t.board.maxAmount(giveCurrency(filters.direction))}
-                value={maxText}
-                onChange={setMaxText}
-              />
+              onChange={(sort) => setFilters((f) => ({ ...f, sort }))}
+            />
+          </div>
+          {getting ? (
+            <div className="field">
+              <span className="field-label">{t.board.amount(getting)}</span>
+              <div className="field-row">
+                <AmountInput
+                  label={t.board.from}
+                  placeholder={t.board.any}
+                  value={minText}
+                  onChange={setMinText}
+                  suffix={SYMBOL[getting]}
+                />
+                <AmountInput
+                  label={t.board.to}
+                  placeholder={t.board.any}
+                  value={maxText}
+                  onChange={setMaxText}
+                  suffix={SYMBOL[getting]}
+                />
+              </div>
             </div>
           ) : (
             <p className="hint small">{t.board.amountNeedsDirection}</p>
+          )}
+          {activeFilterCount > 0 && (
+            <button type="button" className="link-button small" onClick={clearFilters}>
+              {t.board.clear}
+            </button>
           )}
         </div>
       )}
 
       {error && <ErrorBox code={error} onRetry={() => void load(shownCount.current)} />}
-      {!items && !error && <Loading />}
+      {!items && !error && <SkeletonList />}
       {items && items.length === 0 && (
-        <div className="empty">
-          <p>{t.board.empty}</p>
-          <p className="hint">{t.board.emptyHint}</p>
-        </div>
+        <Empty
+          title={activeFilterCount > 0 ? t.board.emptyFiltered : t.board.empty}
+          hint={t.board.emptyHint}
+        />
       )}
-      {items && (
+      {items && items.length > 0 && (
         <div className="list">
           {items.map((item) => (
             <RequestCard

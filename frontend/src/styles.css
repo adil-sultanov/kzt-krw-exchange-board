@@ -13,7 +13,11 @@
   --separator: var(--tg-theme-section-separator-color, rgba(128, 128, 128, 0.2));
   --accent: var(--tg-theme-accent-text-color, var(--link));
   --destructive: var(--tg-theme-destructive-text-color, #e53935);
-  --radius: 12px;
+  /* Telegram has no theme colors for these; both read well on light and dark. */
+  --positive: #2fb14e;
+  --warning: #e8870e;
+  --radius: 14px;
+  --radius-small: 10px;
   color-scheme: light dark;
 }
 
@@ -30,9 +34,10 @@ body {
   margin: 0;
   background: var(--secondary-bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   font-size: 16px;
   line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -48,6 +53,14 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: default;
+}
+
+p {
+  margin: 0;
+}
+
 .screen {
   display: flex;
   flex-direction: column;
@@ -59,8 +72,31 @@ button {
 
 .title {
   margin: 0;
-  font-size: 22px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* A small label above a title, e.g. "Your request". */
+.eyebrow {
+  font-size: 13px;
   font-weight: 600;
+  color: var(--hint);
+}
+
+.title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
 }
 
 .hint {
@@ -75,25 +111,149 @@ button {
   text-align: center;
 }
 
-.right {
-  text-align: right;
+.nowrap {
+  white-space: nowrap;
 }
 
-p {
-  margin: 0;
+.icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
 }
 
-/* --- Rate --- */
+/* --- Navigation --- */
+
+.nav-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.nav-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 50px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--section-bg);
+  color: var(--text);
+  padding: 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.nav-button:active,
+.card:active,
+.chip-button:active,
+.icon-button:active {
+  opacity: 0.6;
+}
+
+.nav-button .icon {
+  color: var(--button);
+}
+
+/* Count of deals waiting on the viewer, on the "My deals" button. */
+.count-badge {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--destructive);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
+.icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--section-bg);
+  color: var(--link);
+  padding: 0;
+}
+
+.icon-button .icon {
+  width: 19px;
+  height: 19px;
+}
+
+.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Market rate --- */
 
 .rate-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   background: var(--section-bg);
   border-radius: var(--radius);
   padding: 12px 16px;
 }
 
-.rate-value {
-  font-size: 18px;
+.rate-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rate-title {
+  font-size: 13px;
   font-weight: 600;
+  color: var(--hint);
+}
+
+.rate-pair {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.rate-value {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.rate-inverse {
+  font-size: 15px;
+  color: var(--hint);
+}
+
+/* How a request's rate compares to the market, for the viewer. */
+.rate-tag {
+  font-weight: 600;
+  color: var(--hint);
+  white-space: nowrap;
+}
+
+.rate-tag.better {
+  color: var(--positive);
+}
+
+.rate-tag.worse {
+  color: var(--warning);
 }
 
 /* --- Controls --- */
@@ -101,18 +261,26 @@ p {
 .segmented {
   display: flex;
   background: var(--section-bg);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 3px;
   gap: 3px;
 }
 
+.section-body .segmented,
+.filters .segmented {
+  background: var(--secondary-bg);
+}
+
 .segmented button {
   flex: 1;
+  min-width: 0;
   border: 0;
   background: transparent;
-  border-radius: 8px;
-  padding: 8px 6px;
+  border-radius: 9px;
+  padding: 8px 4px;
   font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .segmented button.selected {
@@ -129,11 +297,6 @@ p {
   font-size: inherit;
 }
 
-.filters-toggle {
-  font-size: 15px;
-}
-
-/* Filters toggle and Refresh, above the Board's list. */
 .toolbar {
   display: flex;
   justify-content: space-between;
@@ -141,31 +304,95 @@ p {
   gap: 12px;
 }
 
+.chip-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--section-bg);
+  color: var(--text);
+  padding: 0 14px 0 12px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.chip-button .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--hint);
+}
+
+.chip-button.on .icon {
+  color: var(--button);
+}
+
+.chip-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--button);
+  color: var(--button-text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
 .secondary-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   border: 0;
   border-radius: var(--radius);
   background: var(--section-bg);
   color: var(--link);
-  padding: 12px;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 500;
 }
 
 .secondary-button:disabled {
   color: var(--hint);
 }
 
+.secondary-button.destructive {
+  color: var(--destructive);
+}
+
+/* A second important action next to the MainButton, e.g. "I received the money". */
+.secondary-button.strong {
+  box-shadow: inset 0 0 0 1.5px var(--button);
+  font-weight: 600;
+}
+
+.secondary-button .icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* --- Forms --- */
+
 .filters {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  align-items: stretch;
+  gap: 14px;
   background: var(--section-bg);
   border-radius: var(--radius);
-  padding: 12px;
+  padding: 14px;
+}
+
+.filters > .link-button {
+  align-self: flex-start;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
   flex: 1;
 }
@@ -181,31 +408,80 @@ p {
 }
 
 .field-error {
+  margin-top: -4px;
+  padding: 0 4px;
   font-size: 13px;
   color: var(--destructive);
 }
 
-.input {
+.section-body .field-error {
+  margin-top: 0;
+  padding: 0;
+}
+
+.input,
+.input-wrap {
   width: 100%;
   border: 1px solid var(--separator);
-  border-radius: 10px;
+  border-radius: var(--radius-small);
   background: var(--bg);
-  padding: 10px 12px;
+}
+
+.input {
+  padding: 11px 12px;
   font-size: 16px; /* 16px stops iOS zooming on focus */
   outline: none;
 }
 
-.input:focus {
+.input:focus,
+.input-wrap:focus-within {
   border-color: var(--button);
 }
 
+.input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+}
+
+.input-wrap.invalid,
 .input.invalid {
   border-color: var(--destructive);
 }
 
-.textarea {
-  resize: vertical;
-  min-height: 72px;
+.input-bare {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 11px 0;
+  font-size: 16px;
+  outline: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.input-suffix {
+  color: var(--hint);
+}
+
+.input-wrap.compact {
+  width: 96px;
+  flex-shrink: 0;
+}
+
+.input-wrap.compact .input-bare {
+  padding: 8px 0;
+  text-align: right;
+}
+
+/* A label and a small input on one line, e.g. "By how much [1.5] %". */
+.inline-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 15px;
 }
 
 /* --- Sections --- */
@@ -217,20 +493,25 @@ p {
 }
 
 .section-title {
-  margin: 4px 4px 0;
+  margin: 8px 4px 0;
   font-size: 13px;
   font-weight: 500;
   text-transform: uppercase;
+  letter-spacing: 0.02em;
   color: var(--section-title);
 }
 
 .section-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   background: var(--section-bg);
   border-radius: var(--radius);
-  padding: 12px;
+  padding: 14px;
+}
+
+.section-note {
+  padding: 0 4px;
 }
 
 /* --- Request cards --- */
@@ -244,17 +525,13 @@ p {
 .card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 10px;
   width: 100%;
   border: 0;
   border-radius: var(--radius);
   background: var(--section-bg);
-  padding: 12px 14px;
+  padding: 14px 16px;
   text-align: left;
-}
-
-.card:active {
-  opacity: 0.7;
 }
 
 /* A deal in progress. */
@@ -262,43 +539,203 @@ p {
   box-shadow: inset 0 0 0 2px var(--button);
 }
 
-.card-row {
+.card-status {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 8px;
-}
-
-.card-amount {
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.card-rate {
-  font-size: 14px;
-}
-
-.badge {
-  font-size: 12px;
+  gap: 6px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--accent);
+}
+
+.card-status.action {
+  color: var(--destructive);
+}
+
+.card-status.action::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.card-status.muted {
+  color: var(--hint);
+}
+
+/* "You pay … → You get …" */
+.card-amounts {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: end;
+  gap: 10px;
+}
+
+.card-amounts > .icon {
+  width: 18px;
+  height: 18px;
+  margin-bottom: 2px;
+  color: var(--hint);
+}
+
+.card-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.side-label {
+  font-size: 12px;
+  color: var(--hint);
+}
+
+.side-value {
+  font-size: 17px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.side-value.get {
+  font-weight: 700;
+}
+
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--hint);
+}
+
+.card-time {
+  margin-left: auto;
+}
+
+/* --- Exchange box: "You pay" above "You get" --- */
+
+.exchange {
+  background: var(--section-bg);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.exchange-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.exchange-label {
+  font-size: 13px;
+  color: var(--hint);
+}
+
+.exchange-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.exchange-value {
+  flex: 1;
+  min-width: 0;
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.exchange-row.emphasis .exchange-value {
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.exchange-input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.exchange-input::placeholder {
+  color: var(--hint);
+  opacity: 0.6;
+}
+
+.exchange-input.invalid {
+  color: var(--destructive);
+}
+
+.exchange:focus-within {
+  box-shadow: inset 0 0 0 1.5px var(--button);
+}
+
+.currency-chip {
+  flex-shrink: 0;
+  border-radius: 16px;
+  background: var(--secondary-bg);
+  padding: 5px 10px;
+  font-size: 14px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
-/* --- Detail --- */
+.exchange-divider {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin: 10px 0;
+  border-top: 1px solid var(--separator);
+}
+
+.exchange-arrow {
+  position: absolute;
+  top: -15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--section-bg);
+  box-shadow: 0 0 0 1px var(--separator);
+  color: var(--hint);
+}
+
+.exchange-arrow .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.icon.arrow.down {
+  transform: rotate(90deg);
+}
+
+/* --- Detail rows --- */
 
 .detail {
   background: var(--section-bg);
   border-radius: var(--radius);
-  padding: 4px 16px;
+  padding: 2px 16px;
 }
 
 .detail-row {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 16px;
-  padding: 10px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--separator);
+  font-size: 15px;
 }
 
 .detail-row:last-child {
@@ -306,30 +743,105 @@ p {
 }
 
 .detail-value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
   text-align: right;
   overflow-wrap: anywhere;
+}
+
+/* Deal progress: who has confirmed receiving the money. */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--separator);
+  font-size: 15px;
+  color: var(--hint);
+}
+
+.check-row:last-child {
+  border-bottom: 0;
+}
+
+.check-row.done {
+  color: var(--text);
+}
+
+.check-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--separator);
+  color: #ffffff;
+}
+
+.check-row.done .check-mark {
+  background: var(--positive);
+  box-shadow: none;
+}
+
+.check-mark .icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 3;
 }
 
 /* --- Messages --- */
 
 .notice {
-  background: var(--section-bg);
-  border-left: 3px solid var(--accent);
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 14px;
-}
-
-.error-box {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
-  background: var(--section-bg);
-  border-left: 3px solid var(--destructive);
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: var(--radius-small);
+  padding: 11px 14px;
   font-size: 14px;
+  background: var(--section-bg);
+  background: color-mix(in srgb, var(--button) 10%, var(--section-bg));
+}
+
+.notice.warning {
+  background: var(--section-bg);
+  background: color-mix(in srgb, var(--warning) 14%, var(--section-bg));
+}
+
+.notice.error {
+  background: var(--section-bg);
+  background: color-mix(in srgb, var(--destructive) 12%, var(--section-bg));
+}
+
+/* The deal's state, on the deal screen. */
+.banner {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: var(--radius);
+  background: var(--section-bg);
+  padding: 12px 16px;
+}
+
+.banner.action {
+  background: color-mix(in srgb, var(--button) 12%, var(--section-bg));
+}
+
+.banner.success {
+  background: color-mix(in srgb, var(--positive) 14%, var(--section-bg));
+}
+
+.banner-title {
+  font-weight: 600;
+}
+
+.banner-body {
+  font-size: 14px;
+  color: var(--hint);
 }
 
 .empty {
@@ -337,20 +849,87 @@ p {
   flex-direction: column;
   gap: 4px;
   text-align: center;
-  padding: 32px 16px;
+  padding: 36px 16px;
+  font-size: 15px;
+}
+
+.empty-title {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: 40px 0;
+}
+
+.spinner {
+  width: 26px;
+  height: 26px;
+  border: 2.5px solid var(--separator);
+  border-top-color: var(--button);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.skeleton {
+  pointer-events: none;
+}
+
+.skeleton-line {
+  display: block;
+  height: 14px;
+  width: 80%;
+  border-radius: 7px;
+  background: var(--secondary-bg);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.skeleton-line.short {
+  width: 30%;
+  height: 12px;
+}
+
+.skeleton-line.shorter {
+  width: 50%;
+  height: 12px;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.success-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px 4px;
+  text-align: center;
+}
+
+.success-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 6px;
+  border-radius: 50%;
+  background: var(--positive);
+  color: #ffffff;
+}
+
+.success-icon .icon {
+  width: 30px;
+  height: 30px;
+  stroke-width: 2.5;
 }
 
 /* --- Deals --- */
-
-.card-status {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--accent);
-}
-
-.secondary-button.destructive {
-  color: var(--destructive);
-}
 
 /* A card with an action button attached underneath, e.g. "Cancel request". */
 .card-stack > .card {
@@ -365,7 +944,7 @@ p {
   border-radius: 0 0 var(--radius) var(--radius);
   background: var(--section-bg);
   color: var(--destructive);
-  padding: 10px;
+  padding: 11px;
   font-size: 15px;
 }
 
@@ -378,10 +957,16 @@ p {
 .pay-to {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   background: var(--section-bg);
   border-radius: var(--radius);
-  padding: 12px 14px;
+  padding: 14px 16px;
+}
+
+.pay-to-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hint);
 }
 
 .pay-to-bank {
@@ -397,24 +982,57 @@ p {
 
 .pay-to-value {
   overflow-wrap: anywhere;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   user-select: all;
 }
 
 .copy-button {
   flex-shrink: 0;
+  min-width: 76px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 16px;
   background: var(--button);
   color: var(--button-text);
-  padding: 6px 14px;
+  padding: 7px 14px;
   font-size: 14px;
   font-weight: 600;
 }
 
+.copy-button.copied {
+  background: var(--positive);
+}
+
 /* --- Profile --- */
+
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 0;
+}
+
+.profile-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--button);
+  color: var(--button-text);
+  font-size: 24px;
+  font-weight: 600;
+}
 
 .details-group {
   display: flex;
@@ -424,7 +1042,7 @@ p {
 
 .details-group + .details-group {
   border-top: 1px solid var(--separator);
-  padding-top: 12px;
+  padding-top: 14px;
 }
 
 .details-title {
@@ -433,89 +1051,19 @@ p {
   font-weight: 600;
 }
 
-/* --- Navigation and icons --- */
-
-.nav-buttons {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.nav-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 52px;
-  border: 0;
-  border-radius: var(--radius);
-  background: var(--section-bg);
-  color: var(--text);
-  padding: 12px;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.nav-button:active {
-  opacity: 0.7;
-}
-
-.nav-button .icon {
-  color: var(--button);
-}
-
-.icon {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-}
-
-.spinning {
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.title-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-
-.refresh-button {
+.saved {
   display: flex;
   align-items: center;
   gap: 6px;
-  border: 0;
-  border-radius: 10px;
-  background: var(--section-bg);
-  color: var(--link);
-  padding: 8px 12px;
-  font-size: 15px;
+  padding: 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--positive);
 }
 
-.refresh-button .icon {
+.saved .icon {
   width: 18px;
   height: 18px;
-}
-
-/* Count of deals waiting on the viewer, on the "My deals" button. */
-.count-badge {
-  display: inline-block;
-  min-width: 20px;
-  padding: 0 6px;
-  border-radius: 10px;
-  background: var(--destructive);
-  color: #ffffff;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 20px;
-  text-align: center;
 }
 
 .about-links {

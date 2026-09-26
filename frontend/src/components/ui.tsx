@@ -15,9 +15,10 @@ export function Segmented<T extends string | number>(props: {
   options: Option<T>[];
   value: T;
   onChange: (value: T) => void;
+  label?: string;
 }) {
   return (
-    <div className="segmented" role="radiogroup">
+    <div className="segmented" role="radiogroup" aria-label={props.label}>
       {props.options.map((option) => (
         <button
           key={String(option.value)}
@@ -47,12 +48,31 @@ export function Section(props: { title?: string; children: ReactNode }) {
 }
 
 export function Loading() {
-  return <p className="hint center">{t.loading}</p>;
+  return (
+    <div className="loading" role="status" aria-label={t.loading}>
+      <span className="spinner" />
+    </div>
+  );
+}
+
+/** Placeholder cards while a list loads. */
+export function SkeletonList(props: { count?: number }) {
+  return (
+    <div className="list" role="status" aria-label={t.loading}>
+      {Array.from({ length: props.count ?? 3 }, (_, index) => (
+        <div key={index} className="card skeleton">
+          <span className="skeleton-line short" />
+          <span className="skeleton-line" />
+          <span className="skeleton-line shorter" />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function ErrorBox(props: { code: string; onRetry?: () => void }) {
   return (
-    <div className="error-box" role="alert">
+    <div className="notice error" role="alert">
       <p>{errorMessage(props.code)}</p>
       {props.onRetry && (
         <button type="button" className="link-button" onClick={props.onRetry}>
@@ -63,25 +83,44 @@ export function ErrorBox(props: { code: string; onRetry?: () => void }) {
   );
 }
 
-/** Whole-number input with thousands separators and a numeric keyboard. */
+/** A short message in a tinted box: `info` for guidance, `warning` for what blocks an action. */
+export function Notice(props: { children: ReactNode; tone?: "info" | "warning" }) {
+  return <div className={`notice ${props.tone ?? "info"}`}>{props.children}</div>;
+}
+
+export function Empty(props: { title: string; hint?: string }) {
+  return (
+    <div className="empty">
+      <p className="empty-title">{props.title}</p>
+      {props.hint && <p className="hint">{props.hint}</p>}
+    </div>
+  );
+}
+
+/** Whole-number input with thousands separators, a numeric keyboard and a currency suffix. */
 export function AmountInput(props: {
   value: string;
   onChange: (value: string) => void;
+  suffix: string;
   placeholder?: string;
   invalid?: boolean;
   label: string;
+  large?: boolean;
 }) {
   return (
     <label className="field">
       <span className="field-label">{props.label}</span>
-      <input
-        className={props.invalid ? "input invalid" : "input"}
-        inputMode="numeric"
-        autoComplete="off"
-        placeholder={props.placeholder}
-        value={props.value}
-        onChange={(event) => props.onChange(formatAmountInput(event.target.value))}
-      />
+      <span className={`input-wrap${props.invalid ? " invalid" : ""}${props.large ? " large" : ""}`}>
+        <input
+          className="input-bare"
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder={props.placeholder}
+          value={props.value}
+          onChange={(event) => props.onChange(formatAmountInput(event.target.value))}
+        />
+        <span className="input-suffix">{props.suffix}</span>
+      </span>
     </label>
   );
 }
@@ -89,7 +128,7 @@ export function AmountInput(props: {
 // Keeps the spinner up long enough to see, even when the reload is instant.
 const MIN_SPIN_MS = 500;
 
-/** A refresh button that spins until `onRefresh` settles. */
+/** A round refresh button that spins until `onRefresh` settles. */
 export function RefreshButton(props: { onRefresh: () => Promise<unknown> }) {
   const [busy, setBusy] = useState(false);
   const refresh = async () => {
@@ -100,18 +139,31 @@ export function RefreshButton(props: { onRefresh: () => Promise<unknown> }) {
     setBusy(false);
   };
   return (
-    <button type="button" className="refresh-button" disabled={busy} onClick={() => void refresh()}>
+    <button
+      type="button"
+      className="icon-button"
+      aria-label={t.refresh}
+      title={t.refresh}
+      disabled={busy}
+      onClick={() => void refresh()}
+    >
       <RefreshIcon spinning={busy} />
-      {t.refresh}
     </button>
   );
 }
 
-/** Screen title with a refresh button next to it. */
-export function TitleWithRefresh(props: { title: string; onRefresh: () => Promise<unknown> }) {
+/** Screen title (with an optional small label above it) and a refresh button next to it. */
+export function TitleWithRefresh(props: {
+  title: string;
+  eyebrow?: string;
+  onRefresh: () => Promise<unknown>;
+}) {
   return (
     <div className="title-row">
-      <h1 className="title">{props.title}</h1>
+      <div className="title-block">
+        {props.eyebrow && <span className="eyebrow">{props.eyebrow}</span>}
+        <h1 className="title">{props.title}</h1>
+      </div>
       <RefreshButton onRefresh={props.onRefresh} />
     </div>
   );

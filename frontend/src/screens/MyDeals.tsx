@@ -1,17 +1,18 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { api, errorCode } from "../api";
-import { RequestCard } from "../components/RequestCard";
-import { ErrorBox, Loading, TitleWithRefresh } from "../components/ui";
+import { type CardStatus, RequestCard } from "../components/RequestCard";
+import { Empty, ErrorBox, SkeletonList, TitleWithRefresh } from "../components/ui";
 import { t } from "../i18n";
 import { useNav, useReactivated } from "../nav";
 import { FAST_POLL_MS, usePolling } from "../polling";
 import { confirm, haptic } from "../telegram";
 import { type Deal, type ExchangeRequest, isActiveDeal, needsMyAction, sortDeals } from "../types";
 
-function statusLine(deal: Deal): string {
-  let status: string = t.dealStatus[deal.status];
-  if (needsMyAction(deal)) status = deal.status === "pending" ? t.deal.needsAnswer : t.deal.needsConfirm;
-  return `${t.dealRole[deal.role]} · ${status}`;
+function dealStatus(deal: Deal): CardStatus {
+  if (needsMyAction(deal)) {
+    return { text: deal.status === "pending" ? t.deal.needsAnswer : t.deal.needsConfirm, tone: "action" };
+  }
+  return { text: t.dealStatus[deal.status], tone: "active" };
 }
 
 interface Lists {
@@ -77,12 +78,15 @@ export function MyDeals(props: { active: boolean }) {
     setCancelling(null);
   };
 
+  // Completed and declined deals are grouped under their status, so it isn't repeated on each.
   const dealCard = (deal: Deal) => (
     <RequestCard
       key={deal.id}
       request={deal.request}
-      status={statusLine(deal)}
+      status={isActiveDeal(deal) ? dealStatus(deal) : undefined}
       highlight={deal.status === "accepted"}
+      deals={deal.other_completed_deals}
+      time={deal.status === "pending"}
       onOpen={() => nav.push({ name: "deal", id: deal.id })}
     />
   );
@@ -97,12 +101,9 @@ export function MyDeals(props: { active: boolean }) {
       <TitleWithRefresh title={t.myDeals.title} onRefresh={load} />
       {error && <ErrorBox code={error} onRetry={load} />}
       {actionError && <ErrorBox code={actionError} />}
-      {!lists && !error && <Loading />}
+      {!lists && !error && <SkeletonList count={2} />}
       {lists && deals.length === 0 && lists.requests.length === 0 && (
-        <div className="empty">
-          <p>{t.myDeals.empty}</p>
-          <p className="hint">{t.myDeals.emptyHint}</p>
-        </div>
+        <Empty title={t.myDeals.empty} hint={t.myDeals.emptyHint} />
       )}
 
       {lists && lists.requests.length > 0 && (
@@ -124,7 +125,11 @@ export function MyDeals(props: { active: boolean }) {
       )}
       {lists && deals.length > 0 && (
         <Group title={t.myDeals.active}>
-          {active.length > 0 ? active.map(dealCard) : <p className="hint small">{t.myDeals.noActive}</p>}
+          {active.length > 0 ? (
+            active.map(dealCard)
+          ) : (
+            <p className="hint small section-note">{t.myDeals.noActive}</p>
+          )}
         </Group>
       )}
       {completed.length > 0 && <Group title={t.myDeals.completed}>{completed.map(dealCard)}</Group>}

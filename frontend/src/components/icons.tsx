@@ -47,3 +47,32 @@ export function RefreshIcon(props: { spinning?: boolean }) {
     </Icon>
   );
 }
+
+/** From what you pay to what you get. */
+export function ArrowIcon(props: { down?: boolean }) {
+  return (
+    <Icon className={props.down ? "icon arrow down" : "icon arrow"}>
+      <path d="M5 12h14" />
+      <path d="m13 6 6 6-6 6" />
+    </Icon>
+  );
+}
+
+export function CheckIcon() {
+  return (
+    <Icon>
+      <path d="m5 12.5 4.5 4.5L19 7.5" />
+    </Icon>
+  );
+}
+
+export function FiltersIcon() {
+  return (
+    <Icon>
+      <path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h9M17 18h3" />
+      <circle cx="15" cy="6" r="2" />
+      <circle cx="9" cy="12" r="2" />
+      <circle cx="15" cy="18" r="2" />
+    </Icon>
+  );
+}

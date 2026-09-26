@@ -15,10 +15,12 @@ who has reliably completed exchanges before.
 
 ## What it does
 
-- **Board** of open requests ("Buy KRW 🇰🇷" / "Buy KZT 🇰🇿"), filterable by amount, with the
-  reference exchange rate both ways at the top
-- **Post a request**: amount, a rate at the market rate or a % above / below it, and how
-  long it stays up (1 / 3 days). You can cancel it while it's on the board.
+- **Board** of open requests ("Buy KRW 🇰🇷" / "Buy KZT 🇰🇿"), each showing what *you* would
+  pay and get and whether its rate is better or worse than the market for you; filter by amount,
+  sort by best rate, with the reference exchange rate both ways at the top
+- **Post a request**: what you buy, how much you pay (with a live "you get ≈" preview), the
+  market rate or asking / offering a few % more, and how long it stays up (1 / 3 days). You can
+  cancel it while it's on the board.
 - **Take a request**: the author accepts or declines, and only then do both sides get
   each other's Telegram contact
 - **Bot notifications** only when someone takes your request and when your deal is accepted;

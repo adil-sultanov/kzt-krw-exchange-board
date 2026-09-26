@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, errorCode } from "../api";
-import { ErrorBox, Row, Section } from "../components/ui";
+import { CheckIcon } from "../components/icons";
+import { ErrorBox, Section } from "../components/ui";
 import { t } from "../i18n";
-import { AUTHOR_URL, AUTHOR_USERNAME, PRIVACY_URL, TERMS_URL } from "../links";
+import { PRIVACY_URL, TERMS_URL } from "../links";
 import { useMe, useSetMe } from "../me";
-import { haptic, openLink, openTelegramLink, useMainButton } from "../telegram";
+import { haptic, openLink, useMainButton } from "../telegram";
 import { type Currency, MAX_ACCOUNT_LENGTH, MAX_BANK_LENGTH, type Me, type MeUpdate } from "../types";
 
 type DetailsKey = keyof MeUpdate & keyof Me;
@@ -15,6 +16,8 @@ const DETAILS_KEYS: DetailsKey[] = [
   "receive_krw_account",
 ];
 type Details = Record<DetailsKey, string>;
+
+const SAVED_MS = 2500;
 
 function savedDetails(me: Me): Details {
   return {
@@ -92,6 +95,12 @@ export function Profile(props: { active: boolean }) {
   const current = savedDetails(me);
   const changed = DETAILS_KEYS.some((key) => details[key].trim() !== current[key]);
 
+  useEffect(() => {
+    if (!saved) return;
+    const timer = window.setTimeout(() => setSaved(false), SAVED_MS);
+    return () => window.clearTimeout(timer);
+  }, [saved]);
+
   const save = async () => {
     if (saving || !changed) return;
     setSaving(true);
@@ -110,10 +119,9 @@ export function Profile(props: { active: boolean }) {
     }
   };
 
+  // Shown only while there's something to save.
   useMainButton(
-    props.active
-      ? { text: saved && !changed ? t.profile.saved : t.profile.save, onClick: save, enabled: changed, loading: saving }
-      : null,
+    props.active && (changed || saving) ? { text: t.profile.save, onClick: save, loading: saving } : null,
   );
 
   const edit = (key: DetailsKey, value: string) => {
@@ -121,12 +129,20 @@ export function Profile(props: { active: boolean }) {
     setDetails((current) => ({ ...current, [key]: value }));
   };
 
+  const name = me.first_name || me.username || "";
   return (
     <div className="screen">
-      <h1 className="title">{t.profile.title}</h1>
-
-      <div className="detail">
-        <Row label={t.profile.record}>{t.card.deals(me.completed_deals)}</Row>
+      <div className="profile-head">
+        <span className="avatar" aria-hidden="true">
+          {name.slice(0, 1).toUpperCase()}
+        </span>
+        <div className="profile-name">
+          <h1 className="title">{name}</h1>
+          <span className="hint small">
+            {me.username && `@${me.username} · `}
+            {t.deals(me.completed_deals)}
+          </span>
+        </div>
       </div>
 
       <Section title={t.profile.receiving}>
@@ -134,17 +150,17 @@ export function Profile(props: { active: boolean }) {
         <CurrencyDetails currency="KZT" details={details} onChange={edit} />
         <CurrencyDetails currency="KRW" details={details} onChange={edit} />
       </Section>
+      {saved && (
+        <p className="saved" role="status">
+          <CheckIcon />
+          {t.profile.saved}
+        </p>
+      )}
       {error && <ErrorBox code={error} />}
 
       <Section title={t.profile.about}>
         <p className="small">{t.profile.aboutBody}</p>
         <div className="about-links small">
-          <span>
-            {t.profile.author}:{" "}
-            <button type="button" className="link-button" onClick={() => openTelegramLink(AUTHOR_URL)}>
-              @{AUTHOR_USERNAME}
-            </button>
-          </span>
           <button type="button" className="link-button" onClick={() => openLink(TERMS_URL)}>
             {t.profile.terms}
           </button>
