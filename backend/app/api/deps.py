@@ -41,9 +41,10 @@ async def get_current_user(
     except InitDataError as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=exc.code) from None
     tg_user = init_data.user
-    return await upsert_user(db, tg_user, is_admin=tg_user.id in settings.admin_ids)
+    return await upsert_user(db, tg_user, config_admin=settings.is_admin(tg_user.id))
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+SettingsDep = Annotated[Settings, Depends(get_settings)]
 DbDep = Annotated[Database, Depends(get_db)]
 NotifierDep = Annotated[Notifier, Depends(get_notifier)]

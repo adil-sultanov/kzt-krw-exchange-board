@@ -252,6 +252,15 @@ export function RequestDetail(props: { id: number; active: boolean }) {
           {t.detail.postAgain}
         </button>
       )}
+      {!request.is_own && (
+        <button
+          type="button"
+          className="link-button subtle center"
+          onClick={() => nav.push({ name: "report", target: { kind: "request", id: request.id } })}
+        >
+          {t.detail.report}
+        </button>
+      )}
     </div>
   );
 }

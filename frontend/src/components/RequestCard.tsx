@@ -15,7 +15,8 @@ export interface CardStatus {
  * A request as the viewer sees it: what they pay and get, the rate compared to the market,
  * the other side's record and the time left.
  *
- * `status` is an optional line on top, e.g. the viewer's deal on this request; `highlight`
+ * `status` is an optional line on top, e.g. the viewer's deal on this request (by default their
+ * deal's status, if any; `null` shows none); `highlight`
  * outlines the card, e.g. for a deal in progress. `deals` is the other side's completed-deal
  * count (by default the author's, hidden on the viewer's own requests). `time` shows the time
  * left while the request is on the board.
@@ -23,20 +24,19 @@ export interface CardStatus {
 export function RequestCard(props: {
   request: ExchangeRequest;
   onOpen: () => void;
-  status?: CardStatus;
+  status?: CardStatus | null;
   highlight?: boolean;
   deals?: number | null;
   time?: boolean;
 }) {
   const { request } = props;
-  const status: CardStatus | undefined =
-    props.status ??
-    (request.my_deal_status
-      ? {
-          text: t.dealStatus[request.my_deal_status],
-          tone: request.my_deal_status === "declined" ? "muted" : "active",
-        }
-      : undefined);
+  const fallback: CardStatus | null = request.my_deal_status
+    ? {
+        text: t.dealStatus[request.my_deal_status],
+        tone: request.my_deal_status === "declined" ? "muted" : "active",
+      }
+    : null;
+  const status = props.status !== undefined ? props.status : fallback;
   const { pay, get } = viewerSides(request);
   const gain = viewerRateGain(request);
   const deals = props.deals !== undefined ? props.deals : request.is_own ? null : request.author_completed_deals;

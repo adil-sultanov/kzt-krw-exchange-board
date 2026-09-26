@@ -6,11 +6,13 @@ from app.api.deps import CurrentUser, DbDep
 from app.models import (
     BoardFilters,
     CreatedRequestOut,
+    ReportCreate,
+    ReportOut,
     RequestCreate,
     RequestOut,
     RequestUpdate,
 )
-from app.services import requests
+from app.services import reports, requests
 
 router = APIRouter()
 
@@ -54,3 +56,10 @@ async def close_request(user: CurrentUser, db: DbDep, request_id: int) -> Reques
 @router.get("/my/requests")
 async def list_my_requests(user: CurrentUser, db: DbDep) -> list[RequestOut]:
     return await requests.list_my_requests(db, user.telegram_id)
+
+
+@router.post("/requests/{request_id}/report", status_code=status.HTTP_201_CREATED)
+async def report_request(
+    user: CurrentUser, db: DbDep, request_id: int, body: ReportCreate
+) -> ReportOut:
+    return await reports.report_request(db, user.telegram_id, request_id, body)

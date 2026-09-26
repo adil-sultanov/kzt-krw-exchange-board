@@ -20,7 +20,7 @@ async def username_of(db: Database, telegram_id: int) -> str | None:
 
 async def test_creates_user(db: Database) -> None:
     user = await upsert_user(
-        db, TelegramUser(id=1, first_name="Aida", username="aida"), is_admin=False
+        db, TelegramUser(id=1, first_name="Aida", username="aida"), config_admin=False
     )
     assert user.telegram_id == 1
     assert user.username == "aida"
@@ -30,38 +30,47 @@ async def test_creates_user(db: Database) -> None:
 
 
 async def test_updates_username_and_name(db: Database) -> None:
-    await upsert_user(db, TelegramUser(id=1, first_name="Aida", username="old"), is_admin=False)
+    await upsert_user(db, TelegramUser(id=1, first_name="Aida", username="old"), config_admin=False)
     user = await upsert_user(
-        db, TelegramUser(id=1, first_name="Aidana", username="new"), is_admin=False
+        db, TelegramUser(id=1, first_name="Aidana", username="new"), config_admin=False
     )
     assert (user.username, user.first_name) == ("new", "Aidana")
 
 
 async def test_removed_username_becomes_null(db: Database) -> None:
-    await upsert_user(db, TelegramUser(id=1, username="aida"), is_admin=False)
-    user = await upsert_user(db, TelegramUser(id=1, username=None), is_admin=False)
+    await upsert_user(db, TelegramUser(id=1, username="aida"), config_admin=False)
+    user = await upsert_user(db, TelegramUser(id=1, username=None), config_admin=False)
     assert user.username is None
 
 
 async def test_username_taken_over_clears_previous_owner(db: Database) -> None:
-    await upsert_user(db, TelegramUser(id=1, username="shared"), is_admin=False)
+    await upsert_user(db, TelegramUser(id=1, username="shared"), config_admin=False)
     # User 2 now owns the name (Telegram usernames are case-insensitive).
-    await upsert_user(db, TelegramUser(id=2, username="Shared"), is_admin=False)
+    await upsert_user(db, TelegramUser(id=2, username="Shared"), config_admin=False)
     assert await username_of(db, 1) is None
     assert await username_of(db, 2) == "Shared"
 
 
 async def test_unchanged_user_keeps_updated_at(db: Database) -> None:
-    first = await upsert_user(db, TelegramUser(id=1, username="aida"), is_admin=False)
+    first = await upsert_user(db, TelegramUser(id=1, username="aida"), config_admin=False)
     await db.conn.execute("UPDATE users SET updated_at = 'marker' WHERE telegram_id = 1")
-    second = await upsert_user(db, TelegramUser(id=1, username="aida"), is_admin=False)
+    second = await upsert_user(db, TelegramUser(id=1, username="aida"), config_admin=False)
     assert second.updated_at == "marker"
     assert second.created_at == first.created_at
 
 
 async def test_admin_flag_follows_config(db: Database) -> None:
-    assert (await upsert_user(db, TelegramUser(id=1), is_admin=True)).is_admin
-    assert not (await upsert_user(db, TelegramUser(id=1), is_admin=False)).is_admin
+    assert (await upsert_user(db, TelegramUser(id=1), config_admin=True)).is_admin
+    assert not (await upsert_user(db, TelegramUser(id=1), config_admin=False)).is_admin
+
+
+async def test_admins_added_in_the_app_stay_admins(db: Database) -> None:
+    await upsert_user(db, TelegramUser(id=1), config_admin=False)
+    await db.conn.execute("UPDATE users SET admin_granted = 1, is_admin = 1 WHERE telegram_id = 1")
+    assert (await upsert_user(db, TelegramUser(id=1), config_admin=False)).is_admin
+    # Rights removed from the config don't drop rights granted in the app.
+    await upsert_user(db, TelegramUser(id=1), config_admin=True)
+    assert (await upsert_user(db, TelegramUser(id=1), config_admin=False)).is_admin
 
 
 async def test_bot_middleware_refreshes_user(db: Database, settings: Settings) -> None:

@@ -46,15 +46,17 @@ _VISIBLE_ON_BOARD = """
 r.status = 'open' AND r.expires_at > :now AND r.user_id != :viewer AND u.is_banned = 0
 """
 
+# Each key's descending order; ascending flips it. Ties go newest first either way.
 _BOARD_ORDER = {
-    "newest": "r.id DESC",
-    "amount_asc": "r.amount ASC, r.id DESC",
-    "amount_desc": "r.amount DESC, r.id DESC",
+    "date": "r.id",
+    # Within a tab, the amount you'd get. Across both, amounts in different currencies don't
+    # compare, so a KRW amount counts as KZT at the request's own rate (unknown without a
+    # reference rate: those come last).
+    "amount": "CASE WHEN :direction IS NOT NULL OR r.direction = 'KZT_KRW' THEN r.amount"
+    " ELSE r.amount / (:ref * (1 + r.rate_value / 100.0)) END",
     # Best for whoever takes it first. Every rate is the market rate plus an offset, and a
     # higher rate (more KRW per KZT) is better for the taker of a KRW_KZT request, who pays KZT.
-    "best_rate": (
-        "CASE r.direction WHEN 'KRW_KZT' THEN r.rate_value ELSE -r.rate_value END DESC, r.id DESC"
-    ),
+    "rate": "CASE r.direction WHEN 'KRW_KZT' THEN r.rate_value ELSE -r.rate_value END",
 }
 
 
@@ -301,21 +303,16 @@ async def list_board(db: Database, viewer_id: int, filters: BoardFilters) -> lis
         "offset": filters.offset,
     }
     where = [_VISIBLE_ON_BOARD]
+    params["direction"] = filters.direction
     if filters.direction is not None:
         where.append("r.direction = :direction")
-        params["direction"] = filters.direction
-    if filters.min_amount is not None:
-        where.append("r.amount >= :min_amount")
-        params["min_amount"] = filters.min_amount
-    if filters.max_amount is not None:
-        where.append("r.amount <= :max_amount")
-        params["max_amount"] = filters.max_amount
 
     sql = (
         _SELECT
         + " WHERE "
         + " AND ".join(f"({clause.strip()})" for clause in where)
-        + f" ORDER BY {_BOARD_ORDER[filters.sort]} LIMIT :limit OFFSET :offset"
+        + f" ORDER BY {_BOARD_ORDER[filters.sort]} {filters.order.upper()} NULLS LAST, r.id DESC"
+        + " LIMIT :limit OFFSET :offset"
     )
     async with db.conn.execute(sql, params) as cursor:
         rows = await cursor.fetchall()

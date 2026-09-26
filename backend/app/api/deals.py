@@ -1,8 +1,8 @@
 from fastapi import APIRouter, status
 
 from app.api.deps import CurrentUser, DbDep, NotifierDep
-from app.models import ContactOut, DealOut
-from app.services import deals
+from app.models import ContactOut, DealOut, ReportCreate, ReportOut
+from app.services import deals, reports
 
 router = APIRouter()
 
@@ -42,3 +42,8 @@ async def confirm_received(user: CurrentUser, db: DbDep, deal_id: int) -> DealOu
 @router.get("/deals/{deal_id}/contact")
 async def get_contact(user: CurrentUser, db: DbDep, deal_id: int) -> ContactOut:
     return await deals.get_contact(db, user.telegram_id, deal_id)
+
+
+@router.post("/deals/{deal_id}/report", status_code=status.HTTP_201_CREATED)
+async def report_deal(user: CurrentUser, db: DbDep, deal_id: int, body: ReportCreate) -> ReportOut:
+    return await reports.report_deal(db, user.telegram_id, deal_id, body)

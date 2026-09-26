@@ -1,5 +1,10 @@
 import { tg } from "./telegram";
 import type {
+  About,
+  AboutUpdate,
+  AdminEntry,
+  AdminReport,
+  AdminUser,
   BoardFilters,
   Contact,
   CreatedRequest,
@@ -7,7 +12,10 @@ import type {
   ExchangeRequest,
   Me,
   MeUpdate,
+  OwnerDeal,
   Rate,
+  ReportCreate,
+  ReportTarget,
   RequestCreate,
   RequestUpdate,
 } from "./types";
@@ -49,13 +57,12 @@ export const BOARD_PAGE_SIZE = 30;
 
 export function boardQuery(filters: BoardFilters, offset: number, limit: number): string {
   const params = new URLSearchParams({
+    direction: filters.direction,
     sort: filters.sort,
+    order: filters.order,
     limit: String(limit),
     offset: String(offset),
   });
-  if (filters.direction) params.set("direction", filters.direction);
-  if (filters.minAmount !== null) params.set("min_amount", String(filters.minAmount));
-  if (filters.maxAmount !== null) params.set("max_amount", String(filters.maxAmount));
   return params.toString();
 }
 
@@ -82,6 +89,22 @@ export const api = {
   contact: (id: number) => call<Contact>("GET", `/deals/${id}/contact`),
   /** Opposite requests for the viewer's own open request, closest in size first. */
   requestMatches: (id: number) => call<ExchangeRequest[]>("GET", `/requests/${id}/matches`),
+  report: (target: ReportTarget, body: ReportCreate) =>
+    call<unknown>("POST", `/${target.kind === "deal" ? "deals" : "requests"}/${target.id}/report`, body),
+  about: () => call<About>("GET", "/about"),
+  /** Owner only. */
+  updateAbout: (body: AboutUpdate) => call<About>("PUT", "/admin/about", body),
+  adminReports: (resolved: boolean) => call<AdminReport[]>("GET", `/admin/reports?resolved=${resolved}`),
+  resolveReport: (id: number) => call<null>("POST", `/admin/reports/${id}/resolve`),
+  setBanned: (userId: number, banned: boolean) =>
+    call<AdminUser>("POST", `/admin/users/${userId}/${banned ? "ban" : "unban"}`),
+  /** Owner only. */
+  admins: () => call<AdminEntry[]>("GET", "/admin/admins"),
+  addAdmin: (username: string) => call<AdminEntry>("POST", "/admin/admins", { username }),
+  removeAdmin: (userId: number) => call<null>("DELETE", `/admin/admins/${userId}`),
+  /** Owner only: active deals (stalest first) or finished ones (newest first). */
+  ownerDeals: (active: boolean) => call<OwnerDeal[]>("GET", `/admin/deals?active=${active}`),
+  deleteDeal: (id: number) => call<null>("DELETE", `/admin/deals/${id}`),
 };
 
 /** The machine code of any thrown error, for errorMessage(). */

@@ -4,12 +4,17 @@ import { ErrorBox, Footer, Loading } from "./components/ui";
 import { t } from "./i18n";
 import { MeContext, SetMeContext } from "./me";
 import { initialStack, type Nav, NavContext, type Route } from "./nav";
+import { About } from "./screens/About";
+import { Admin } from "./screens/Admin";
+import { Admins } from "./screens/Admins";
 import { Board } from "./screens/Board";
 import { Created } from "./screens/Created";
 import { DealScreen } from "./screens/Deal";
 import { MyDeals } from "./screens/MyDeals";
 import { NewRequest } from "./screens/NewRequest";
+import { OwnerDeals } from "./screens/OwnerDeals";
 import { Profile } from "./screens/Profile";
+import { Report } from "./screens/Report";
 import { RequestDetail } from "./screens/RequestDetail";
 import { insideTelegram, startParam, useBackButton } from "./telegram";
 import type { Me } from "./types";
@@ -33,6 +38,16 @@ function Screen(props: { route: Route; active: boolean }) {
       return <MyDeals active={active} />;
     case "profile":
       return <Profile active={active} />;
+    case "report":
+      return <Report target={route.target} active={active} />;
+    case "about":
+      return <About active={active} />;
+    case "admin":
+      return <Admin active={active} />;
+    case "admins":
+      return <Admins active={active} />;
+    case "ownerDeals":
+      return <OwnerDeals active={active} />;
   }
 }
 

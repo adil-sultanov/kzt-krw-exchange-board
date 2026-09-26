@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, BOARD_PAGE_SIZE, errorCode } from "../api";
-import { DealsIcon, FiltersIcon, ProfileIcon } from "../components/icons";
+import { DealsIcon, FiltersIcon, ProfileIcon, SortOrderIcon } from "../components/icons";
 import { RequestCard } from "../components/RequestCard";
-import { AmountInput, Empty, ErrorBox, RefreshButton, Segmented, SkeletonList } from "../components/ui";
-import { formatKstShort, formatRate, formatRatePair, parseAmount, SYMBOL } from "../format";
+import { Empty, ErrorBox, RefreshButton, Segmented, SkeletonList } from "../components/ui";
+import { formatKstShort, formatRate, formatRatePair } from "../format";
 import { t } from "../i18n";
+import { loadMyLists } from "../myLists";
 import { useNav, useReactivated } from "../nav";
 import { SLOW_POLL_MS, usePolling } from "../polling";
-import { openLink, useMainButton } from "../telegram";
+import { haptic, openLink, useMainButton } from "../telegram";
 import {
-  AMOUNT_SORTS,
   BOARD_SORTS,
   type BoardFilters,
   boardDirection,
@@ -28,21 +28,18 @@ const RATE_SOURCE_URLS: Partial<Record<string, string>> = {
   "open.er-api.com": "https://www.exchangerate-api.com",
 };
 const MAX_RELOAD = 100; // the API's page size limit
-const AMOUNT_DEBOUNCE_MS = 400;
 
 /** A loaded page of the board, and the filters it's for. */
 interface Results {
   filters: BoardFilters;
   items: ExchangeRequest[];
-  /** Goes up with each new set of filters. */
-  key: number;
 }
 
-const NO_FILTERS: BoardFilters = {
-  direction: null,
-  minAmount: null,
-  maxAmount: null,
-  sort: "newest",
+// Opens on Buy KRW: most people on the board are in Korea and need won.
+const DEFAULT_FILTERS: BoardFilters = {
+  direction: boardDirection("KRW"),
+  sort: "date",
+  order: "desc",
 };
 
 function RateCard(props: { rate: Rate | null }) {
@@ -81,7 +78,7 @@ function RateCard(props: { rate: Rate | null }) {
 
 export function Board(props: { active: boolean }) {
   const nav = useNav();
-  const [filters, setFilters] = useState(NO_FILTERS);
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [shown, setShown] = useState<Results | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -91,8 +88,6 @@ export function Board(props: { active: boolean }) {
   // their requests about to leave the board.
   const [actionCount, setActionCount] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
-  const [minText, setMinText] = useState("");
-  const [maxText, setMaxText] = useState("");
 
   // Responses to superseded loads (e.g. after a filter change) are ignored.
   const loadSeq = useRef(0);
@@ -107,11 +102,7 @@ export function Board(props: { active: boolean }) {
       try {
         const page = await api.board(filters, 0, limit);
         if (seq !== loadSeq.current) return;
-        setShown((prev) => ({
-          filters,
-          items: page,
-          key: prev && prev.filters !== filters ? prev.key + 1 : (prev?.key ?? 0),
-        }));
+        setShown({ filters, items: page });
         setHasMore(page.length === limit);
         setError(null);
       } catch (e) {
@@ -124,8 +115,8 @@ export function Board(props: { active: boolean }) {
   const loadRate = useCallback(() => api.rate().then(setRate, () => setRate(null)), []);
   const loadBadge = useCallback(
     () =>
-      Promise.all([api.myDeals(), api.myRequests()]).then(
-        ([deals, requests]) =>
+      loadMyLists().then(
+        ({ deals, requests }) =>
           setActionCount(deals.filter(needsMyAction).length + requests.filter((r) => expiresSoon(r)).length),
         () => undefined, // keep the last count
       ),
@@ -155,17 +146,6 @@ export function Board(props: { active: boolean }) {
 
   const refresh = () => Promise.all([load(shownCount.current), loadRate(), loadBadge()]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const minAmount = parseAmount(minText);
-      const maxAmount = parseAmount(maxText);
-      setFilters((f) =>
-        f.minAmount === minAmount && f.maxAmount === maxAmount ? f : { ...f, minAmount, maxAmount },
-      );
-    }, AMOUNT_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [minText, maxText]);
-
   const loadMore = async () => {
     if (!shown) return;
     const seq = loadSeq.current;
@@ -184,35 +164,17 @@ export function Board(props: { active: boolean }) {
     }
   };
 
-  /** The tab is the currency the viewer wants to get by taking a request. */
-  const setTab = (currency: Currency | null) => {
-    // Amounts are in the currency you get, so they don't carry over between tabs; nor does
-    // sorting by amount, which needs one currency.
-    setMinText("");
-    setMaxText("");
-    setFilters((f) => ({
-      ...f,
-      direction: currency && boardDirection(currency),
-      minAmount: null,
-      maxAmount: null,
-      sort: !currency && AMOUNT_SORTS.includes(f.sort) ? "newest" : f.sort,
-    }));
-  };
+  /** The tab is the currency the viewer wants to get by taking a request; the sort carries over. */
+  const setTab = (currency: Currency) => setFilters((f) => ({ ...f, direction: boardDirection(currency) }));
 
-  const clearFilters = () => {
-    setMinText("");
-    setMaxText("");
-    setFilters((f) => ({ ...f, minAmount: null, maxAmount: null, sort: "newest" }));
-  };
+  const clearSort = () => setFilters((f) => ({ ...f, sort: DEFAULT_FILTERS.sort, order: DEFAULT_FILTERS.order }));
 
   useMainButton(
     props.active ? { text: t.board.newRequest, onClick: () => nav.push({ name: "new" }) } : null,
   );
 
-  const getting = filters.direction && giveCurrency(filters.direction);
-  const sorts = getting ? BOARD_SORTS : BOARD_SORTS.filter((sort) => !AMOUNT_SORTS.includes(sort));
-  const activeFilterCount =
-    (filters.minAmount !== null || filters.maxAmount !== null ? 1 : 0) + (filters.sort !== "newest" ? 1 : 0);
+  const getting = giveCurrency(filters.direction);
+  const sorted = filters.sort !== DEFAULT_FILTERS.sort || filters.order !== DEFAULT_FILTERS.order;
   // Results for the previous tab or filters, while the new ones load. If that fails, they're
   // hidden rather than passed off as the new ones.
   const stale = shown !== null && shown.filters !== filters;
@@ -238,25 +200,21 @@ export function Board(props: { active: boolean }) {
 
       <RateCard rate={rate} />
 
-      <Segmented<Currency | "all">
-        options={[
-          { value: "all", label: t.board.all },
-          ...CURRENCIES.map((currency) => ({ value: currency, label: t.buy[currency] })),
-        ]}
-        value={getting ?? "all"}
-        onChange={(value) => setTab(value === "all" ? null : value)}
+      <Segmented
+        options={CURRENCIES.map((currency) => ({ value: currency, label: t.buy[currency] }))}
+        value={getting}
+        onChange={setTab}
       />
 
       <div className="toolbar">
         <button
           type="button"
-          className={showFilters || activeFilterCount > 0 ? "chip-button on" : "chip-button"}
+          className={showFilters || sorted ? "chip-button on" : "chip-button"}
           aria-expanded={showFilters}
           onClick={() => setShowFilters(!showFilters)}
         >
           <FiltersIcon />
           {t.board.filters}
-          {activeFilterCount > 0 && <span className="chip-count">{activeFilterCount}</span>}
         </button>
         <RefreshButton onRefresh={refresh} />
       </div>
@@ -264,39 +222,29 @@ export function Board(props: { active: boolean }) {
       {showFilters && (
         <div className="filters">
           <div className="field">
-            <span className="field-label">{t.board.sortBy}</span>
+            <div className="sort-head">
+              <span className="field-label">{t.board.sortBy}</span>
+              <button
+                type="button"
+                className="sort-order-button"
+                onClick={() => {
+                  haptic("selection");
+                  setFilters((f) => ({ ...f, order: f.order === "desc" ? "asc" : "desc" }));
+                }}
+              >
+                <SortOrderIcon up={filters.order === "asc"} />
+                {t.board.order[filters.sort][filters.order]}
+              </button>
+            </div>
             <Segmented
               label={t.board.sortBy}
-              options={sorts.map((sort) => ({ value: sort, label: t.board.sort[sort] }))}
+              options={BOARD_SORTS.map((sort) => ({ value: sort, label: t.board.sort[sort] }))}
               value={filters.sort}
               onChange={(sort) => setFilters((f) => ({ ...f, sort }))}
             />
           </div>
-          {getting ? (
-            <div className="field">
-              <span className="field-label">{t.board.amount(getting)}</span>
-              <div className="field-row">
-                <AmountInput
-                  label={t.board.from}
-                  placeholder={t.board.any}
-                  value={minText}
-                  onChange={setMinText}
-                  suffix={SYMBOL[getting]}
-                />
-                <AmountInput
-                  label={t.board.to}
-                  placeholder={t.board.any}
-                  value={maxText}
-                  onChange={setMaxText}
-                  suffix={SYMBOL[getting]}
-                />
-              </div>
-            </div>
-          ) : (
-            <p className="hint small">{t.board.amountNeedsDirection}</p>
-          )}
-          {activeFilterCount > 0 && (
-            <button type="button" className="link-button small" onClick={clearFilters}>
+          {sorted && (
+            <button type="button" className="link-button small" onClick={clearSort}>
               {t.board.clear}
             </button>
           )}
@@ -306,13 +254,11 @@ export function Board(props: { active: boolean }) {
       {error && <ErrorBox code={error} onRetry={() => void load(shownCount.current)} />}
       {!shown && !error && <SkeletonList />}
       {results && (
-        // A new key for new filters' results, so they fade in.
-        <div key={results.key} className={stale ? "results stale" : "results"} aria-busy={stale}>
+        // One list that updates in place: remounting it for new filters would replay its
+        // fade-in, and the list would blink on every change.
+        <div className={stale ? "results stale" : "results"} aria-busy={stale}>
           {results.items.length === 0 ? (
-            <Empty
-              title={activeFilterCount > 0 ? t.board.emptyFiltered : t.board.empty}
-              hint={t.board.emptyHint}
-            />
+            <Empty title={t.board.empty} hint={t.board.emptyHint} />
           ) : (
             <div className="list">
               {results.items.map((item) => (

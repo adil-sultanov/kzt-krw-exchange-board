@@ -343,18 +343,6 @@ p {
   color: var(--button);
 }
 
-.chip-count {
-  min-width: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: var(--button);
-  color: var(--button-text);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 18px;
-  text-align: center;
-}
-
 .secondary-button {
   display: flex;
   align-items: center;
@@ -420,14 +408,48 @@ p {
   flex: 1;
 }
 
-.field-row {
-  display: flex;
-  gap: 8px;
-}
-
 .field-label {
   font-size: 13px;
   color: var(--hint);
+}
+
+/* "Sort by", with the button that flips the order across from it. */
+.sort-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sort-order-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--secondary-bg);
+  color: var(--link);
+  padding: 0 10px 0 7px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sort-order-button:active {
+  opacity: 0.6;
+}
+
+.sort-order-button .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.icon.sort-order {
+  transition: transform 0.25s cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+
+.icon.sort-order.up {
+  transform: rotate(180deg);
 }
 
 .field-error {
@@ -545,9 +567,9 @@ p {
   gap: 8px;
 }
 
-/* Board results: they fade in when the tab or filters change, and the old ones stay up
-   meanwhile. Those are dimmed only if loading takes a moment (the delay), so a fast load
-   just swaps them. */
+/* Board (and admin) results: they fade in once, when first loaded. For a new tab or filters the old ones
+   stay up and are swapped in place; they're dimmed only if loading takes a moment (the
+   delay), so a fast load doesn't blink. */
 .results {
   display: flex;
   flex-direction: column;
@@ -1164,4 +1186,232 @@ p {
     transition: none;
     animation: none;
   }
+}
+
+/* --- Profile menu --- */
+
+.menu {
+  background: var(--section-bg);
+  border-radius: var(--radius);
+  padding: 0 16px;
+}
+
+.menu-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--separator);
+  background: none;
+  color: var(--text);
+  padding: 14px 0;
+  font-size: 16px;
+  text-align: left;
+}
+
+.menu-row:last-child {
+  border-bottom: 0;
+}
+
+.menu-chevron {
+  color: var(--hint);
+  font-size: 22px;
+  line-height: 1;
+}
+
+/* A section title that folds its section, e.g. Completed deals. */
+.section-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  text-align: left;
+}
+
+.section-toggle-hint {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--link);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.icon.chevron {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.15s ease;
+}
+
+.icon.chevron.open {
+  transform: rotate(90deg);
+}
+
+/* --- Support (About page) --- */
+
+.support-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-radius: var(--radius);
+  padding: 18px 16px;
+  background: linear-gradient(135deg, #8fdcff 0%, #3fa9f5 50%, #1c6fe0 100%);
+  color: #ffffff;
+  box-shadow: 0 6px 18px -8px rgba(28, 111, 224, 0.7);
+}
+
+.support-icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.support-icon .icon {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+  animation: heartbeat 1.8s ease-in-out infinite;
+}
+
+.support-title {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.support-tagline {
+  display: block;
+  margin-top: 2px;
+  font-size: 14px;
+  opacity: 0.92;
+}
+
+@keyframes heartbeat {
+  0%,
+  40%,
+  100% {
+    transform: scale(1);
+  }
+  20% {
+    transform: scale(1.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .support-icon .icon {
+    animation: none;
+  }
+}
+
+/* --- Report --- */
+
+/* "Report a problem" on a deal: easy to find, clearly not a routine action. */
+.secondary-button.danger {
+  background: color-mix(in srgb, var(--destructive) 14%, var(--section-bg));
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--destructive) 45%, transparent);
+  color: var(--destructive);
+  font-weight: 600;
+}
+
+.link-button.subtle {
+  align-self: center;
+  color: var(--hint);
+  font-size: 14px;
+}
+
+.link-button.destructive-text {
+  align-self: flex-start;
+  color: var(--destructive);
+  font-size: 14px;
+}
+
+.choice-list {
+  background: var(--section-bg);
+  border-radius: var(--radius);
+  padding: 0 16px;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--separator);
+  background: none;
+  color: var(--text);
+  padding: 13px 0;
+  font-size: 16px;
+  text-align: left;
+}
+
+.choice:last-child {
+  border-bottom: 0;
+}
+
+.choice-mark {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--hint);
+  border-radius: 50%;
+}
+
+.choice.selected .choice-mark {
+  border: 6px solid var(--button);
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 72px;
+  font-family: inherit;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+/* --- About --- */
+
+.donate-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* --- Admin --- */
+
+.admin-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.admin-note {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.admin-person {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-person-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
 }

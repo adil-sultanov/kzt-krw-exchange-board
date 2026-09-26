@@ -4,12 +4,15 @@ from app.db import Database, utc_now
 from app.models import MeUpdate, TelegramUser, User
 
 
-async def upsert_user(db: Database, tg_user: TelegramUser, *, is_admin: bool) -> User:
+async def upsert_user(db: Database, tg_user: TelegramUser, *, config_admin: bool) -> User:
     """Create or refresh a user from verified Telegram data.
 
     Called on every API request and bot update. Usernames are a cache: if another
     row still holds this username (Telegram usernames are case-insensitive), that
     row's username is cleared, since the name now belongs to this user.
+
+    `config_admin`: whether ADMIN_IDS / OWNER_ID make them an admin. Admins the owner added
+    in the app (`admin_granted`) stay admins either way.
     """
     username = tg_user.username or None
     # Most calls change nothing (the app polls while open), so they skip the write lock.
@@ -22,7 +25,7 @@ async def upsert_user(db: Database, tg_user: TelegramUser, *, is_admin: bool) ->
     if current is not None and (
         current["username"] == username
         and current["first_name"] == tg_user.first_name
-        and bool(current["is_admin"]) == is_admin
+        and bool(current["is_admin"]) == (config_admin or bool(current["admin_granted"]))
     ):
         return User.from_row(current)
 
@@ -42,13 +45,13 @@ async def upsert_user(db: Database, tg_user: TelegramUser, *, is_admin: bool) ->
             ON CONFLICT (telegram_id) DO UPDATE SET
                 username = excluded.username,
                 first_name = excluded.first_name,
-                is_admin = excluded.is_admin,
+                is_admin = MAX(excluded.is_admin, admin_granted),
                 updated_at = excluded.updated_at
             WHERE username IS NOT excluded.username
                 OR first_name IS NOT excluded.first_name
-                OR is_admin IS NOT excluded.is_admin
+                OR is_admin IS NOT MAX(excluded.is_admin, admin_granted)
             """,
-            (tg_user.id, username, tg_user.first_name, int(is_admin), now, now),
+            (tg_user.id, username, tg_user.first_name, int(config_admin), now, now),
         )
         async with conn.execute(
             "SELECT * FROM users WHERE telegram_id = ?", (tg_user.id,)

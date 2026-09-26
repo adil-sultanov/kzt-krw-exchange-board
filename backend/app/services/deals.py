@@ -9,17 +9,27 @@ accepted, after the transaction commits; everything else is shown only in the ap
 An accepted deal can't be cancelled: once contacts are exchanged, money may already have
 moved, and cancelling would let one side back out after being paid. It ends only when
 both sides confirm they received the money.
+
+Finished deals are deleted a month after they end (the cleanup job); completed-deal counts
+are kept on users, so they don't change.
 """
 
+import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import aiosqlite
 
-from app.db import Database, utc_now
+from app.db import Database, utc_iso, utc_now
 from app.models import ContactOut, Currency, DealOut, DealRole, Direction, RequestOut, User
 from app.services.errors import ConflictError, NotFoundError, PermissionDeniedError
 from app.services.notifications import Notifier
 from app.services.requests import get_requests_by_ids
+
+logger = logging.getLogger(__name__)
+
+# Finished deals are deleted this long after their last change.
+DEAL_RETENTION_DAYS = 30
 
 MY_DEALS_LIMIT = 100
 
@@ -41,6 +51,8 @@ SELECT d.id, d.status, d.request_id, d.created_at, d.updated_at,
             ELSE d.responder_confirmed END AS my_confirmed,
        CASE WHEN d.author_id = :viewer THEN d.responder_confirmed
             ELSE d.author_confirmed END AS other_confirmed,
+       EXISTS (SELECT 1 FROM reports rp WHERE rp.deal_id = d.id AND rp.reporter_id = :viewer
+               AND rp.resolved = 0) AS my_report_open,
        o.completed_deals AS other_completed_deals
 FROM deals d
 JOIN users o ON o.telegram_id =
@@ -311,3 +323,29 @@ async def _confirm(
         "WHERE telegram_id IN (?, ?)",
         (now, deal["author_id"], deal["responder_id"]),
     )
+
+
+async def delete_old_deals(db: Database, now: datetime | None = None) -> int:
+    """Delete completed, declined and cancelled deals that ended over a month ago (the job).
+
+    Deals in progress stay, and so do reported ones: admins may still need them. So do deals
+    on a request still on the board: a declined one keeps its responder from taking it again.
+    Returns how many deals were deleted.
+    """
+    cutoff = utc_iso((now or datetime.now(UTC)) - timedelta(days=DEAL_RETENTION_DAYS))
+    async with db.transaction() as conn:
+        cursor = await conn.execute(
+            """
+            DELETE FROM deals
+            WHERE status IN ('completed', 'declined', 'cancelled') AND updated_at < ?
+              AND NOT EXISTS (SELECT 1 FROM reports WHERE deal_id = deals.id)
+              AND NOT EXISTS (
+                  SELECT 1 FROM requests WHERE id = deals.request_id AND status = 'open'
+              )
+            """,
+            (cutoff,),
+        )
+        deleted = cursor.rowcount
+    if deleted:
+        logger.info("Deleted %d old deals", deleted)
+    return deleted

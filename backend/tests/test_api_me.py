@@ -3,7 +3,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import ADMIN_ID
+from tests.conftest import ADMIN_ID, OWNER_ID
 from tests.helpers import auth, make_init_data
 
 USER = {"id": 42, "first_name": "Aida", "username": "aida_kz"}
@@ -43,6 +43,7 @@ def test_me_returns_caller_and_refreshes_username(client: TestClient) -> None:
         "completed_deals": 0,
         "is_banned": False,
         "is_admin": False,
+        "is_owner": False,
         "receive_kzt_bank": None,
         "receive_kzt_account": None,
         "receive_krw_bank": None,
@@ -58,6 +59,14 @@ def test_me_admin_from_config(client: TestClient) -> None:
     admin = {"id": ADMIN_ID, "first_name": "Admin"}
     response = client.get("/api/me", headers=auth(make_init_data(admin)))
     assert response.json()["is_admin"] is True
+    assert response.json()["is_owner"] is False
+
+
+def test_owner_is_an_admin(client: TestClient) -> None:
+    owner = {"id": OWNER_ID, "first_name": "Owner"}
+    me = client.get("/api/me", headers=auth(make_init_data(owner))).json()
+    assert me["is_admin"] is True
+    assert me["is_owner"] is True
 
 
 def test_update_receiving_details(client: TestClient) -> None:

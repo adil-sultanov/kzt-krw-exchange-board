@@ -58,6 +58,16 @@ export function ArrowIcon(props: { down?: boolean }) {
   );
 }
 
+/** Down for descending, up for ascending; turns over when the order flips. */
+export function SortOrderIcon(props: { up: boolean }) {
+  return (
+    <Icon className={props.up ? "icon sort-order up" : "icon sort-order"}>
+      <path d="M12 5v14" />
+      <path d="m6 13 6 6 6-6" />
+    </Icon>
+  );
+}
+
 export function CheckIcon() {
   return (
     <Icon>
@@ -73,6 +83,32 @@ export function FiltersIcon() {
       <circle cx="15" cy="6" r="2" />
       <circle cx="9" cy="12" r="2" />
       <circle cx="15" cy="18" r="2" />
+    </Icon>
+  );
+}
+
+/** Points down when open, right when folded. */
+export function ChevronIcon(props: { open: boolean }) {
+  return (
+    <Icon className={props.open ? "icon chevron open" : "icon chevron"}>
+      <path d="m9 6 6 6-6 6" />
+    </Icon>
+  );
+}
+
+export function FlagIcon() {
+  return (
+    <Icon>
+      <path d="M5 21V4" />
+      <path d="M5 4h11l-2 4 2 4H5" />
+    </Icon>
+  );
+}
+
+export function HeartIcon() {
+  return (
+    <Icon>
+      <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z" />
     </Icon>
   );
 }

@@ -19,12 +19,20 @@ class Settings(BaseSettings):
     webapp_url: str
     db_path: Path = Path("data/exchange.db")
     admin_ids: Annotated[list[int], NoDecode] = []
+    # The app's owner: always an admin, and the only one who can edit the About page.
+    owner_id: int | None = None
     cors_origins: Annotated[list[str], NoDecode] = []
     init_data_max_age: int = 24 * 60 * 60
     run_bot: bool = True
     run_jobs: bool = True
     # Built frontend (`npm run build` in frontend/), served at `/` if present.
     frontend_dist: Path = REPO_ROOT / "frontend" / "dist"
+
+    def is_admin(self, telegram_id: int) -> bool:
+        return telegram_id in self.admin_ids or telegram_id == self.owner_id
+
+    def is_owner(self, telegram_id: int) -> bool:
+        return self.owner_id is not None and telegram_id == self.owner_id
 
     @field_validator("admin_ids", "cors_origins", mode="before")
     @classmethod

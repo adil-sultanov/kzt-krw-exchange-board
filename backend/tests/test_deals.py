@@ -1,11 +1,12 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.db import Database
+from app.db import Database, utc_iso
 from app.models import RequestCreate, TelegramUser
 from app.services import deals, requests
 from app.services.errors import ConflictError
@@ -202,11 +203,13 @@ def test_decline(client: TestClient) -> None:
 
 
 async def test_concurrent_accepts_pick_exactly_one(db: Database) -> None:
-    author = await upsert_user(db, TelegramUser(id=1, username="aida"), is_admin=False)
+    author = await upsert_user(db, TelegramUser(id=1, username="aida"), config_admin=False)
     request = await requests.create_request(db, author, RequestCreate.model_validate(VALID))
     deal_ids = []
     for user_id, name in ((2, "bek"), (3, "dana")):
-        responder = await upsert_user(db, TelegramUser(id=user_id, username=name), is_admin=False)
+        responder = await upsert_user(
+            db, TelegramUser(id=user_id, username=name), config_admin=False
+        )
         deal_ids.append((await deals.take_request(db, responder, request.id, NullNotifier())).id)
 
     results = await asyncio.gather(
@@ -345,8 +348,8 @@ def test_confirm_rejections(client: TestClient) -> None:
 
 
 async def test_concurrent_final_confirmations_count_once(db: Database) -> None:
-    author = await upsert_user(db, TelegramUser(id=1, username="aida"), is_admin=False)
-    responder = await upsert_user(db, TelegramUser(id=2, username="bek"), is_admin=False)
+    author = await upsert_user(db, TelegramUser(id=1, username="aida"), config_admin=False)
+    responder = await upsert_user(db, TelegramUser(id=2, username="bek"), config_admin=False)
     request = await requests.create_request(db, author, RequestCreate.model_validate(VALID))
     deal_id = (await deals.take_request(db, responder, request.id, NullNotifier())).id
     await deals.accept_deal(db, 1, deal_id, NullNotifier())
@@ -465,3 +468,52 @@ def test_my_deals_and_deal_detail(client: TestClient) -> None:
     response = get(client, DANA, f"deals/{took}")
     assert response.status_code == 404
     assert response.json() == {"detail": "deal_not_found"}
+
+
+# --- Cleanup ---
+
+
+async def test_delete_old_deals(db: Database) -> None:
+    now = datetime.now(UTC)
+    for telegram_id in (1, 2):
+        await upsert_user(
+            db, TelegramUser(id=telegram_id, username=f"u{telegram_id}"), config_admin=False
+        )
+    old, recent = utc_iso(now - timedelta(days=31)), utc_iso(now - timedelta(days=29))
+    # (deal id, status, last change, reported, request status)
+    rows = [
+        (1, "completed", old, False, "completed"),
+        (2, "declined", old, False, "expired"),
+        (3, "cancelled", old, False, "closed"),
+        (4, "completed", recent, False, "completed"),
+        (5, "accepted", old, False, "in_progress"),
+        (6, "completed", old, True, "completed"),
+        (7, "declined", old, False, "open"),
+    ]
+    async with db.transaction() as conn:
+        for deal_id, status, stamp, reported, request_status in rows:
+            await conn.execute(
+                "INSERT INTO requests (id, user_id, direction, amount, rate_type, rate_value, "
+                "status, created_at, updated_at, expires_at) "
+                "VALUES (?, 1, 'KZT_KRW', 100, 'market', 0, ?, ?, ?, ?)",
+                (deal_id, request_status, stamp, stamp, stamp),
+            )
+            await conn.execute(
+                "INSERT INTO deals (id, request_id, author_id, responder_id, status, "
+                "created_at, updated_at) VALUES (?, ?, 1, 2, ?, ?, ?)",
+                (deal_id, deal_id, status, stamp, stamp),
+            )
+            if reported:
+                await conn.execute(
+                    "INSERT INTO reports (reporter_id, reported_id, request_id, deal_id, reason, "
+                    "created_at) VALUES (2, 1, ?, ?, '', ?)",
+                    (deal_id, deal_id, stamp),
+                )
+        await conn.execute("UPDATE users SET completed_deals = 3")
+
+    assert await deals.delete_old_deals(db) == 3
+    assert await deals.delete_old_deals(db) == 0
+    async with db.conn.execute("SELECT id FROM deals ORDER BY id") as cursor:
+        assert [row["id"] for row in await cursor.fetchall()] == [4, 5, 6, 7]
+    async with db.conn.execute("SELECT completed_deals FROM users") as cursor:
+        assert [row["completed_deals"] for row in await cursor.fetchall()] == [3, 3]

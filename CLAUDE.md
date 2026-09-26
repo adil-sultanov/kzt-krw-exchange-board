@@ -6,11 +6,14 @@ Schema source of truth: `backend/app/migrations/`.
 
 ## Hard rules
 - Never holds or moves money; users pay each other privately. **Free forever**: no fees or
-  monetization (Korean FX law / visa risk). No group-chat integration.
+  monetization (Korean FX law / visa risk). The only exception is voluntary donations on the
+  About page, which never unlock features. No group-chat integration.
 - The bot sends only two messages: "someone took your request" (to the author) and "your deal
   was accepted" (to the responder), plus its `/start` reply. Every other update is in-app only.
 - Users identified only by `telegram_id`. `username` is a nullable, non-unique cache refreshed
   on every API request/bot update; never store usernames elsewhere. Username required to post/take.
+- Admins = `ADMIN_IDS` + `OWNER_ID` (`Settings.is_admin`) + those the owner adds in the app
+  (`users.admin_granted`). Only the owner edits the About page, manages admins and deletes deals.
 - Validate initData (`Authorization: tma <initData>`) on every API route; never trust client
   user IDs. Check authorization on every mutation and bot callback. Never log initData/tokens/user records.
 - Receiving details (`users.receive_{kzt,krw}_{bank,account}`) are sensitive: never log them; only the other side
@@ -55,6 +58,6 @@ Docker + HTTPS for deploy; `cloudflared` tunnel for local dev.
 4. ✅ My requests (edit/extend/cancel on My deals + request screen), expiry job, in-app expiry notices
 5. ✅ In-app matches (after posting, on own request). Alerts were dropped: posting a request
    and waiting covers it (migration 006 drops the unused table)
-6. Reports, disputes, admin bans (✅ done early: completion confirmation, deal counts,
-   receiving details, ban enforcement, open-request and posting limits)
+6. ✅ Reports (on requests and accepted deals; "disputes" are deal reports), in-app admin
+   screen (resolve, ban/unban), owner-editable About & support page
 7. Docker + HTTPS deploy, daily backups (SQLite backup API), README screenshots

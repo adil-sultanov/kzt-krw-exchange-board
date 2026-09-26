@@ -154,7 +154,6 @@ def test_board_filters(client: TestClient) -> None:
 
     assert board_ids(client, AIDA, direction="KZT_KRW") == [big, small]
     assert board_ids(client, AIDA, direction="KRW_KZT") == [krw]
-    assert board_ids(client, AIDA, min_amount=100_000, max_amount=400_000) == [krw]
 
 
 def test_board_sorting(client: TestClient, settings: Settings) -> None:
@@ -165,18 +164,27 @@ def test_board_sorting(client: TestClient, settings: Settings) -> None:
 
     # Best rate for the taker first, even without a reference rate: the taker of a KZT_KRW
     # request pays KRW, so a lower rate is better; of a KRW_KZT one, a higher rate.
-    assert board_ids(client, AIDA, sort="best_rate") == [below, krw, market, above]
+    assert board_ids(client, AIDA, sort="rate") == [below, krw, market, above]
+    assert board_ids(client, AIDA, sort="rate", order="asc") == [above, market, krw, below]
+    # Without a reference rate, a KRW amount can't be compared with KZT ones: it comes last.
+    assert board_ids(client, AIDA, sort="amount") == [below, market, above, krw]
+    assert board_ids(client, AIDA, sort="amount", order="asc") == [above, market, below, krw]
 
     sql(settings, "INSERT INTO reference_rate VALUES (1, 2.7, 'test', '2026-01-01T00:00:00+00:00')")
-    items = board(client, AIDA, sort="best_rate", direction="KZT_KRW")
+    items = board(client, AIDA, sort="rate", direction="KZT_KRW")
     assert [item["id"] for item in items] == [below, market, above]
     assert [item["effective_rate"] for item in items] == pytest.approx([2.619, 2.7, 2.835])
 
-    assert board_ids(client, AIDA, sort="amount_asc") == [above, market, below, krw]
-    assert board_ids(client, AIDA, sort="amount_desc") == [krw, below, market, above]
+    # Within a tab, by amount; across both, KRW amounts count as KZT at the request's rate.
+    kzt_krw = {"direction": "KZT_KRW", "sort": "amount"}
+    assert board_ids(client, AIDA, **kzt_krw, order="asc") == [above, market, below]
+    assert board_ids(client, AIDA, **kzt_krw) == [below, market, above]
+    assert board_ids(client, AIDA, sort="amount") == [below, market, krw, above]  # 400 ₩ ≈ 145 ₸
+    assert board_ids(client, AIDA, sort="amount", order="asc") == [above, krw, market, below]
     assert board_ids(client, AIDA) == [krw, market, above, below]  # newest first
+    assert board_ids(client, AIDA, order="asc") == [below, above, market, krw]
     assert client.get(
-        "/api/requests", params={"sort": "rate_asc"}, headers=auth_as(AIDA)
+        "/api/requests", params={"sort": "best_rate"}, headers=auth_as(AIDA)
     ).json() == {"detail": "invalid_input"}
 
 
@@ -187,7 +195,8 @@ def test_board_pagination(client: TestClient) -> None:
 
 
 @pytest.mark.parametrize(
-    "params", [{"sort": "random"}, {"limit": 0}, {"limit": 101}, {"min_amount": -1}]
+    "params",
+    [{"sort": "random"}, {"order": "up"}, {"limit": 0}, {"limit": 101}],
 )
 def test_board_rejects_bad_params(client: TestClient, params: dict[str, Any]) -> None:
     response = client.get("/api/requests", params=params, headers=auth_as(AIDA))
@@ -369,7 +378,7 @@ async def test_expire_due(db: Database) -> None:
     now = datetime.now(UTC)
     for telegram_id in (1, 2):
         await upsert_user(
-            db, TelegramUser(id=telegram_id, username=f"u{telegram_id}"), is_admin=False
+            db, TelegramUser(id=telegram_id, username=f"u{telegram_id}"), config_admin=False
         )
     past, future = utc_iso(now - timedelta(minutes=1)), utc_iso(now + timedelta(days=1))
     stamp = utc_iso(now)

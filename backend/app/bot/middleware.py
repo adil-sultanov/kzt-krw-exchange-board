@@ -27,5 +27,5 @@ class UserRefreshMiddleware(BaseMiddleware):
             tg_user = TelegramUser(
                 id=from_user.id, first_name=from_user.first_name, username=from_user.username
             )
-            await upsert_user(db, tg_user, is_admin=from_user.id in settings.admin_ids)
+            await upsert_user(db, tg_user, config_admin=settings.is_admin(from_user.id))
         return await handler(event, data)

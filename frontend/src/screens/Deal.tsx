@@ -1,21 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type DealAction, errorCode } from "../api";
 import { RequestExchange } from "../components/Exchange";
-import { CheckIcon } from "../components/icons";
+import { CheckIcon, FlagIcon } from "../components/icons";
 import { ReceiveHint } from "../components/ReceiveHint";
-import { ErrorBox, Loading, Row, TitleWithRefresh } from "../components/ui";
+import { CopyButton, ErrorBox, Loading, Notice, Row, TitleWithRefresh } from "../components/ui";
 import { describeRateGain, formatKst, formatRatePair, formatSide, rateTone } from "../format";
 import { t } from "../i18n";
-import { useReactivated } from "../nav";
+import { useNav, useReactivated } from "../nav";
 import { FAST_POLL_MS, usePolling } from "../polling";
-import { confirm, copyText, haptic, type MainButtonConfig, openTelegramLink, useMainButton } from "../telegram";
+import { confirm, haptic, type MainButtonConfig, openTelegramLink, useMainButton } from "../telegram";
 import { type Contact, type Deal, isActiveDeal, viewerRateGain, viewerSides } from "../types";
 
 type Busy = DealAction | "contact" | null;
 /** `action` asks something of the viewer, `neutral` is waiting or over. */
 type BannerTone = "action" | "neutral" | "success";
-
-const COPIED_MS = 2000;
 
 /** What the viewer is told about the deal's state. */
 function banner(deal: Deal): { text: { title: string; body: string }; tone: BannerTone } {
@@ -51,13 +49,13 @@ function Check(props: { done: boolean; children: string }) {
 }
 
 export function DealScreen(props: { id: number; active: boolean }) {
+  const nav = useNav();
   const [deal, setDeal] = useState<Deal | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
   // Where to pay the other side; loaded once the deal is accepted.
   const [contact, setContact] = useState<Contact | null>(null);
-  const [copied, setCopied] = useState(false);
   // Responses to superseded loads (e.g. a poll sent before an action) are ignored.
   const loadSeq = useRef(0);
 
@@ -109,16 +107,6 @@ export function DealScreen(props: { id: number; active: boolean }) {
       void load();
     } finally {
       setBusy(null);
-    }
-  };
-
-  const copyAccount = async (text: string) => {
-    if (await copyText(text)) {
-      setCopied(true);
-      haptic("success");
-      window.setTimeout(() => setCopied(false), COPIED_MS);
-    } else {
-      haptic("error");
     }
   };
 
@@ -177,13 +165,7 @@ export function DealScreen(props: { id: number; active: boolean }) {
               {contact.pay_bank && <span className="pay-to-bank">{contact.pay_bank}</span>}
               <div className="pay-to-row">
                 <span className="pay-to-value">{contact.pay_account}</span>
-                <button
-                  type="button"
-                  className={copied ? "copy-button copied" : "copy-button"}
-                  onClick={() => void copyAccount(contact.pay_account ?? "")}
-                >
-                  {copied ? t.deal.copied : t.deal.copy}
-                </button>
+                <CopyButton text={contact.pay_account} />
               </div>
             </>
           ) : (
@@ -230,6 +212,19 @@ export function DealScreen(props: { id: number; active: boolean }) {
         </button>
       )}
       {accepted && <p className="hint small center">{t.deal.noCancel}</p>}
+      {accepted &&
+        (deal.my_report_open ? (
+          <Notice>{t.deal.reported}</Notice>
+        ) : (
+          <button
+            type="button"
+            className="secondary-button danger"
+            onClick={() => nav.push({ name: "report", target: { kind: "deal", id: deal.id } })}
+          >
+            <FlagIcon />
+            {t.deal.report}
+          </button>
+        ))}
     </div>
   );
 }

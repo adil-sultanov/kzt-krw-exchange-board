@@ -38,6 +38,7 @@ def make_deal(role: str = "author", direction: str = "KZT_KRW") -> DealOut:
         other_completed_deals=3,
         my_confirmed=False,
         other_confirmed=False,
+        my_report_open=False,
         request=request,
         created_at="2026-01-01T00:00:00+00:00",
         updated_at="2026-01-01T00:00:00+00:00",

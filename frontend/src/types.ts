@@ -2,15 +2,15 @@
 
 export type Direction = "KZT_KRW" | "KRW_KZT";
 export type RequestStatus = "open" | "in_progress" | "completed" | "closed" | "expired";
-export type BoardSort = "newest" | "best_rate" | "amount_desc" | "amount_asc";
+export type BoardSort = "date" | "rate" | "amount";
+/** "desc" is newest, best rate for the viewer, or largest first. */
+export type SortOrder = "desc" | "asc";
 export type Currency = "KZT" | "KRW";
 export type DealStatus = "pending" | "accepted" | "declined" | "completed";
 export type DealRole = "author" | "responder";
 
 export const CURRENCIES: Currency[] = ["KRW", "KZT"];
-export const BOARD_SORTS: BoardSort[] = ["newest", "best_rate", "amount_desc", "amount_asc"];
-/** Amounts of different currencies don't compare, so these need a direction picked. */
-export const AMOUNT_SORTS: BoardSort[] = ["amount_desc", "amount_asc"];
+export const BOARD_SORTS: BoardSort[] = ["date", "amount", "rate"];
 export const DURATIONS = [1, 3] as const;
 export type DurationDays = (typeof DURATIONS)[number];
 
@@ -19,6 +19,11 @@ export const MAX_AMOUNT = 100_000_000;
 export const MAX_MARKET_OFFSET = 20;
 export const MAX_BANK_LENGTH = 100;
 export const MAX_ACCOUNT_LENGTH = 100;
+export const MAX_REPORT_NOTE_LENGTH = 500;
+export const MAX_DONATE_OPTIONS = 6;
+export const MAX_DONATE_LABEL_LENGTH = 40;
+export const MAX_DONATE_VALUE_LENGTH = 200;
+export const MAX_DONATE_NOTE_LENGTH = 300;
 
 export interface Me {
   telegram_id: number;
@@ -27,6 +32,8 @@ export interface Me {
   completed_deals: number;
   is_banned: boolean;
   is_admin: boolean;
+  /** The app's owner: the only one who can edit the About page. */
+  is_owner: boolean;
   /** Where this user receives each currency (shown only to an accepted deal's other side). */
   receive_kzt_bank: string | null;
   receive_kzt_account: string | null;
@@ -74,9 +81,89 @@ export interface Deal {
   /** Whether each side confirmed receiving the other's payment. */
   my_confirmed: boolean;
   other_confirmed: boolean;
+  /** The viewer reported this deal and no admin has resolved it yet. */
+  my_report_open: boolean;
   request: ExchangeRequest;
   created_at: string;
   updated_at: string;
+}
+
+export type ReportCategory = "scam" | "no_payment" | "disappeared" | "spam" | "other";
+export const REPORT_CATEGORIES: ReportCategory[] = ["scam", "no_payment", "disappeared", "spam", "other"];
+
+export interface ReportCreate {
+  category: ReportCategory;
+  note: string;
+}
+
+/** What a report is about: someone else's request, or the viewer's accepted deal. */
+export type ReportTarget = { kind: "request"; id: number } | { kind: "deal"; id: number };
+
+/** A way to donate: a link to open, or anything else (a card number) to copy. */
+export interface DonateOption {
+  label: string;
+  value: string;
+}
+
+export interface About {
+  donate_note: string;
+  donate_options: DonateOption[];
+  updated_at: string | null;
+}
+
+export type AboutUpdate = Omit<About, "updated_at">;
+
+/** A user as admins see them in a report (never their receiving details). */
+export interface AdminUser {
+  telegram_id: number;
+  username: string | null;
+  first_name: string;
+  completed_deals: number;
+  is_banned: boolean;
+  is_admin: boolean;
+  /** Unresolved reports about this user. */
+  open_reports: number;
+}
+
+export interface AdminRequest {
+  id: number;
+  author_id: number;
+  direction: Direction;
+  amount: number;
+  status: RequestStatus;
+}
+
+export interface AdminReport {
+  id: number;
+  category: ReportCategory;
+  note: string;
+  created_at: string;
+  resolved: boolean;
+  resolved_at: string | null;
+  reporter: AdminUser;
+  reported: AdminUser | null;
+  request: AdminRequest;
+  deal: { id: number; status: DealStatus; author_confirmed: boolean; responder_confirmed: boolean } | null;
+}
+
+/** Where admin rights come from: OWNER_ID, ADMIN_IDS, or the owner adding them in the app. */
+export type AdminSource = "owner" | "config" | "granted";
+
+export interface AdminEntry extends AdminUser {
+  source: AdminSource;
+}
+
+/** Any deal, as the owner sees it in All deals. */
+export interface OwnerDeal {
+  id: number;
+  status: DealStatus;
+  author_confirmed: boolean;
+  responder_confirmed: boolean;
+  created_at: string;
+  updated_at: string;
+  request: AdminRequest;
+  author: AdminUser;
+  responder: AdminUser;
 }
 
 export interface Contact {
@@ -112,10 +199,9 @@ export interface CreatedRequest {
 }
 
 export interface BoardFilters {
-  direction: Direction | null;
-  minAmount: number | null;
-  maxAmount: number | null;
+  direction: Direction;
   sort: BoardSort;
+  order: SortOrder;
 }
 
 /** The currency the author gives; `amount` is in this currency. */

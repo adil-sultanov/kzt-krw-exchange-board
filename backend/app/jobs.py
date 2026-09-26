@@ -5,11 +5,13 @@ from datetime import UTC, datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.db import Database
+from app.services.deals import delete_old_deals
 from app.services.rates import refresh_reference_rate
 from app.services.requests import expire_due
 
 RATE_REFRESH_MINUTES = 60
 EXPIRY_MINUTES = 5
+CLEANUP_HOURS = 24
 
 
 def build_scheduler(db: Database) -> AsyncIOScheduler:
@@ -30,6 +32,16 @@ def build_scheduler(db: Database) -> AsyncIOScheduler:
         minutes=EXPIRY_MINUTES,
         args=[db],
         id="expire_due",
+        next_run_time=datetime.now(UTC),
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        delete_old_deals,
+        "interval",
+        hours=CLEANUP_HOURS,
+        args=[db],
+        id="delete_old_deals",
         next_run_time=datetime.now(UTC),
         max_instances=1,
         coalesce=True,

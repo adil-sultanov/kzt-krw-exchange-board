@@ -15,7 +15,7 @@ async def test_pragmas(db: Database) -> None:
 async def test_migrations_are_applied_once(db: Database) -> None:
     assert await db.migrate() == []
     async with db.conn.execute("SELECT version FROM schema_migrations") as cursor:
-        assert [row[0] for row in await cursor.fetchall()] == [1, 2, 3, 4, 5, 6]
+        assert [row[0] for row in await cursor.fetchall()] == [1, 2, 3, 4, 5, 6, 7, 8]
 
 
 async def test_failed_migration_rolls_back(tmp_path: Path) -> None:

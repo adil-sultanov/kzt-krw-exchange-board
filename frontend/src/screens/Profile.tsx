@@ -3,9 +3,9 @@ import { api, errorCode } from "../api";
 import { CheckIcon } from "../components/icons";
 import { ErrorBox, Section } from "../components/ui";
 import { t } from "../i18n";
-import { PRIVACY_URL, TERMS_URL } from "../links";
 import { useMe, useSetMe } from "../me";
-import { haptic, openLink, useMainButton } from "../telegram";
+import { useNav } from "../nav";
+import { haptic, useMainButton } from "../telegram";
 import { type Currency, MAX_ACCOUNT_LENGTH, MAX_BANK_LENGTH, type Me, type MeUpdate } from "../types";
 
 type DetailsKey = keyof MeUpdate & keyof Me;
@@ -86,6 +86,7 @@ function CurrencyDetails(props: {
 
 export function Profile(props: { active: boolean }) {
   const me = useMe();
+  const nav = useNav();
   const setMe = useSetMe();
   const [details, setDetails] = useState<Details>(() => savedDetails(me));
   const [saving, setSaving] = useState(false);
@@ -158,17 +159,35 @@ export function Profile(props: { active: boolean }) {
       )}
       {error && <ErrorBox code={error} />}
 
-      <Section title={t.profile.about}>
-        <p className="small">{t.profile.aboutBody}</p>
-        <div className="about-links small">
-          <button type="button" className="link-button" onClick={() => openLink(TERMS_URL)}>
-            {t.profile.terms}
+      <Section title={t.profile.more}>
+        <div className="menu">
+          <button type="button" className="menu-row" onClick={() => nav.push({ name: "about" })}>
+            {t.profile.about}
+            <span className="menu-chevron" aria-hidden="true">›</span>
           </button>
-          <button type="button" className="link-button" onClick={() => openLink(PRIVACY_URL)}>
-            {t.profile.privacy}
-          </button>
+          {me.is_admin && (
+            <button type="button" className="menu-row" onClick={() => nav.push({ name: "admin" })}>
+              {t.profile.admin}
+              <span className="menu-chevron" aria-hidden="true">›</span>
+            </button>
+          )}
         </div>
       </Section>
+
+      {me.is_owner && (
+        <Section title={t.profile.owner}>
+          <div className="menu">
+            <button type="button" className="menu-row" onClick={() => nav.push({ name: "admins" })}>
+              {t.profile.admins}
+              <span className="menu-chevron" aria-hidden="true">›</span>
+            </button>
+            <button type="button" className="menu-row" onClick={() => nav.push({ name: "ownerDeals" })}>
+              {t.profile.ownerDeals}
+              <span className="menu-chevron" aria-hidden="true">›</span>
+            </button>
+          </div>
+        </Section>
+      )}
     </div>
   );
 }

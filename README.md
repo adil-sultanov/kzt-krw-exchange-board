@@ -16,8 +16,8 @@ who has reliably completed exchanges before.
 ## What it does
 
 - **Board** of open requests ("Buy KRW 🇰🇷" / "Buy KZT 🇰🇿"), each showing what *you* would
-  pay and get and whether its rate is better or worse than the market for you; filter by amount,
-  sort by best rate, with the reference exchange rate both ways at the top
+  pay and get and whether its rate is better or worse than the market for you; sort by date,
+  amount or rate either way, with the reference exchange rate both ways at the top
 - **Post a request**: what you buy, how much you pay (with a live "you get ≈" preview), the
   market rate or asking / offering a few % more, and how long it stays up (1 / 3 days). While
   it's on the board you can edit it (until someone takes it), extend it or cancel it; a
@@ -32,14 +32,19 @@ who has reliably completed exchanges before.
   accepted, the other person sees the details for the currency they pay, with a copy button.
 - **Completing a deal**: each side taps "I received the money". When both have, the deal is
   completed. An accepted deal can't be cancelled, so nobody can back out after being paid.
-- **Trust**: each user's count of completed deals (confirmed by both sides), plus reports
-  and bans
+- **Trust**: each user's count of completed deals (confirmed by both sides). Anyone can
+  report a request, and either side can report a problem with an accepted deal (e.g. the
+  other person stopped replying after being paid). Admins review reports in the app and can
+  ban users: a ban cancels their open requests and declines their pending deals. The owner adds
+  and removes admins by username and can delete stuck deals.
+- **About & support**: who made it, the source code, and voluntary donate options that the
+  owner edits in the app
 
 ## What it does *not* do
 
 The app is a noticeboard and matchmaker only. It **never holds, transfers or processes
 money**, and it is **free**, with no fees or commissions. Users agree on terms and pay
-each other privately. Hosting is covered by voluntary donations.
+each other privately. Hosting is covered by voluntary donations, which unlock nothing.
 
 ## Stack
 
@@ -59,7 +64,8 @@ Requirements: Python 3.12, Node.js 20+, a Telegram bot token from
 `cloudflared` or `ngrok` for HTTPS.
 
 ```bash
-# 1. Configure: copy the example and fill in BOT_TOKEN, WEBAPP_URL, ADMIN_IDS
+# 1. Configure: copy the example and fill in BOT_TOKEN, WEBAPP_URL, OWNER_ID (your Telegram
+#    user ID: you become the main admin and can edit the About page) and optionally ADMIN_IDS
 cp .env.example .env
 
 # 2. Install the backend
@@ -102,8 +108,9 @@ free endpoint, and is refreshed hourly.
 - [x] Matches (right after posting and on your own request), shown in the app
 - [x] Completion confirmation ("I received the money" from both sides), completed-deal counts,
       receiving details per currency
-- [ ] Reports, disputes and admin bans (bans are already enforced; open-request and posting
-      limits are done)
+- [x] Reports (on requests and on accepted deals), an in-app admin screen with bans, open-request
+      and posting limits, an owner-editable About & support page, and owner tools (admins by
+      username, deleting deals)
 - [ ] Docker deployment with HTTPS, backups, screenshots
 
 ## Disclaimer

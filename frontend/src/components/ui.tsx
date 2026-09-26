@@ -1,8 +1,7 @@
-import { type CSSProperties, type ReactNode, useRef, useState } from "react";
-import { formatAmountInput } from "../format";
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { errorMessage, t } from "../i18n";
 import { AUTHOR_URL, AUTHOR_USERNAME } from "../links";
-import { haptic, openTelegramLink } from "../telegram";
+import { copyText, haptic, openTelegramLink } from "../telegram";
 import { RefreshIcon } from "./icons";
 
 interface Option<T> {
@@ -101,34 +100,6 @@ export function Empty(props: { title: string; hint?: string }) {
   );
 }
 
-/** Whole-number input with thousands separators, a numeric keyboard and a currency suffix. */
-export function AmountInput(props: {
-  value: string;
-  onChange: (value: string) => void;
-  suffix: string;
-  placeholder?: string;
-  invalid?: boolean;
-  label: string;
-  large?: boolean;
-}) {
-  return (
-    <label className="field">
-      <span className="field-label">{props.label}</span>
-      <span className={`input-wrap${props.invalid ? " invalid" : ""}${props.large ? " large" : ""}`}>
-        <input
-          className="input-bare"
-          inputMode="numeric"
-          autoComplete="off"
-          placeholder={props.placeholder}
-          value={props.value}
-          onChange={(event) => props.onChange(formatAmountInput(event.target.value))}
-        />
-        <span className="input-suffix">{props.suffix}</span>
-      </span>
-    </label>
-  );
-}
-
 /**
  * A round refresh button that spins until `onRefresh` settles. The spin always ends on a full
  * turn (so at least one, even when the reload is instant): stopping mid-turn would snap it back.
@@ -188,6 +159,31 @@ export function Row(props: { label: string; children: ReactNode }) {
       <span className="hint">{props.label}</span>
       <span className="detail-value">{props.children}</span>
     </div>
+  );
+}
+
+const COPIED_MS = 2000;
+
+/** Copies `text`, then reads "Copied" for a moment. */
+export function CopyButton(props: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), COPIED_MS);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+  const copy = async () => {
+    if (await copyText(props.text)) {
+      setCopied(true);
+      haptic("success");
+    } else {
+      haptic("error");
+    }
+  };
+  return (
+    <button type="button" className={copied ? "copy-button copied" : "copy-button"} onClick={() => void copy()}>
+      {copied ? t.deal.copied : t.deal.copy}
+    </button>
   );
 }
 

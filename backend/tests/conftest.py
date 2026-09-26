@@ -12,6 +12,7 @@ from app.models import DealOut
 from tests.helpers import BOT_TOKEN
 
 ADMIN_ID = 999
+OWNER_ID = 1000
 
 
 @pytest.fixture
@@ -22,6 +23,7 @@ def settings(tmp_path: Path) -> Settings:
         webapp_url="https://example.test",
         db_path=tmp_path / "test.db",
         admin_ids=[ADMIN_ID],
+        owner_id=OWNER_ID,
         run_bot=False,
         run_jobs=False,
         frontend_dist=tmp_path / "no-frontend",

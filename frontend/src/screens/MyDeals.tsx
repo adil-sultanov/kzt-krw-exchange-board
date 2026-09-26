@@ -1,10 +1,12 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { api, errorCode } from "../api";
 import { type CardStatus, RequestCard } from "../components/RequestCard";
+import { ChevronIcon } from "../components/icons";
 import { Empty, ErrorBox, SkeletonList, TitleWithRefresh } from "../components/ui";
 import { askExtendDays } from "../extend";
 import { timeLeft } from "../format";
 import { t } from "../i18n";
+import { lastMyLists, loadMyLists, type MyLists } from "../myLists";
 import { useNav, useReactivated } from "../nav";
 import { FAST_POLL_MS, usePolling } from "../polling";
 import { confirm, haptic } from "../telegram";
@@ -26,10 +28,10 @@ function dealStatus(deal: Deal): CardStatus {
 }
 
 /** On the author's own request: someone took it, or it's about to leave the board. */
-function ownRequestStatus(request: ExchangeRequest, taker: Deal | undefined): CardStatus | undefined {
+function ownRequestStatus(request: ExchangeRequest, taker: Deal | undefined): CardStatus | null {
   if (taker) return { text: t.deal.needsAnswer, tone: "action" };
   const left = timeLeft(request.expires_at);
-  return left && expiresSoon(request) ? { text: t.myDeals.expiresSoon(left), tone: "action" } : undefined;
+  return left && expiresSoon(request) ? { text: t.myDeals.expiresSoon(left), tone: "action" } : null;
 }
 
 /**
@@ -45,17 +47,50 @@ function firstTaker(deals: Deal[], requestId: number): Deal | undefined {
 /** An active deal, or one of the viewer's requests on the board with whoever took it first. */
 type ActiveItem = { deal: Deal } | { request: ExchangeRequest; taker: Deal | undefined };
 
-interface Lists {
-  deals: Deal[];
-  /** The viewer's own requests on the board, and those that expired in the last day. */
-  requests: ExchangeRequest[];
-}
-
 function Group(props: { title: string; children: ReactNode }) {
   return (
     <section className="section">
       <h2 className="section-title">{props.title}</h2>
       <div className="list">{props.children}</div>
+    </section>
+  );
+}
+
+// Whether the viewer folded the Completed list, remembered on this device.
+const COMPLETED_FOLDED_KEY = "myDeals.completedFolded";
+
+function readFolded(): boolean {
+  try {
+    return localStorage.getItem(COMPLETED_FOLDED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** A group the viewer can hide and show by tapping its title, which shows how many it holds. */
+function FoldableGroup(props: { title: string; count: number; children: ReactNode }) {
+  const [folded, setFolded] = useState(readFolded);
+  const toggle = () => {
+    haptic("selection");
+    setFolded(!folded);
+    try {
+      localStorage.setItem(COMPLETED_FOLDED_KEY, folded ? "0" : "1");
+    } catch {
+      // Not remembered then; it still folds.
+    }
+  };
+  return (
+    <section className="section">
+      <button type="button" className="section-title section-toggle" aria-expanded={!folded} onClick={toggle}>
+        <span>
+          {props.title} · {props.count}
+        </span>
+        <span className="section-toggle-hint">
+          {folded ? t.myDeals.show : t.myDeals.hide}
+          <ChevronIcon open={!folded} />
+        </span>
+      </button>
+      {!folded && <div className="list">{props.children}</div>}
     </section>
   );
 }
@@ -69,7 +104,9 @@ function Group(props: { title: string; children: ReactNode }) {
  */
 export function MyDeals(props: { active: boolean }) {
   const nav = useNav();
-  const [lists, setLists] = useState<Lists | null>(null);
+  // What the Board last loaded shows right away, rather than a placeholder that the lists
+  // replace a moment later (a flicker); it's refreshed at once.
+  const [lists, setLists] = useState<MyLists | null>(lastMyLists);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   // The request an action (extend or cancel) is running on.
@@ -82,8 +119,8 @@ export function MyDeals(props: { active: boolean }) {
     const seq = ++loadSeq.current;
     if (!quiet) setError(null);
     try {
-      const [deals, requests] = await Promise.all([api.myDeals(), api.myRequests()]);
-      if (seq === loadSeq.current) setLists({ deals, requests });
+      const loaded = await loadMyLists();
+      if (seq === loadSeq.current) setLists(loaded);
     } catch (e) {
       if (seq === loadSeq.current && !quiet) setError(errorCode(e));
     }
@@ -127,7 +164,7 @@ export function MyDeals(props: { active: boolean }) {
     <RequestCard
       key={deal.id}
       request={deal.request}
-      status={isActiveDeal(deal) ? dealStatus(deal) : undefined}
+      status={isActiveDeal(deal) ? dealStatus(deal) : null}
       highlight={deal.status === "accepted"}
       deals={deal.other_completed_deals}
       time={deal.status === "pending"}
@@ -213,7 +250,11 @@ export function MyDeals(props: { active: boolean }) {
           )}
         </Group>
       )}
-      {completed.length > 0 && <Group title={t.myDeals.completed}>{completed.map(dealCard)}</Group>}
+      {completed.length > 0 && (
+        <FoldableGroup title={t.myDeals.completed} count={completed.length}>
+          {completed.map(dealCard)}
+        </FoldableGroup>
+      )}
       {declined.length > 0 && <Group title={t.myDeals.declined}>{declined.map(dealCard)}</Group>}
       {expired.length > 0 && (
         <Group title={t.myDeals.expired}>

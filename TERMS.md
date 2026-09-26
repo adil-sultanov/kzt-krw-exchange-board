@@ -1,6 +1,6 @@
 # Terms of Use
 
-_Last updated: 2026-09-26_
+_Last updated: 2026-09-27_
 
 These terms apply to the KZT ↔ KRW Exchange Board Telegram bot and Mini App (the
 "Service"), operated by Adil Sultanov ([@moonpie24](https://t.me/moonpie24)). By using the
@@ -11,6 +11,8 @@ Service you agree to them. If you don't agree, don't use it.
 - It **never holds, transfers, or processes money** and takes no fees or commissions.
   It is not an exchange, a payment service, a bank, or an escrow.
 - Users agree on terms and pay each other directly, outside the Service.
+- The About page may list ways to donate to the operator. Donations are **voluntary**, are
+  made outside the Service, and give no features, priority, or other service in return.
 
 ## Your responsibility
 - Every exchange is a private arrangement between you and the other user, **at your own
@@ -24,7 +26,9 @@ Service you agree to them. If you don't agree, don't use it.
 - Only send money once you trust the other person. Only confirm a deal as received once the
   money is actually in your account.
 - An accepted deal can't be cancelled in the app: it ends when both sides confirm they
-  received the money. If something goes wrong, contact the operator.
+  received the money. If something goes wrong, use **Report a problem** on the deal.
+  Reports are reviewed by the operator and admins, who can ban users but **cannot move,
+  recover, or refund money**.
 
 ## Not allowed
 - Fraud, scams, or false requests or deal confirmations
@@ -33,8 +37,10 @@ Service you agree to them. If you don't agree, don't use it.
 - Spam, harassment, or impersonating others
 - Scraping the Service, or copying or reusing its code or design (see [LICENSE](LICENSE))
 
-The operator may remove requests and suspend or ban accounts at their discretion,
-with or without notice.
+The operator may remove requests and deals and suspend or ban accounts at their discretion,
+with or without notice. A banned account can't post or take requests: its open requests
+are cancelled and its pending deals are declined. Deals already accepted still end when
+both sides confirm.
 
 ## No warranty, limited liability
 The Service is provided **"as is" and "as available"**, without warranties of any kind. To
