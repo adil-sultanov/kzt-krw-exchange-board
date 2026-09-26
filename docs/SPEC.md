@@ -16,7 +16,8 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
 - **Request detail** — what the viewer pays and gets, rate, author's completed-deals count,
   time left. Buttons: **I'll take it** (creates a pending deal, see Deal flow), **Report**;
   on the author's own open request, **Edit**, **Extend** and **Cancel request** (and how many
-  people are waiting for an answer); on their own expired request, **Post again**.
+  people are waiting for an answer, and the requests going the other way they could take,
+  closest in size first); on their own expired request, **Post again**.
   Usernames are never shown before the author accepts.
 - **New request** — form: what the author buys ("Buy KRW" posts `KZT_KRW`, "Buy KZT" posts
   `KRW_KZT`), the amount they pay with a live "You get ≈" preview, rate (Market (default) /
@@ -41,8 +42,6 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   (`pending` or `accepted`; deals in progress come first and are outlined, then deals waiting
   on the viewer, then the rest), *Completed*, *Declined*. Last, *Expired in the last day*,
   with **Post again**. My deals and the deal screen have a **Refresh** button.
-- **Alerts** — saved searches, e.g. "KRW→KZT over 300,000 KRW"; new matching requests are
-  highlighted in the app (no bot message).
 - **Profile / About** — name, username and completed deals count, receiving details per
   currency (KZT, KRW): bank and account holder, and account / card / phone number (max 100 chars
   each), disclaimer, links to Terms and Privacy (the footer credits the author).
@@ -73,8 +72,8 @@ carries `?startapp=deal_<id>`):
 They're sent in the background after the deal's transaction commits. A failed send (the user
 never started or blocked the bot) is logged with the deal id and error type only, and never
 fails or rolls back the action. Everything else (declines, confirmations) is shown only in the
-app, on the deal screen and in My deals, with the badge on the Board. Future reminders,
-matches, and alerts are in-app too.
+app, on the deal screen and in My deals, with the badge on the Board. Expiry notices and
+matches are in-app too.
 
 ## Deal flow
 1. B opens A's request and taps **I'll take it**. The backend creates a `pending` deal
@@ -151,7 +150,7 @@ All routes require valid initData.
 - `GET  /api/deals/{id}/contact` (returns the other side's current `t.me` link and their
   receiving details (`pay_bank`, `pay_account`) for the currency the caller pays; only when the deal is `accepted` or
   `completed` and the caller is a participant)
-- `GET/POST/DELETE /api/alerts`
+- `GET  /api/requests/{id}/matches` (author only; empty once the request is off the board)
 - Admin only: `GET /api/admin/reports`, `POST /api/admin/reports/{id}/resolve`,
   `POST /api/admin/users/{id}/ban` | `/unban`
 

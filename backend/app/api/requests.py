@@ -41,6 +41,11 @@ async def update_request(
     return await requests.update_request(db, user, request_id, body)
 
 
+@router.get("/requests/{request_id}/matches")
+async def list_matches(user: CurrentUser, db: DbDep, request_id: int) -> list[RequestOut]:
+    return await requests.list_matches(db, user.telegram_id, request_id)
+
+
 @router.post("/requests/{request_id}/close")
 async def close_request(user: CurrentUser, db: DbDep, request_id: int) -> RequestOut:
     return await requests.close_request(db, user.telegram_id, request_id)

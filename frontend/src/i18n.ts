@@ -88,6 +88,7 @@ export const t = {
     edit: "Edit",
     editLocked: "Someone is waiting for your answer, so the amount and rate can't change until you answer.",
     postAgain: "Post again",
+    matches: "Requests going the other way",
     responded: {
       pending: "You took this request. Waiting for the author to answer.",
       accepted: "You took this request, and the author accepted.",

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errorCode } from "../api";
 import { RequestExchange } from "../components/Exchange";
 import { ReceiveHint } from "../components/ReceiveHint";
+import { RequestCard } from "../components/RequestCard";
 import { ErrorBox, Loading, Notice, Row } from "../components/ui";
 import { askExtendDays } from "../extend";
 import { describeRateGain, formatKst, formatRatePair, formatSide, rateTone, timeLeft } from "../format";
@@ -22,6 +23,8 @@ export function RequestDetail(props: { id: number; active: boolean }) {
   const me = useMe();
   const nav = useNav();
   const [request, setRequest] = useState<ExchangeRequest | null>(null);
+  // On the viewer's own open request: requests going the other way they could take.
+  const [matches, setMatches] = useState<ExchangeRequest[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [taking, setTaking] = useState(false);
@@ -37,7 +40,14 @@ export function RequestDetail(props: { id: number; active: boolean }) {
       if (!quiet) setError(null);
       try {
         const loaded = await api.request(props.id);
-        if (seq === loadSeq.current) setRequest(loaded);
+        if (seq !== loadSeq.current) return;
+        setRequest(loaded);
+        if (loaded.is_own && loaded.status === "open") {
+          const found = await api.requestMatches(props.id).catch(() => null);
+          if (found && seq === loadSeq.current) setMatches(found);
+        } else {
+          setMatches([]);
+        }
       } catch (e) {
         if (seq === loadSeq.current && !quiet) setError(errorCode(e));
       }
@@ -218,6 +228,20 @@ export function RequestDetail(props: { id: number; active: boolean }) {
             {cancelling ? t.loading : t.cancelRequest.button}
           </button>
         </>
+      )}
+      {ownOpen && matches.length > 0 && (
+        <section className="section">
+          <h2 className="section-title">{t.detail.matches}</h2>
+          <div className="list">
+            {matches.map((match) => (
+              <RequestCard
+                key={match.id}
+                request={match}
+                onOpen={() => nav.push({ name: "request", id: match.id })}
+              />
+            ))}
+          </div>
+        </section>
       )}
       {request.is_own && request.status === "expired" && (
         <button

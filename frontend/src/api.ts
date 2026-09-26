@@ -80,6 +80,8 @@ export const api = {
   dealAction: (id: number, action: DealAction) =>
     call<Deal>("POST", `/deals/${id}/${action}`),
   contact: (id: number) => call<Contact>("GET", `/deals/${id}/contact`),
+  /** Opposite requests for the viewer's own open request, closest in size first. */
+  requestMatches: (id: number) => call<ExchangeRequest[]>("GET", `/requests/${id}/matches`),
 };
 
 /** The machine code of any thrown error, for errorMessage(). */

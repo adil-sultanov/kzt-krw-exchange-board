@@ -361,3 +361,13 @@ async def find_matches(
     async with db.conn.execute(sql, params) as cursor:
         rows = await cursor.fetchall()
     return [_to_out(row, now) for row in rows]
+
+
+async def list_matches(db: Database, viewer_id: int, request_id: int) -> list[RequestOut]:
+    """Matches for the author's own request while it's on the Board (see find_matches)."""
+    request = await get_request(db, viewer_id, request_id)
+    if not request.is_own:
+        raise PermissionDeniedError("not_request_author")
+    if request.status != "open":
+        return []
+    return await find_matches(db, viewer_id, request)

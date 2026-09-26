@@ -28,7 +28,6 @@ who has reliably completed exchanges before.
   everything else is in the app, which refreshes itself every few seconds while open. A badge
   on **My deals** shows the deals waiting on you. My deals lists your requests on the board,
   then active deals (in progress highlighted at the top), completed and declined ones.
-- **Alerts** for requests you care about, e.g. "KRW→KZT over 300,000 KRW"
 - **Receiving details**: save your bank and account number for KZT and KRW. Once a deal is
   accepted, the other person sees the details for the currency they pay, with a copy button.
 - **Completing a deal**: each side taps "I received the money". When both have, the deal is
@@ -99,7 +98,7 @@ endpoint and is refreshed hourly.
 - [x] Board, new request, request detail
 - [x] Deal flow: take → accept / decline → contact, bot notifications, and a My deals list
 - [x] My requests: edit / extend / cancel, with in-app expiry notices
-- [ ] Alerts, shown in the app (matches right after posting are done)
+- [x] Matches (right after posting and on your own request), shown in the app
 - [x] Completion confirmation ("I received the money" from both sides), completed-deal counts,
       receiving details per currency
 - [ ] Reports, disputes and admin bans (bans are already enforced; open-request and posting

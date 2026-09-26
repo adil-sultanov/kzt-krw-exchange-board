@@ -435,3 +435,15 @@ def test_matches_are_opposite_requests_closest_in_size(
 
     response = post(client, AIDA, direction="KZT_KRW", amount=100_000)
     assert [m["id"] for m in response.json()["matches"]] == [close, market, far]
+
+
+def test_request_matches_are_for_the_author(client: TestClient, settings: Settings) -> None:
+    sql(settings, "INSERT INTO reference_rate VALUES (1, 2.0, 'test', '2026-01-01T00:00:00+00:00')")
+    mine = create(client, AIDA)["id"]
+    other = create(client, BEK, direction="KRW_KZT")["id"]
+    response = client.get(f"/api/requests/{mine}/matches", headers=auth_as(AIDA))
+    assert [m["id"] for m in response.json()] == [other]
+    response = client.get(f"/api/requests/{mine}/matches", headers=auth_as(BEK))
+    assert (response.status_code, response.json()) == (403, {"detail": "not_request_author"})
+    sql(settings, "UPDATE requests SET status = 'closed' WHERE id = ?", (mine,))
+    assert client.get(f"/api/requests/{mine}/matches", headers=auth_as(AIDA)).json() == []
