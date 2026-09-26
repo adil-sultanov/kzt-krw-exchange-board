@@ -26,9 +26,11 @@ def build_dispatcher(settings: Settings, db: Database) -> Dispatcher:
 
 
 class BotRunner:
-    def __init__(self, settings: Settings, db: Database) -> None:
+    """Polls for updates. The Bot (and its HTTP session) is owned by the app lifespan."""
+
+    def __init__(self, settings: Settings, db: Database, bot: Bot) -> None:
         self.settings = settings
-        self.bot = Bot(settings.bot_token.get_secret_value())
+        self.bot = bot
         self.dp = build_dispatcher(settings, db)
         self._task: asyncio.Task[None] | None = None
 
@@ -44,7 +46,6 @@ class BotRunner:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-        await self.bot.session.close()
 
     async def _configure(self) -> None:
         await self.bot.set_my_commands(

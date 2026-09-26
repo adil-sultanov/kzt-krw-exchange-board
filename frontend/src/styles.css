@@ -1,0 +1,541 @@
+/* Colors come from Telegram's theme (telegram-web-app.js sets the --tg-theme-* vars),
+   with fallbacks for a plain browser. */
+:root {
+  --bg: var(--tg-theme-bg-color, #ffffff);
+  --text: var(--tg-theme-text-color, #000000);
+  --hint: var(--tg-theme-hint-color, #8e8e93);
+  --link: var(--tg-theme-link-color, #2481cc);
+  --button: var(--tg-theme-button-color, #2481cc);
+  --button-text: var(--tg-theme-button-text-color, #ffffff);
+  --secondary-bg: var(--tg-theme-secondary-bg-color, #f1f1f4);
+  --section-bg: var(--tg-theme-section-bg-color, var(--bg));
+  --section-title: var(--tg-theme-section-header-text-color, var(--hint));
+  --separator: var(--tg-theme-section-separator-color, rgba(128, 128, 128, 0.2));
+  --accent: var(--tg-theme-accent-text-color, var(--link));
+  --destructive: var(--tg-theme-destructive-text-color, #e53935);
+  --radius: 12px;
+  color-scheme: light dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--secondary-bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.hint {
+  color: var(--hint);
+}
+
+.small {
+  font-size: 13px;
+}
+
+.center {
+  text-align: center;
+}
+
+.right {
+  text-align: right;
+}
+
+p {
+  margin: 0;
+}
+
+/* --- Rate --- */
+
+.rate-card {
+  background: var(--section-bg);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+}
+
+.rate-value {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* --- Controls --- */
+
+.segmented {
+  display: flex;
+  background: var(--section-bg);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.segmented button {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  padding: 8px 6px;
+  font-size: 14px;
+}
+
+.segmented button.selected {
+  background: var(--button);
+  color: var(--button-text);
+  font-weight: 600;
+}
+
+.link-button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--link);
+  font-size: inherit;
+}
+
+.filters-toggle {
+  font-size: 15px;
+}
+
+/* Filters toggle and Refresh, above the Board's list. */
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.secondary-button {
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--section-bg);
+  color: var(--link);
+  padding: 12px;
+}
+
+.secondary-button:disabled {
+  color: var(--hint);
+}
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--section-bg);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.field-row {
+  display: flex;
+  gap: 8px;
+}
+
+.field-label {
+  font-size: 13px;
+  color: var(--hint);
+}
+
+.field-error {
+  font-size: 13px;
+  color: var(--destructive);
+}
+
+.input {
+  width: 100%;
+  border: 1px solid var(--separator);
+  border-radius: 10px;
+  background: var(--bg);
+  padding: 10px 12px;
+  font-size: 16px; /* 16px stops iOS zooming on focus */
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--button);
+}
+
+.input.invalid {
+  border-color: var(--destructive);
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+/* --- Sections --- */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.section-title {
+  margin: 4px 4px 0;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--section-title);
+}
+
+.section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--section-bg);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+/* --- Request cards --- */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--section-bg);
+  padding: 12px 14px;
+  text-align: left;
+}
+
+.card:active {
+  opacity: 0.7;
+}
+
+/* A deal in progress. */
+.card.highlight {
+  box-shadow: inset 0 0 0 2px var(--button);
+}
+
+.card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-amount {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.card-rate {
+  font-size: 14px;
+}
+
+.badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* --- Detail --- */
+
+.detail {
+  background: var(--section-bg);
+  border-radius: var(--radius);
+  padding: 4px 16px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--separator);
+}
+
+.detail-row:last-child {
+  border-bottom: 0;
+}
+
+.detail-value {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* --- Messages --- */
+
+.notice {
+  background: var(--section-bg);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.error-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  background: var(--section-bg);
+  border-left: 3px solid var(--destructive);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: center;
+  padding: 32px 16px;
+}
+
+/* --- Deals --- */
+
+.card-status {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.secondary-button.destructive {
+  color: var(--destructive);
+}
+
+/* A card with an action button attached underneath, e.g. "Cancel request". */
+.card-stack > .card {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.card-action {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--separator);
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: var(--section-bg);
+  color: var(--destructive);
+  padding: 10px;
+  font-size: 15px;
+}
+
+.card-action:disabled {
+  color: var(--hint);
+}
+
+/* --- Payment details --- */
+
+.pay-to {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--section-bg);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+
+.pay-to-bank {
+  overflow-wrap: anywhere;
+}
+
+.pay-to-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.pay-to-value {
+  overflow-wrap: anywhere;
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  user-select: all;
+}
+
+.copy-button {
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 8px;
+  background: var(--button);
+  color: var(--button-text);
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* --- Profile --- */
+
+.details-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.details-group + .details-group {
+  border-top: 1px solid var(--separator);
+  padding-top: 12px;
+}
+
+.details-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* --- Navigation and icons --- */
+
+.nav-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.nav-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 52px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--section-bg);
+  color: var(--text);
+  padding: 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.nav-button:active {
+  opacity: 0.7;
+}
+
+.nav-button .icon {
+  color: var(--button);
+}
+
+.icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.refresh-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--section-bg);
+  color: var(--link);
+  padding: 8px 12px;
+  font-size: 15px;
+}
+
+.refresh-button .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* Count of deals waiting on the viewer, on the "My deals" button. */
+.count-badge {
+  display: inline-block;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--destructive);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+}
+
+.about-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+/* --- Footer --- */
+
+.footer {
+  display: flex;
+  justify-content: center;
+  padding: 0 16px calc(16px + env(safe-area-inset-bottom));
+}
+
+.footer-link {
+  border: 0;
+  background: none;
+  padding: 4px;
+  color: var(--hint);
+  font-size: 12px;
+}

@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     cors_origins: Annotated[list[str], NoDecode] = []
     init_data_max_age: int = 24 * 60 * 60
     run_bot: bool = True
+    run_jobs: bool = True
+    # Built frontend (`npm run build` in frontend/), served at `/` if present.
+    frontend_dist: Path = REPO_ROOT / "frontend" / "dist"
 
     @field_validator("admin_ids", "cors_origins", mode="before")
     @classmethod

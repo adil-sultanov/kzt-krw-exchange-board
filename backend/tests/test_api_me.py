@@ -1,25 +1,12 @@
 import time
-from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.config import Settings
-from app.main import create_app
 from tests.conftest import ADMIN_ID
-from tests.helpers import make_init_data
+from tests.helpers import auth, make_init_data
 
 USER = {"id": 42, "first_name": "Aida", "username": "aida_kz"}
-
-
-@pytest.fixture
-def client(settings: Settings) -> Iterator[TestClient]:
-    with TestClient(create_app(settings)) as test_client:
-        yield test_client
-
-
-def auth(init_data: str) -> dict[str, str]:
-    return {"Authorization": f"tma {init_data}"}
 
 
 def test_health(client: TestClient) -> None:
@@ -56,6 +43,10 @@ def test_me_returns_caller_and_refreshes_username(client: TestClient) -> None:
         "completed_deals": 0,
         "is_banned": False,
         "is_admin": False,
+        "receive_kzt_bank": None,
+        "receive_kzt_account": None,
+        "receive_krw_bank": None,
+        "receive_krw_account": None,
     }
 
     renamed = {**USER, "username": "aida_new"}
@@ -67,3 +58,44 @@ def test_me_admin_from_config(client: TestClient) -> None:
     admin = {"id": ADMIN_ID, "first_name": "Admin"}
     response = client.get("/api/me", headers=auth(make_init_data(admin)))
     assert response.json()["is_admin"] is True
+
+
+def test_update_receiving_details(client: TestClient) -> None:
+    headers = auth(make_init_data(USER))
+    body = {
+        "receive_kzt_bank": " Kaspi, Adil S. ",
+        "receive_kzt_account": "  +7 707 000 00 00 ",
+        "receive_krw_account": "",
+    }
+    response = client.patch("/api/me", json=body, headers=headers)
+    assert response.status_code == 200
+    me = response.json()
+    assert me["receive_kzt_bank"] == "Kaspi, Adil S."
+    assert me["receive_kzt_account"] == "+7 707 000 00 00"
+    assert me["receive_krw_account"] is None
+
+    # Fields left out are unchanged; an empty value clears one.
+    client.patch("/api/me", json={"receive_krw_account": "1000-22"}, headers=headers)
+    me = client.get("/api/me", headers=headers).json()
+    assert (me["receive_kzt_account"], me["receive_krw_account"]) == ("+7 707 000 00 00", "1000-22")
+    client.patch("/api/me", json={"receive_kzt_bank": None}, headers=headers)
+    me = client.get("/api/me", headers=headers).json()
+    assert (me["receive_kzt_bank"], me["receive_kzt_account"]) == (None, "+7 707 000 00 00")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"receive_kzt_bank": "x" * 101},
+        {"receive_krw_account": "x" * 101},
+        {"receive_kzt": "old field"},
+        {"username": "evil"},
+        {"receive_krw_bank": 5},
+    ],
+)
+def test_update_receiving_details_rejects_bad_input(
+    client: TestClient, body: dict[str, object]
+) -> None:
+    response = client.patch("/api/me", json=body, headers=auth(make_init_data(USER)))
+    assert response.status_code == 422
+    assert response.json() == {"detail": "invalid_input"}

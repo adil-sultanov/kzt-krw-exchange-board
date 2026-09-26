@@ -8,6 +8,7 @@ from app.auth import InitDataError, validate_init_data
 from app.config import Settings
 from app.db import Database
 from app.models import User
+from app.services.notifications import Notifier
 from app.services.users import upsert_user
 
 
@@ -17,6 +18,10 @@ def get_settings(request: Request) -> Settings:
 
 def get_db(request: Request) -> Database:
     return request.app.state.db
+
+
+def get_notifier(request: Request) -> Notifier:
+    return request.app.state.notifier
 
 
 async def get_current_user(
@@ -40,3 +45,5 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+DbDep = Annotated[Database, Depends(get_db)]
+NotifierDep = Annotated[Notifier, Depends(get_notifier)]

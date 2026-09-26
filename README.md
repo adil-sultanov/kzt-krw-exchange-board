@@ -1,5 +1,7 @@
 # KZT ↔ KRW Exchange Board
 
+**Author:** Adil Sultanov ([@moonpie24](https://t.me/moonpie24)) · © 2026, all rights reserved
+
 A Telegram Mini App where students from Kazakhstan living in South Korea post and find
 requests to exchange money between **KZT** and **KRW**.
 
@@ -13,14 +15,21 @@ who has reliably completed exchanges before.
 
 ## What it does
 
-- **Board** of open requests, filterable by direction, amount and payment method,
-  with a reference exchange rate at the top
-- **Post a request**: amount, a fixed rate or market ± %, payment methods
-  (Kaspi, Halyk, Toss, KakaoBank, …), and how long it stays up (1 / 3 / 7 days)
+- **Board** of open requests ("Buy KRW 🇰🇷" / "Buy KZT 🇰🇿"), filterable by amount, with the
+  reference exchange rate both ways at the top
+- **Post a request**: amount, a rate at the market rate or a % above / below it, and how
+  long it stays up (1 / 3 days). You can cancel it while it's on the board.
 - **Take a request**: the author accepts or declines, and only then do both sides get
   each other's Telegram contact
-- **Bot notifications** in DMs: matches, new responders, expiry reminders, deal updates
+- **Bot notifications** only when someone takes your request and when your deal is accepted;
+  everything else is in the app, which refreshes itself every few seconds while open. A badge
+  on **My deals** shows the deals waiting on you. My deals lists your requests on the board,
+  then active deals (in progress highlighted at the top), completed and declined ones.
 - **Alerts** for requests you care about, e.g. "KRW→KZT over 300,000 KRW"
+- **Receiving details**: save your bank and account number for KZT and KRW. Once a deal is
+  accepted, the other person sees the details for the currency they pay, with a copy button.
+- **Completing a deal**: each side taps "I received the money". When both have, the deal is
+  completed. An accepted deal can't be cancelled, so nobody can back out after being paid.
 - **Trust**: each user's count of completed deals (confirmed by both sides), plus reports
   and bans
 
@@ -43,8 +52,9 @@ each other privately. Hosting is covered by voluntary donations.
 
 ## Setup
 
-Requirements: Python 3.12, a Telegram bot token from [@BotFather](https://t.me/BotFather)
-(use a separate test bot for development), and `cloudflared` or `ngrok` for HTTPS.
+Requirements: Python 3.12, Node.js 20+, a Telegram bot token from
+[@BotFather](https://t.me/BotFather) (use a separate test bot for development), and
+`cloudflared` or `ngrok` for HTTPS.
 
 ```bash
 # 1. Configure: copy the example and fill in BOT_TOKEN, WEBAPP_URL, ADMIN_IDS
@@ -55,29 +65,53 @@ cd backend
 python3.12 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 
-# 3. Expose port 8000 over HTTPS (in another terminal) and put the URL in WEBAPP_URL
-cloudflared tunnel --url http://localhost:8000
-
-# 4. Run the API and the bot
+# 3. Run the API and the bot (serves on port 8000)
 .venv/bin/uvicorn app.main:create_app --factory --reload
+
+# 4. In another terminal: install and run the frontend (Vite, port 5173, proxies /api to 8000)
+cd frontend
+npm install
+npm run dev
+
+# 5. In a third terminal: expose the frontend over HTTPS and put the URL in WEBAPP_URL,
+#    then restart the backend so the bot's menu button uses it
+cloudflared tunnel --url http://localhost:5173
 ```
 
-Send `/start` to your bot and tap **Open exchange board**. Until the frontend exists, this
-opens a small test page that greets you by name if Telegram login works.
+Send `/start` to your bot and tap **Open exchange board**. Frontend changes reload live.
 
-Run the tests with `.venv/bin/pytest`, and lint with `.venv/bin/ruff check .`.
+To serve everything from one port instead (as in production), run `npm run build` in
+`frontend/`: the backend serves `frontend/dist` at `/`, so you can tunnel port 8000 and skip
+the Vite dev server. The app only works inside Telegram, since it needs signed launch data.
+
+Backend tests: `.venv/bin/pytest`; lint: `.venv/bin/ruff check .`.
+Frontend type check: `npm run typecheck`.
+
+The reference rate comes from [ExchangeRate-API](https://www.exchangerate-api.com)'s free
+endpoint and is refreshed hourly.
 
 ## Roadmap
 
 - [x] Backend skeleton: database, migrations, Telegram auth, bot `/start`
-- [ ] Board, new request, request detail
-- [ ] Deal flow: take → accept / decline → contact
-- [ ] My requests (edit / extend / close) and expiry reminders
-- [ ] Matching notifications and alerts
-- [ ] Completion confirmation, completed-deal counts, reports and bans
+- [x] Board, new request, request detail
+- [x] Deal flow: take → accept / decline → contact, bot notifications, and a My deals list
+- [ ] My requests (edit / extend), with in-app expiry notices (cancelling a request is done)
+- [ ] Matches and alerts, shown in the app
+- [x] Completion confirmation ("I received the money" from both sides), completed-deal counts,
+      receiving details per currency
+- [ ] Reports, disputes and bans
 - [ ] Docker deployment with HTTPS, backups, screenshots
 
 ## Disclaimer
 
 This project only helps people find each other. Exchanges happen directly between users,
 at their own risk and responsibility.
+
+## License & authorship
+
+Copyright © 2026 Adil Sultanov ([@moonpie24](https://t.me/moonpie24)). **All rights
+reserved.** This code is published for viewing only. You may not copy, modify, host, or
+redistribute it without written permission. See [LICENSE](LICENSE).
+
+Using the bot and the app is subject to the [Terms of Use](TERMS.md) and the
+[Privacy Policy](PRIVACY.md).

@@ -13,8 +13,13 @@ MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 _MIGRATION_NAME = re.compile(r"^(\d{3})_[a-z0-9_]+\.sql$")
 
 
+def utc_iso(moment: datetime) -> str:
+    """Format as stored in the database; these strings sort chronologically."""
+    return moment.astimezone(UTC).isoformat(timespec="seconds")
+
+
 def utc_now() -> str:
-    return datetime.now(UTC).isoformat(timespec="seconds")
+    return utc_iso(datetime.now(UTC))
 
 
 class Database:
