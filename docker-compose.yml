@@ -1,0 +1,43 @@
+# Production: the app behind Caddy, which gets HTTPS certificates for DOMAIN automatically.
+# Needs a repo-root .env (see .env.example) with DOMAIN set. See the README's Deploy section.
+
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      # Container paths. These override .env, whose paths are for local development.
+      DB_PATH: /data/exchange.db
+      BACKUP_DIR: /backups
+      FRONTEND_DIST: /app/frontend/dist
+      WEBAPP_URL: https://${DOMAIN:?Set DOMAIN in .env}
+    volumes:
+      - ./data:/data
+      - ./backups:/backups
+    restart: unless-stopped
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  caddy:
+    image: caddy:2
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:

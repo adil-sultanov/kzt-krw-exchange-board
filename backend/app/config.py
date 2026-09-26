@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     init_data_max_age: int = 24 * 60 * 60
     run_bot: bool = True
     run_jobs: bool = True
+    # Daily database backups go here (none if unset); older ones are deleted.
+    backup_dir: Path | None = None
+    backup_keep_days: int = 14
     # Built frontend (`npm run build` in frontend/), served at `/` if present.
     frontend_dist: Path = REPO_ROOT / "frontend" / "dist"
 
@@ -40,6 +43,11 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
+
+    @field_validator("backup_dir", mode="before")
+    @classmethod
+    def _empty_is_none(cls, value: Any) -> Any:
+        return None if isinstance(value, str) and not value.strip() else value
 
 
 @lru_cache

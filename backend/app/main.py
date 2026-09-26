@@ -37,7 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         bot = Bot(settings.bot_token.get_secret_value()) if settings.run_bot else None
         notifier = BotNotifier(bot, settings.webapp_url) if bot is not None else None
         app.state.notifier = notifier or NullNotifier()
-        scheduler = build_scheduler(db) if settings.run_jobs else None
+        scheduler = build_scheduler(db, settings) if settings.run_jobs else None
         bot_runner = BotRunner(settings, db, bot) if bot is not None else None
         try:
             if scheduler is not None:

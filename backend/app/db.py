@@ -2,6 +2,7 @@
 
 import asyncio
 import re
+import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -65,6 +66,21 @@ class Database:
                 await self.conn.execute("ROLLBACK")
                 raise
             await self.conn.execute("COMMIT")
+
+    async def backup_to(self, path: Path) -> None:
+        """Copy the database into a new file at `path` with SQLite's backup API.
+
+        Holds the write lock, so the copy never includes another task's unfinished
+        transaction on the shared connection. The copy is a single self-contained file
+        (rollback journal, not WAL).
+        """
+        target = await asyncio.to_thread(sqlite3.connect, path, check_same_thread=False)
+        try:
+            async with self._write_lock:
+                await self.conn.backup(target)
+            await asyncio.to_thread(target.execute, "PRAGMA journal_mode=DELETE")
+        finally:
+            await asyncio.to_thread(target.close)
 
     async def migrate(self, migrations_dir: Path = MIGRATIONS_DIR) -> list[int]:
         """Apply pending `NNN_name.sql` files in order. Returns the versions applied.

@@ -1,0 +1,21 @@
+# Keep secrets, user data and local build output out of the image.
+.env
+.env.*
+.git
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+data/
+backups/
+backend/data/
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+**/*.egg-info
+**/.pytest_cache
+**/.ruff_cache
+**/.DS_Store
+docs/

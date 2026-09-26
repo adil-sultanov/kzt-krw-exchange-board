@@ -38,7 +38,7 @@ accepted (these messages contain no one's name or username). The Service runs in
 ## How long data is kept
 Finished deals (completed, declined or cancelled) are deleted automatically 30 days after
 they end, unless they were reported; your completed-deal count stays. Other data is kept
-while the Service runs. Backups are kept for a limited time.
+while the Service runs. Daily backups are kept for 14 days, then deleted.
 
 ## Your choices
 - You can edit or clear your receiving details at any time in your profile.

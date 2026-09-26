@@ -5,7 +5,7 @@
 A Telegram Mini App where students from Kazakhstan living in South Korea post and find
 requests to exchange money between **KZT** and **KRW**.
 
-> **Status:** early development. Nothing is deployed yet.
+> **Status:** feature-complete and ready to deploy (see [Deploy](#deploy)); not public yet.
 
 ## The problem
 
@@ -54,8 +54,8 @@ each other privately. Hosting is covered by voluntary donations, which unlock no
 | Bot | aiogram 3 (long polling, same process as the API) |
 | Database | SQLite (WAL mode) |
 | Frontend | React, Vite, TypeScript, Telegram Web App SDK |
-| Jobs | APScheduler (expiry, reminders, rate refresh) |
-| Deployment | Docker, served over HTTPS |
+| Jobs | APScheduler (request expiry, rate refresh, old-deal cleanup, daily backups) |
+| Deployment | Docker Compose on a VPS, Caddy for HTTPS |
 
 ## Setup
 
@@ -99,6 +99,53 @@ The reference rate comes from [Currency API](https://github.com/fawazahmed0/exch
 (closest to the rate Google shows), falling back to [ExchangeRate-API](https://www.exchangerate-api.com)'s
 free endpoint, and is refreshed hourly.
 
+## Deploy
+
+Production runs on a small Linux VPS with Docker Compose: one `app` container (API, bot and
+jobs in a single process, which SQLite and bot polling need) behind
+[Caddy](https://caddyserver.com), which gets and renews the HTTPS certificate automatically.
+
+1. **Server**: install Docker with the Compose plugin, and open ports 80 and 443.
+2. **Domain**: point an `A` record (e.g. `exchange.example.com`) at the server's IP.
+3. **Bot**: create a separate production bot with [@BotFather](https://t.me/BotFather).
+   Don't reuse the development bot.
+4. **Configure** on the server:
+   ```bash
+   git clone <repo> exchange-app && cd exchange-app
+   cp .env.example .env   # set BOT_TOKEN (production bot), DOMAIN, OWNER_ID, ADMIN_IDS
+   ```
+   Compose sets `WEBAPP_URL` to `https://$DOMAIN` and the container paths for the database
+   and backups itself, so the other `.env` values can stay as they are.
+5. **Start**: `docker compose up -d --build`. Migrations run at startup, and the bot sets its
+   menu button to your domain. Send `/start` to the production bot to check.
+
+The database lives in `./data/` and the backups in `./backups/`, both on the server. Neither
+is in the image, so rebuilding or recreating containers keeps them.
+
+**Updating**:
+```bash
+docker compose exec -u app app python -m app.backup   # one-off backup first
+git pull && docker compose up -d --build
+```
+
+**Logs**: `docker compose logs -f app` (rotated, at most 3 × 10 MB per container).
+
+### Backups
+
+A backup is taken every day at 03:00 KST using SQLite's backup API. It is a single file in
+`./backups/`, `exchange-YYYYMMDD-HHMMSS.db` (UTC time), readable only by its owner, and it is
+checked with `PRAGMA integrity_check`. Backups older than `BACKUP_KEEP_DAYS` (14) are deleted.
+They contain everything, including users' receiving details, so keep any copies private.
+
+- Copy them off the server now and then:
+  `rsync -a user@server:exchange-app/backups/ ./exchange-backups/`
+- **Restore**: `docker compose stop app`, copy the backup over `data/exchange.db`, delete
+  `data/exchange.db-wal` and `data/exchange.db-shm` if present, then `docker compose start app`.
+
+## Screenshots
+
+_Coming soon._
+
 ## Roadmap
 
 - [x] Backend skeleton: database, migrations, Telegram auth, bot `/start`
@@ -111,7 +158,8 @@ free endpoint, and is refreshed hourly.
 - [x] Reports (on requests and on accepted deals), an in-app admin screen with bans, open-request
       and posting limits, an owner-editable About & support page, and owner tools (admins by
       username, deleting deals)
-- [ ] Docker deployment with HTTPS, backups, screenshots
+- [x] Docker deployment (Compose, Caddy for HTTPS) and daily backups
+- [ ] First production deploy, screenshots
 
 ## Disclaimer
 

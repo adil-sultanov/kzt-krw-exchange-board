@@ -47,6 +47,9 @@ Docker + HTTPS for deploy; `cloudflared` tunnel for local dev.
 - Test/lint: `.venv/bin/pytest -q` · `.venv/bin/ruff check . && .venv/bin/ruff format .`
 - Setup: `python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"`
 
+## Commands (deploy, repo root; see README "Deploy")
+- `docker compose up -d --build` · backup now: `docker compose exec -u app app python -m app.backup`
+
 ## Commands (from `frontend/`)
 - Dev: `npm run dev` (port 5173, proxies `/api` to 8000) · Check: `npm run typecheck` · Build: `npm run build`
   (backend serves `frontend/dist` at `/` when it exists)
@@ -60,4 +63,5 @@ Docker + HTTPS for deploy; `cloudflared` tunnel for local dev.
    and waiting covers it (migration 006 drops the unused table)
 6. ✅ Reports (on requests and accepted deals; "disputes" are deal reports), in-app admin
    screen (resolve, ban/unban), owner-editable About & support page
-7. Docker + HTTPS deploy, daily backups (SQLite backup API), README screenshots
+7. ✅ Docker + HTTPS deploy (Compose + Caddy), daily backups (SQLite backup API).
+   Left: first production deploy, README screenshots

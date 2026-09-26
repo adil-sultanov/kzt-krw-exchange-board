@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from app.backup import run_backup
+from app.config import Settings
 from app.db import Database
 from app.services.deals import delete_old_deals
 from app.services.rates import refresh_reference_rate
@@ -12,9 +14,10 @@ from app.services.requests import expire_due
 RATE_REFRESH_MINUTES = 60
 EXPIRY_MINUTES = 5
 CLEANUP_HOURS = 24
+BACKUP_HOUR_UTC = 18  # 03:00 KST, when the board is quietest
 
 
-def build_scheduler(db: Database) -> AsyncIOScheduler:
+def build_scheduler(db: Database, settings: Settings) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=UTC)
     scheduler.add_job(
         refresh_reference_rate,
@@ -46,4 +49,15 @@ def build_scheduler(db: Database) -> AsyncIOScheduler:
         max_instances=1,
         coalesce=True,
     )
+    if settings.backup_dir is not None:
+        scheduler.add_job(
+            run_backup,
+            "cron",
+            hour=BACKUP_HOUR_UTC,
+            args=[db, settings.backup_dir, settings.backup_keep_days],
+            id="run_backup",
+            misfire_grace_time=60 * 60,
+            max_instances=1,
+            coalesce=True,
+        )
     return scheduler

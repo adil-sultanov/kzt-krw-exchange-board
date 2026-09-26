@@ -1,0 +1,5 @@
+# DOMAIN comes from .env (via docker-compose.yml). Caddy gets and renews the certificate.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8000
+}
