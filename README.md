@@ -19,8 +19,9 @@ who has reliably completed exchanges before.
   pay and get and whether its rate is better or worse than the market for you; filter by amount,
   sort by best rate, with the reference exchange rate both ways at the top
 - **Post a request**: what you buy, how much you pay (with a live "you get ≈" preview), the
-  market rate or asking / offering a few % more, and how long it stays up (1 / 3 days). You can
-  cancel it while it's on the board.
+  market rate or asking / offering a few % more, and how long it stays up (1 / 3 days). While
+  it's on the board you can edit it (until someone takes it), extend it or cancel it; a
+  request about to expire is flagged in the app, and an expired one can be posted again.
 - **Take a request**: the author accepts or declines, and only then do both sides get
   each other's Telegram contact
 - **Bot notifications** only when someone takes your request and when your deal is accepted;
@@ -97,11 +98,12 @@ endpoint and is refreshed hourly.
 - [x] Backend skeleton: database, migrations, Telegram auth, bot `/start`
 - [x] Board, new request, request detail
 - [x] Deal flow: take → accept / decline → contact, bot notifications, and a My deals list
-- [ ] My requests (edit / extend), with in-app expiry notices (cancelling a request is done)
-- [ ] Matches and alerts, shown in the app
+- [x] My requests: edit / extend / cancel, with in-app expiry notices
+- [ ] Alerts, shown in the app (matches right after posting are done)
 - [x] Completion confirmation ("I received the money" from both sides), completed-deal counts,
       receiving details per currency
-- [ ] Reports, disputes and bans
+- [ ] Reports, disputes and admin bans (bans are already enforced; open-request and posting
+      limits are done)
 - [ ] Docker deployment with HTTPS, backups, screenshots
 
 ## Disclaimer

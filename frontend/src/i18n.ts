@@ -65,7 +65,7 @@ export const t = {
     newRequest: "Post a request",
     myDeals: "My deals",
     needsAction: (count: number) =>
-      count === 1 ? "1 deal needs your action" : `${count} deals need your action`,
+      count === 1 ? "1 thing needs your attention" : `${count} things need your attention`,
     profile: "Profile",
   },
 
@@ -82,6 +82,12 @@ export const t = {
     until: (time: string) => `until ${time}`,
     status: "Status",
     own: "It's on the board. The bot will message you when someone takes it.",
+    ownPending: (count: number) =>
+      (count === 1 ? "1 person wants" : `${count} people want`) + " to take it. Answer in My deals.",
+    expiresSoon: "It leaves the board soon. Extend it to keep it up.",
+    edit: "Edit",
+    editLocked: "Someone is waiting for your answer, so the amount and rate can't change until you answer.",
+    postAgain: "Post again",
     responded: {
       pending: "You took this request. Waiting for the author to answer.",
       accepted: "You took this request, and the author accepted.",
@@ -167,6 +173,12 @@ export const t = {
 
   refresh: "Refresh",
 
+  extend: {
+    button: "Extend",
+    question: "Keep your request on the board for how long from now?",
+    option: (days: number) => (days === 1 ? "1 day" : `${days} days`),
+  },
+
   cancelRequest: {
     button: "Cancel request",
     confirm: "Cancel this request? It leaves the board, and anyone waiting is declined.",
@@ -214,6 +226,10 @@ export const t = {
     empty: "No deals yet",
     emptyHint: "Take a request on the board, or post your own.",
     onBoard: "Your requests on the board",
+    expired: "Expired in the last day",
+    waiting: (count: number) =>
+      count === 1 ? "1 person waiting for your answer" : `${count} people waiting for your answer`,
+    expiresSoon: (left: string) => `Leaves the board in ${left}`,
     active: "Active",
     noActive: "No active deals right now.",
     completed: "Completed",
@@ -222,6 +238,7 @@ export const t = {
 
   form: {
     title: "New request",
+    editTitle: "Edit request",
     amountPlaceholder: "0",
     rate: "Rate",
     rateChoice: {
@@ -241,6 +258,7 @@ export const t = {
     days: (days: number) => (days === 1 ? "1 day" : `${days} days`),
     durationHint: "It leaves the board early once you accept someone or cancel it.",
     submit: "Post request",
+    save: "Save changes",
     errors: {
       amount: "Enter an amount.",
       amountTooLarge: "That amount is too large.",
@@ -283,6 +301,9 @@ const errorMessages: Record<string, string> = {
   own_request: "This is your own request.",
   already_responded: "You've already taken this request.",
   request_not_open: "This request is no longer open.",
+  request_has_responders:
+    "Someone is waiting for your answer, so the amount and rate can't change. Answer them first.",
+  already_extended: "It's already on the board for longer than that.",
   deal_not_found: "This deal doesn't exist.",
   not_request_author: "Only the request's author can do this.",
   deal_not_pending: "This was already answered.",

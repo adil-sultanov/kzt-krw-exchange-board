@@ -19,6 +19,12 @@ interface BackButton {
   offClick(callback: () => void): void;
 }
 
+interface PopupButton {
+  id?: string;
+  type?: "default" | "ok" | "close" | "cancel" | "destructive";
+  text?: string;
+}
+
 interface ThemeParams {
   button_color?: string;
   hint_color?: string;
@@ -48,6 +54,10 @@ interface WebApp {
   openLink(url: string): void;
   openTelegramLink(url: string): void;
   showConfirm(message: string, callback: (confirmed: boolean) => void): void;
+  showPopup(
+    params: { title?: string; message: string; buttons?: PopupButton[] },
+    callback?: (buttonId: string) => void,
+  ): void;
 }
 
 declare global {
@@ -124,6 +134,22 @@ export async function copyText(text: string): Promise<boolean> {
 export function confirm(message: string): Promise<boolean> {
   if (!tg?.isVersionAtLeast("6.2")) return Promise.resolve(window.confirm(message));
   return new Promise((resolve) => tg.showConfirm(message, resolve));
+}
+
+/**
+ * Native popup with a button per option (at most two) plus Cancel; resolves the chosen
+ * option's id, or null. Without popups, falls back to confirming the last option.
+ */
+export function choose<T extends string>(message: string, options: { id: T; text: string }[]): Promise<T | null> {
+  if (!tg?.isVersionAtLeast("6.2")) {
+    const last = options[options.length - 1];
+    return Promise.resolve(last && window.confirm(`${message}\n\n${last.text}`) ? last.id : null);
+  }
+  const buttons: PopupButton[] = options.map((option) => ({ id: option.id, text: option.text }));
+  buttons.push({ type: "cancel" });
+  return new Promise((resolve) =>
+    tg.showPopup({ message, buttons }, (id) => resolve(options.find((option) => option.id === id)?.id ?? null)),
+  );
 }
 
 export interface MainButtonConfig {

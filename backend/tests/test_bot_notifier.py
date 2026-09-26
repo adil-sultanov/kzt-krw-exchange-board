@@ -27,6 +27,7 @@ def make_deal(role: str = "author", direction: str = "KZT_KRW") -> DealOut:
         is_own=role == "author",
         my_deal_id=None,
         my_deal_status=None,
+        pending_count=None,
         created_at="2026-01-01T00:00:00+00:00",
         expires_at="2026-01-04T00:00:00+00:00",
     )

@@ -1,12 +1,14 @@
-"""Exchange requests: posting, the Board, request details, and closing one's own."""
+"""Exchange requests: posting, the Board, request details, and the author's edits, extensions
+and closing; plus the expiry job."""
 
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import aiosqlite
 
 from app.db import Database, utc_iso, utc_now
-from app.models import BoardFilters, RequestCreate, RequestOut, User
+from app.models import BoardFilters, RequestCreate, RequestOut, RequestUpdate, User
 from app.services.errors import (
     ConflictError,
     NotFoundError,
@@ -18,6 +20,10 @@ from app.services.rates import get_reference_rate
 MAX_OPEN_REQUESTS = 5
 MAX_CREATED_PER_HOUR = 5
 MATCHES_LIMIT = 5
+# The author's own requests stay listed (as expired) this long after they expire.
+RECENTLY_EXPIRED = timedelta(hours=24)
+
+logger = logging.getLogger(__name__)
 
 # Columns for RequestOut. :ref is the reference rate (NULL if unknown), :viewer the caller.
 _SELECT = """
@@ -26,6 +32,9 @@ SELECT r.id, r.direction, r.amount, r.rate_value,
        u.completed_deals AS author_completed_deals,
        r.user_id = :viewer AS is_own,
        d.id AS my_deal_id, d.status AS my_deal_status,
+       CASE WHEN r.user_id = :viewer THEN
+           (SELECT COUNT(*) FROM deals p WHERE p.request_id = r.id AND p.status = 'pending')
+       END AS pending_count,
        :ref * (1 + r.rate_value / 100.0) AS effective_rate
 FROM requests r
 JOIN users u ON u.telegram_id = r.user_id
@@ -58,6 +67,8 @@ def _to_out(row: aiosqlite.Row, now: str) -> RequestOut:
         data["status"] = "expired"
         if data["my_deal_status"] == "pending":
             data["my_deal_status"] = "declined"
+        if data["pending_count"] is not None:
+            data["pending_count"] = 0
     return RequestOut.model_validate(data)
 
 
@@ -133,13 +144,19 @@ async def get_request(db: Database, viewer_id: int, request_id: int) -> RequestO
     return _to_out(row, now)
 
 
-async def list_my_open_requests(db: Database, viewer_id: int) -> list[RequestOut]:
-    """The viewer's own requests that are on the Board now, newest first."""
-    now = utc_iso(datetime.now(UTC))
-    params = {"viewer": viewer_id, "ref": await _reference(db), "now": now}
+async def list_my_requests(db: Database, viewer_id: int) -> list[RequestOut]:
+    """The viewer's own requests on the Board now, and those that expired in the last
+    24 hours (status `expired`, for the in-app expiry notice), newest first."""
+    now_dt = datetime.now(UTC)
+    now = utc_iso(now_dt)
+    params = {
+        "viewer": viewer_id,
+        "ref": await _reference(db),
+        "since": utc_iso(now_dt - RECENTLY_EXPIRED),
+    }
     async with db.conn.execute(
-        _SELECT + " WHERE r.user_id = :viewer AND r.status = 'open' AND r.expires_at > :now "
-        "ORDER BY r.id DESC",
+        _SELECT + " WHERE r.user_id = :viewer AND r.status IN ('open', 'expired') "
+        "AND r.expires_at > :since ORDER BY r.id DESC",
         params,
     ) as cursor:
         rows = await cursor.fetchall()
@@ -177,6 +194,86 @@ async def close_request(db: Database, actor_id: int, request_id: int) -> Request
             (now, request_id),
         )
     return await get_request(db, actor_id, request_id)
+
+
+async def update_request(
+    db: Database, user: User, request_id: int, data: RequestUpdate
+) -> RequestOut:
+    """The author edits the amount or rate of their open request, or extends it.
+
+    Changing the terms is refused while anyone is waiting for an answer: they took the
+    request as it was. Extending doesn't change the terms, so it's always allowed.
+    """
+    if user.is_banned:
+        raise PermissionDeniedError("user_banned")
+    now_dt = datetime.now(UTC)
+    now = utc_iso(now_dt)
+    async with db.transaction() as conn:
+        async with conn.execute(
+            "SELECT user_id, status, expires_at, amount, rate_value FROM requests WHERE id = ?",
+            (request_id,),
+        ) as cursor:
+            request = await cursor.fetchone()
+        if request is None:
+            raise NotFoundError("request_not_found")
+        if request["user_id"] != user.telegram_id:
+            raise PermissionDeniedError("not_request_author")
+        if request["status"] != "open" or request["expires_at"] <= now:
+            raise ConflictError("request_not_open")
+
+        changes: dict[str, Any] = {}
+        if data.amount is not None and data.amount != request["amount"]:
+            changes["amount"] = data.amount
+        if data.rate_value is not None and data.rate_value != request["rate_value"]:
+            changes["rate_value"] = data.rate_value
+        if changes:
+            pending = await _count(
+                conn,
+                "SELECT COUNT(*) FROM deals WHERE request_id = ? AND status = 'pending'",
+                (request_id,),
+            )
+            if pending:
+                raise ConflictError("request_has_responders")
+        if data.extend_days is not None:
+            expires_at = utc_iso(now_dt + timedelta(days=data.extend_days))
+            if expires_at <= request["expires_at"]:
+                raise ConflictError("already_extended")
+            changes["expires_at"] = expires_at
+
+        if changes:
+            # Column names come from the fixed keys above, never from input.
+            assignments = ", ".join(f"{column} = :{column}" for column in changes)
+            cursor = await conn.execute(
+                f"UPDATE requests SET {assignments}, updated_at = :now "
+                "WHERE id = :id AND status = 'open' AND expires_at > :now",
+                {**changes, "now": now, "id": request_id},
+            )
+            if cursor.rowcount != 1:
+                raise ConflictError("request_not_open")
+    return await get_request(db, user.telegram_id, request_id)
+
+
+async def expire_due(db: Database) -> int:
+    """Marks past-due open requests expired and declines their pending deals (the job).
+
+    Requests in progress don't expire. Returns how many requests expired.
+    """
+    now = utc_now()
+    async with db.transaction() as conn:
+        await conn.execute(
+            "UPDATE deals SET status = 'declined', updated_at = ? WHERE status = 'pending' "
+            "AND request_id IN (SELECT id FROM requests WHERE status = 'open' AND expires_at <= ?)",
+            (now, now),
+        )
+        cursor = await conn.execute(
+            "UPDATE requests SET status = 'expired', updated_at = ? "
+            "WHERE status = 'open' AND expires_at <= ?",
+            (now, now),
+        )
+        expired = cursor.rowcount
+    if expired:
+        logger.info("Expired %d requests", expired)
+    return expired
 
 
 async def get_requests_by_ids(

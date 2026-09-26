@@ -3,13 +3,20 @@ import { api, errorCode } from "../api";
 import { RequestExchange } from "../components/Exchange";
 import { ReceiveHint } from "../components/ReceiveHint";
 import { ErrorBox, Loading, Notice, Row } from "../components/ui";
+import { askExtendDays } from "../extend";
 import { describeRateGain, formatKst, formatRatePair, formatSide, rateTone, timeLeft } from "../format";
 import { t } from "../i18n";
 import { useMe } from "../me";
 import { useNav, useReactivated } from "../nav";
 import { SLOW_POLL_MS, usePolling } from "../polling";
 import { confirm, haptic, type MainButtonConfig, useMainButton } from "../telegram";
-import { type ExchangeRequest, viewerRateGain, viewerSides } from "../types";
+import {
+  type ExchangeRequest,
+  expiresSoon,
+  extendOptions,
+  viewerRateGain,
+  viewerSides,
+} from "../types";
 
 export function RequestDetail(props: { id: number; active: boolean }) {
   const me = useMe();
@@ -19,6 +26,7 @@ export function RequestDetail(props: { id: number; active: boolean }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [taking, setTaking] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [extending, setExtending] = useState(false);
   // Responses to superseded loads (e.g. a poll sent before an action) are ignored.
   const loadSeq = useRef(0);
 
@@ -86,6 +94,26 @@ export function RequestDetail(props: { id: number; active: boolean }) {
     }
   };
 
+  const extend = async () => {
+    if (!request || extending) return;
+    const days = await askExtendDays(request);
+    if (days === null) return;
+    setExtending(true);
+    setActionError(null);
+    try {
+      const extended = await api.updateRequest(props.id, { extend_days: days });
+      haptic("success");
+      loadSeq.current++;
+      setRequest(extended);
+    } catch (e) {
+      haptic("error");
+      setActionError(errorCode(e));
+      void load();
+    } finally {
+      setExtending(false);
+    }
+  };
+
   const canTake =
     request !== null &&
     !request.is_own &&
@@ -108,6 +136,8 @@ export function RequestDetail(props: { id: number; active: boolean }) {
   const gain = viewerRateGain(request);
   const open = request.status === "open";
   const left = open ? timeLeft(request.expires_at) : null;
+  const pending = request.pending_count ?? 0;
+  const ownOpen = request.is_own && open;
   // Why a request someone else posted can't be taken by this user.
   const blocked =
     request.is_own || !open || request.my_deal_id !== null
@@ -129,8 +159,9 @@ export function RequestDetail(props: { id: number; active: boolean }) {
       ) : !open ? (
         <Notice tone="warning">{t.detail.notOpen}</Notice>
       ) : request.is_own ? (
-        <Notice>{t.detail.own}</Notice>
+        <Notice>{pending > 0 ? t.detail.ownPending(pending) : t.detail.own}</Notice>
       ) : null}
+      {ownOpen && expiresSoon(request) && <Notice tone="warning">{t.detail.expiresSoon}</Notice>}
       {blocked && <Notice tone="warning">{blocked}</Notice>}
       {actionError && <ErrorBox code={actionError} />}
 
@@ -155,14 +186,46 @@ export function RequestDetail(props: { id: number; active: boolean }) {
       {/* Taking it means receiving the currency the author gives. */}
       {canTake && <ReceiveHint currency={get.currency} />}
 
-      {request.is_own && open && (
+      {ownOpen && (
+        <>
+          <div className="button-row">
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={pending > 0}
+              onClick={() => nav.push({ name: "edit", request })}
+            >
+              {t.detail.edit}
+            </button>
+            {extendOptions(request).length > 0 && (
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={extending}
+                onClick={() => void extend()}
+              >
+                {extending ? t.loading : t.extend.button}
+              </button>
+            )}
+          </div>
+          {pending > 0 && <p className="hint small">{t.detail.editLocked}</p>}
+          <button
+            type="button"
+            className="secondary-button destructive"
+            disabled={cancelling}
+            onClick={() => void cancel()}
+          >
+            {cancelling ? t.loading : t.cancelRequest.button}
+          </button>
+        </>
+      )}
+      {request.is_own && request.status === "expired" && (
         <button
           type="button"
-          className="secondary-button destructive"
-          disabled={cancelling}
-          onClick={() => void cancel()}
+          className="secondary-button"
+          onClick={() => nav.push({ name: "new", prefill: request })}
         >
-          {cancelling ? t.loading : t.cancelRequest.button}
+          {t.detail.postAgain}
         </button>
       )}
     </div>

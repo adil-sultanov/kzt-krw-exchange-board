@@ -358,6 +358,14 @@ p {
   color: var(--hint);
 }
 
+/* Secondary actions side by side, e.g. "Edit" and "Extend". */
+.button-row {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  gap: 8px;
+}
+
 .secondary-button.destructive {
   color: var(--destructive);
 }
@@ -950,6 +958,28 @@ p {
 
 .card-action:disabled {
   color: var(--hint);
+}
+
+.card-action.neutral {
+  color: var(--button);
+}
+
+/* Several actions side by side under one card, e.g. "Extend" and "Cancel request". */
+.card-actions {
+  display: flex;
+}
+
+.card-actions > .card-action {
+  flex: 1;
+}
+
+.card-actions > .card-action:first-child {
+  border-bottom-right-radius: 0;
+}
+
+.card-actions > .card-action + .card-action {
+  border-left: 1px solid var(--separator);
+  border-bottom-left-radius: 0;
 }
 
 /* --- Payment details --- */

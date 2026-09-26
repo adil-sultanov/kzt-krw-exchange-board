@@ -59,6 +59,8 @@ export interface ExchangeRequest {
   /** The viewer's own response to this request, if they took it. */
   my_deal_id: number | null;
   my_deal_status: DealStatus | null;
+  /** For the author only: how many responders are waiting for an answer. */
+  pending_count: number | null;
   created_at: string;
   expires_at: string;
 }
@@ -93,6 +95,16 @@ export interface RequestCreate {
   rate_value: number;
   duration_days: DurationDays;
 }
+
+/** The author's changes to their open request. `extend_days` moves the expiry to that many days from now. */
+export interface RequestUpdate {
+  amount?: number;
+  rate_value?: number;
+  extend_days?: DurationDays;
+}
+
+/** A request's terms, e.g. to post an expired one again. */
+export type RequestTerms = Pick<ExchangeRequest, "direction" | "amount" | "rate_value">;
 
 export interface CreatedRequest {
   request: ExchangeRequest;
@@ -177,6 +189,25 @@ export function sortDeals(deals: Deal[]): Deal[] {
   const rank = (deal: Deal) => (deal.status === "accepted" ? 0 : needsMyAction(deal) ? 1 : 2);
   // Array.prototype.sort is stable, so the server's most-recent-first order is kept within a rank.
   return [...deals].sort((a, b) => rank(a) - rank(b));
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+/** An own request this close to expiring asks its author to extend it. */
+const EXPIRING_SOON_MS = 6 * HOUR_MS;
+/** Extending must keep a request up at least this much longer to be offered. */
+const MIN_EXTENSION_MS = HOUR_MS;
+
+/** Whether an open request leaves the board within a few hours. */
+export function expiresSoon(request: ExchangeRequest, now: number = Date.now()): boolean {
+  const left = new Date(request.expires_at).getTime() - now;
+  return request.status === "open" && left > 0 && left < EXPIRING_SOON_MS;
+}
+
+/** The extensions (days from now) that would keep an open request up noticeably longer. */
+export function extendOptions(request: ExchangeRequest, now: number = Date.now()): DurationDays[] {
+  const expires = new Date(request.expires_at).getTime();
+  if (request.status !== "open" || expires <= now) return [];
+  return DURATIONS.filter((days) => now + days * 24 * HOUR_MS > expires + MIN_EXTENSION_MS);
 }
 
 /** Whether a deal is waiting on the viewer: answering a responder, or confirming a payment. */

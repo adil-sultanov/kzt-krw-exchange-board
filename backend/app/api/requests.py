@@ -3,7 +3,13 @@ from typing import Annotated
 from fastapi import APIRouter, Query, status
 
 from app.api.deps import CurrentUser, DbDep
-from app.models import BoardFilters, CreatedRequestOut, RequestCreate, RequestOut
+from app.models import (
+    BoardFilters,
+    CreatedRequestOut,
+    RequestCreate,
+    RequestOut,
+    RequestUpdate,
+)
 from app.services import requests
 
 router = APIRouter()
@@ -28,6 +34,13 @@ async def get_request(user: CurrentUser, db: DbDep, request_id: int) -> RequestO
     return await requests.get_request(db, user.telegram_id, request_id)
 
 
+@router.patch("/requests/{request_id}")
+async def update_request(
+    user: CurrentUser, db: DbDep, request_id: int, body: RequestUpdate
+) -> RequestOut:
+    return await requests.update_request(db, user, request_id, body)
+
+
 @router.post("/requests/{request_id}/close")
 async def close_request(user: CurrentUser, db: DbDep, request_id: int) -> RequestOut:
     return await requests.close_request(db, user.telegram_id, request_id)
@@ -35,4 +48,4 @@ async def close_request(user: CurrentUser, db: DbDep, request_id: int) -> Reques
 
 @router.get("/my/requests")
 async def list_my_requests(user: CurrentUser, db: DbDep) -> list[RequestOut]:
-    return await requests.list_my_open_requests(db, user.telegram_id)
+    return await requests.list_my_requests(db, user.telegram_id)

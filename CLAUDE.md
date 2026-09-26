@@ -52,7 +52,8 @@ Docker + HTTPS for deploy; `cloudflared` tunnel for local dev.
 1. ✅ Backend skeleton: migrations, initData auth, `/api/me`, bot `/start`
 2. ✅ Board + New request + Request detail (frontend scaffold)
 3. ✅ Deal flow: take → accept/decline → contact (+ My deals; accepted deals can't be cancelled)
-4. My requests (edit/extend/close) + in-app expiry notices (✅ done early: close, as "Cancel request")
-5. In-app matches + Alerts
-6. Reports, disputes, bans (✅ done early: completion confirmation, deal counts, receiving details)
+4. ✅ My requests (edit/extend/cancel on My deals + request screen), expiry job, in-app expiry notices
+5. In-app matches + Alerts (✅ done early: matches shown right after posting)
+6. Reports, disputes, admin bans (✅ done early: completion confirmation, deal counts,
+   receiving details, ban enforcement, open-request and posting limits)
 7. Docker + HTTPS deploy, daily backups (SQLite backup API), README screenshots

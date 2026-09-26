@@ -16,6 +16,7 @@ import {
   type Currency,
   CURRENCIES,
   type ExchangeRequest,
+  expiresSoon,
   giveCurrency,
   needsMyAction,
   type Rate,
@@ -67,7 +68,8 @@ export function Board(props: { active: boolean }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rate, setRate] = useState<Rate | null>(null);
-  // Deals waiting on the viewer (the bot messages only about new and accepted deals).
+  // Deals waiting on the viewer (the bot messages only about new and accepted deals), and
+  // their requests about to leave the board.
   const [actionCount, setActionCount] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
   const [minText, setMinText] = useState("");
@@ -99,8 +101,9 @@ export function Board(props: { active: boolean }) {
   const loadRate = useCallback(() => api.rate().then(setRate, () => setRate(null)), []);
   const loadBadge = useCallback(
     () =>
-      api.myDeals().then(
-        (deals) => setActionCount(deals.filter(needsMyAction).length),
+      Promise.all([api.myDeals(), api.myRequests()]).then(
+        ([deals, requests]) =>
+          setActionCount(deals.filter(needsMyAction).length + requests.filter((r) => expiresSoon(r)).length),
         () => undefined, // keep the last count
       ),
     [],

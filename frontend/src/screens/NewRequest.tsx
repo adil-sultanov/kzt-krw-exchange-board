@@ -20,11 +20,15 @@ import {
   CURRENCIES,
   DURATIONS,
   type DurationDays,
+  type ExchangeRequest,
+  getCurrency,
   giveCurrency,
   MAX_AMOUNT,
   MAX_MARKET_OFFSET,
   postDirection,
   type RequestCreate,
+  type RequestTerms,
+  viewerRateGain,
 } from "../types";
 
 /**
@@ -39,13 +43,40 @@ interface FormErrors {
   rate?: string;
 }
 
-export function NewRequest(props: { active: boolean }) {
+interface FormValues {
+  buy: Currency;
+  amountText: string;
+  rateChoice: RateChoice;
+  percentText: string;
+}
+
+/** The form showing an existing request's terms, from its author's side. */
+function formValues(terms: RequestTerms): FormValues {
+  const gain = viewerRateGain({ ...terms, is_own: true });
+  return {
+    buy: getCurrency(terms.direction),
+    amountText: formatAmountInput(String(terms.amount)),
+    rateChoice: gain > 0 ? "ask" : gain < 0 ? "offer" : "market",
+    percentText: gain === 0 ? "" : formatDecimalInput(String(Math.abs(gain)), 2),
+  };
+}
+
+/**
+ * Posts a new request, optionally prefilled (`prefill`, "Post again"), or edits the amount and
+ * rate of the viewer's open request (`edit`; its direction and expiry stay as they are).
+ */
+export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edit?: ExchangeRequest }) {
   const me = useMe();
   const nav = useNav();
-  const [buy, setBuy] = useState<Currency>("KRW");
-  const [amountText, setAmountText] = useState("");
-  const [rateChoice, setRateChoice] = useState<RateChoice>("market");
-  const [percentText, setPercentText] = useState("");
+  const { edit } = props;
+  const [initial] = useState(() => {
+    const terms = edit ?? props.prefill;
+    return terms ? formValues(terms) : null;
+  });
+  const [buy, setBuy] = useState<Currency>(initial?.buy ?? "KRW");
+  const [amountText, setAmountText] = useState(initial?.amountText ?? "");
+  const [rateChoice, setRateChoice] = useState<RateChoice>(initial?.rateChoice ?? "market");
+  const [percentText, setPercentText] = useState(initial?.percentText ?? "");
   const [duration, setDuration] = useState<DurationDays>(3);
   const [referenceRate, setReferenceRate] = useState<number | null>(null);
   const [showErrors, setShowErrors] = useState(false);
@@ -80,15 +111,21 @@ export function NewRequest(props: { active: boolean }) {
       haptic("error");
       return;
     }
-    const body: RequestCreate = {
-      direction,
-      amount,
-      rate_value: offset,
-      duration_days: duration,
-    };
     setSubmitting(true);
     setError(null);
     try {
+      if (edit) {
+        await api.updateRequest(edit.id, { amount, rate_value: offset });
+        haptic("success");
+        nav.pop();
+        return;
+      }
+      const body: RequestCreate = {
+        direction,
+        amount,
+        rate_value: offset,
+        duration_days: duration,
+      };
       const result = await api.createRequest(body);
       haptic("success");
       nav.replace({ name: "created", result });
@@ -99,18 +136,25 @@ export function NewRequest(props: { active: boolean }) {
     }
   };
 
-  const blocked = me.is_banned ? t.form.banned : !me.username ? t.form.usernameRequired : null;
+  // A username is needed to be contacted, which an existing request's author already was.
+  const blocked = me.is_banned ? t.form.banned : !me.username && !edit ? t.form.usernameRequired : null;
+  const title = edit ? t.form.editTitle : t.form.title;
 
   useMainButton(
     props.active && !blocked
-      ? { text: t.form.submit, onClick: submit, enabled: valid || !showErrors, loading: submitting }
+      ? {
+          text: edit ? t.form.save : t.form.submit,
+          onClick: submit,
+          enabled: valid || !showErrors,
+          loading: submitting,
+        }
       : null,
   );
 
   if (blocked) {
     return (
       <div className="screen">
-        <h1 className="title">{t.form.title}</h1>
+        <h1 className="title">{title}</h1>
         <Notice tone="warning">{blocked}</Notice>
       </div>
     );
@@ -123,13 +167,21 @@ export function NewRequest(props: { active: boolean }) {
       : null;
   return (
     <div className="screen">
-      <h1 className="title">{t.form.title}</h1>
-
-      <Segmented
-        options={CURRENCIES.map((currency) => ({ value: currency, label: t.buy[currency] }))}
-        value={buy}
-        onChange={setBuy}
-      />
+      {edit ? (
+        <div className="title-block">
+          <span className="eyebrow">{t.buy[buy]}</span>
+          <h1 className="title">{title}</h1>
+        </div>
+      ) : (
+        <>
+          <h1 className="title">{title}</h1>
+          <Segmented
+            options={CURRENCIES.map((currency) => ({ value: currency, label: t.buy[currency] }))}
+            value={buy}
+            onChange={setBuy}
+          />
+        </>
+      )}
 
       <ExchangeBox
         pay={
@@ -188,14 +240,16 @@ export function NewRequest(props: { active: boolean }) {
         </p>
       </Section>
 
-      <Section title={t.form.duration}>
-        <Segmented
-          options={DURATIONS.map((d) => ({ value: d, label: t.form.days(d) }))}
-          value={duration}
-          onChange={setDuration}
-        />
-        <p className="hint small">{t.form.durationHint}</p>
-      </Section>
+      {!edit && (
+        <Section title={t.form.duration}>
+          <Segmented
+            options={DURATIONS.map((d) => ({ value: d, label: t.form.days(d) }))}
+            value={duration}
+            onChange={setDuration}
+          />
+          <p className="hint small">{t.form.durationHint}</p>
+        </Section>
+      )}
 
       {error && <ErrorBox code={error} />}
       <p className="hint small center">{t.form.disclaimer}</p>

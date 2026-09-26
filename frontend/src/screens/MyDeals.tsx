@@ -2,11 +2,21 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { api, errorCode } from "../api";
 import { type CardStatus, RequestCard } from "../components/RequestCard";
 import { Empty, ErrorBox, SkeletonList, TitleWithRefresh } from "../components/ui";
+import { askExtendDays } from "../extend";
+import { timeLeft } from "../format";
 import { t } from "../i18n";
 import { useNav, useReactivated } from "../nav";
 import { FAST_POLL_MS, usePolling } from "../polling";
 import { confirm, haptic } from "../telegram";
-import { type Deal, type ExchangeRequest, isActiveDeal, needsMyAction, sortDeals } from "../types";
+import {
+  type Deal,
+  type ExchangeRequest,
+  expiresSoon,
+  extendOptions,
+  isActiveDeal,
+  needsMyAction,
+  sortDeals,
+} from "../types";
 
 function dealStatus(deal: Deal): CardStatus {
   if (needsMyAction(deal)) {
@@ -15,9 +25,17 @@ function dealStatus(deal: Deal): CardStatus {
   return { text: t.dealStatus[deal.status], tone: "active" };
 }
 
+/** On the author's own request: it's about to leave the board, or people are waiting. */
+function ownRequestStatus(request: ExchangeRequest): CardStatus | undefined {
+  const left = timeLeft(request.expires_at);
+  if (left && expiresSoon(request)) return { text: t.myDeals.expiresSoon(left), tone: "action" };
+  const pending = request.pending_count ?? 0;
+  return pending > 0 ? { text: t.myDeals.waiting(pending), tone: "active" } : undefined;
+}
+
 interface Lists {
   deals: Deal[];
-  /** The viewer's own requests on the board. */
+  /** The viewer's own requests on the board, and those that expired in the last day. */
   requests: ExchangeRequest[];
 }
 
@@ -31,15 +49,17 @@ function Group(props: { title: string; children: ReactNode }) {
 }
 
 /**
- * The viewer's requests on the board (which they can cancel), then every deal they're part
- * of, on either side: active ones (in progress first, highlighted), completed, declined.
+ * The viewer's requests on the board (which they can extend or cancel), then every deal
+ * they're part of, on either side: active ones (in progress first, highlighted), completed,
+ * declined; last, their requests that expired in the last day (which they can post again).
  */
 export function MyDeals(props: { active: boolean }) {
   const nav = useNav();
   const [lists, setLists] = useState<Lists | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [cancelling, setCancelling] = useState<number | null>(null);
+  // The request an action (extend or cancel) is running on.
+  const [busy, setBusy] = useState<number | null>(null);
   // Responses to superseded loads are ignored.
   const loadSeq = useRef(0);
 
@@ -63,19 +83,29 @@ export function MyDeals(props: { active: boolean }) {
   useReactivated(props.active, load);
   usePolling(props.active, FAST_POLL_MS, () => fetchLists(true));
 
-  const cancelRequest = async (id: number) => {
-    if (cancelling !== null || !(await confirm(t.cancelRequest.confirm))) return;
-    setCancelling(id);
+  const runAction = async (id: number, action: () => Promise<unknown>) => {
+    setBusy(id);
     setActionError(null);
     try {
-      await api.closeRequest(id);
+      await action();
       haptic("success");
     } catch (e) {
       haptic("error");
       setActionError(errorCode(e));
     }
     await load();
-    setCancelling(null);
+    setBusy(null);
+  };
+
+  const cancelRequest = async (id: number) => {
+    if (busy !== null || !(await confirm(t.cancelRequest.confirm))) return;
+    await runAction(id, () => api.closeRequest(id));
+  };
+
+  const extendRequest = async (request: ExchangeRequest) => {
+    if (busy !== null) return;
+    const days = await askExtendDays(request);
+    if (days !== null) await runAction(request.id, () => api.updateRequest(request.id, { extend_days: days }));
   };
 
   // Completed and declined deals are grouped under their status, so it isn't repeated on each.
@@ -95,6 +125,8 @@ export function MyDeals(props: { active: boolean }) {
   const active = deals.filter(isActiveDeal);
   const completed = deals.filter((deal) => deal.status === "completed");
   const declined = deals.filter((deal) => deal.status === "declined");
+  const onBoard = lists?.requests.filter((request) => request.status === "open") ?? [];
+  const expired = lists?.requests.filter((request) => request.status === "expired") ?? [];
 
   return (
     <div className="screen">
@@ -106,19 +138,43 @@ export function MyDeals(props: { active: boolean }) {
         <Empty title={t.myDeals.empty} hint={t.myDeals.emptyHint} />
       )}
 
-      {lists && lists.requests.length > 0 && (
+      {onBoard.length > 0 && (
         <Group title={t.myDeals.onBoard}>
-          {lists.requests.map((request) => (
+          {onBoard.map((request) => (
             <div key={request.id} className="card-stack">
-              <RequestCard request={request} onOpen={() => nav.push({ name: "request", id: request.id })} />
-              <button
-                type="button"
-                className="card-action"
-                disabled={cancelling !== null}
-                onClick={() => void cancelRequest(request.id)}
-              >
-                {cancelling === request.id ? t.loading : t.cancelRequest.button}
-              </button>
+              <RequestCard
+                request={request}
+                status={ownRequestStatus(request)}
+                onOpen={() => nav.push({ name: "request", id: request.id })}
+              />
+              <div className="card-actions">
+                {busy === request.id ? (
+                  <button type="button" className="card-action" disabled>
+                    {t.loading}
+                  </button>
+                ) : (
+                  <>
+                    {extendOptions(request).length > 0 && (
+                      <button
+                        type="button"
+                        className="card-action neutral"
+                        disabled={busy !== null}
+                        onClick={() => void extendRequest(request)}
+                      >
+                        {t.extend.button}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="card-action"
+                      disabled={busy !== null}
+                      onClick={() => void cancelRequest(request.id)}
+                    >
+                      {t.cancelRequest.button}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           ))}
         </Group>
@@ -134,6 +190,26 @@ export function MyDeals(props: { active: boolean }) {
       )}
       {completed.length > 0 && <Group title={t.myDeals.completed}>{completed.map(dealCard)}</Group>}
       {declined.length > 0 && <Group title={t.myDeals.declined}>{declined.map(dealCard)}</Group>}
+      {expired.length > 0 && (
+        <Group title={t.myDeals.expired}>
+          {expired.map((request) => (
+            <div key={request.id} className="card-stack">
+              <RequestCard
+                request={request}
+                status={{ text: t.status.expired, tone: "muted" }}
+                onOpen={() => nav.push({ name: "request", id: request.id })}
+              />
+              <button
+                type="button"
+                className="card-action neutral"
+                onClick={() => nav.push({ name: "new", prefill: request })}
+              >
+                {t.detail.postAgain}
+              </button>
+            </div>
+          ))}
+        </Group>
+      )}
     </div>
   );
 }

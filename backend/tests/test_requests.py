@@ -1,9 +1,14 @@
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.db import Database, utc_iso
+from app.models import TelegramUser
+from app.services import requests
+from app.services.users import upsert_user
 from tests.helpers import AIDA, BEK, DANA, NO_USERNAME, VALID, auth_as, create, post, sql
 
 PAST = "2000-01-01T00:00:00+00:00"
@@ -280,6 +285,138 @@ def test_banned_author_can_still_close_own_request(client: TestClient, settings:
     sql(settings, "UPDATE users SET is_banned = 1 WHERE telegram_id = ?", (AIDA["id"],))
     assert close(client, BEK, request_id).json() == {"detail": "request_not_found"}
     assert close(client, AIDA, request_id).json()["status"] == "closed"
+
+
+# --- Editing, extending and expiry ---
+
+
+def edit(client: TestClient, user: dict[str, Any], request_id: int, **body: Any) -> Any:
+    return client.patch(f"/api/requests/{request_id}", json=body, headers=auth_as(user))
+
+
+def iso_in(**delta: float) -> str:
+    return (datetime.now(UTC) + timedelta(**delta)).isoformat(timespec="seconds")
+
+
+def test_edit_amount_and_rate(client: TestClient) -> None:
+    request_id = create(client, AIDA)["id"]
+    response = edit(client, AIDA, request_id, amount=250_000, rate_value=-2.345)
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert (body["amount"], body["rate_value"]) == (250_000, -2.35)
+    assert body["pending_count"] == 0
+    assert client.get(f"/api/requests/{request_id}", headers=auth_as(BEK)).json()["amount"] == (
+        250_000
+    )
+
+
+def test_pending_count_is_for_the_author_only(client: TestClient) -> None:
+    request_id = create(client, AIDA)["id"]
+    client.post(f"/api/requests/{request_id}/take", headers=auth_as(BEK))
+    own = client.get(f"/api/requests/{request_id}", headers=auth_as(AIDA)).json()
+    other = client.get(f"/api/requests/{request_id}", headers=auth_as(DANA)).json()
+    assert (own["pending_count"], other["pending_count"]) == (1, None)
+
+
+def test_edit_refused_while_responders_wait(client: TestClient) -> None:
+    request_id = create(client, AIDA, duration_days=1)["id"]
+    client.post(f"/api/requests/{request_id}/take", headers=auth_as(BEK))
+    response = edit(client, AIDA, request_id, amount=1)
+    assert (response.status_code, response.json()) == (409, {"detail": "request_has_responders"})
+    # Unchanged values and extending don't change the terms.
+    assert edit(client, AIDA, request_id, amount=VALID["amount"]).status_code == 200
+    assert edit(client, AIDA, request_id, extend_days=3).status_code == 200
+
+
+def test_edit_rejections(client: TestClient, settings: Settings) -> None:
+    request_id = create(client, AIDA)["id"]
+    assert client.patch(f"/api/requests/{request_id}", json={"amount": 1}).status_code == 401
+    response = edit(client, BEK, request_id, amount=1)
+    assert (response.status_code, response.json()) == (403, {"detail": "not_request_author"})
+    response = edit(client, AIDA, 999, amount=1)
+    assert (response.status_code, response.json()) == (404, {"detail": "request_not_found"})
+    for body in ({}, {"amount": 0}, {"rate_value": 21}, {"extend_days": 2}, {"direction": "x"}):
+        assert edit(client, AIDA, request_id, **body).status_code == 422, body
+
+    sql(settings, "UPDATE requests SET expires_at = ?", (PAST,))
+    response = edit(client, AIDA, request_id, extend_days=1)
+    assert (response.status_code, response.json()) == (409, {"detail": "request_not_open"})
+    for status in ("closed", "in_progress", "expired"):
+        sql(settings, "UPDATE requests SET status = ?, expires_at = ?", (status, iso_in(days=1)))
+        assert edit(client, AIDA, request_id, amount=1).json() == {"detail": "request_not_open"}
+
+    sql(settings, "UPDATE requests SET status = 'open'")
+    sql(settings, "UPDATE users SET is_banned = 1 WHERE telegram_id = ?", (AIDA["id"],))
+    assert edit(client, AIDA, request_id, amount=1).json() == {"detail": "user_banned"}
+
+
+def test_extend(client: TestClient, settings: Settings) -> None:
+    request_id = create(client, AIDA, duration_days=1)["id"]
+    before = client.get(f"/api/requests/{request_id}", headers=auth_as(AIDA)).json()
+    # Extending never shortens a request: 1 day from now isn't later than its expiry.
+    response = edit(client, AIDA, request_id, extend_days=1)
+    assert (response.status_code, response.json()) == (409, {"detail": "already_extended"})
+
+    extended = edit(client, AIDA, request_id, extend_days=3).json()
+    assert extended["expires_at"] > before["expires_at"]
+    assert extended["expires_at"] <= iso_in(days=3, seconds=5)
+
+    sql(settings, "UPDATE requests SET expires_at = ?", (iso_in(hours=2),))
+    assert edit(client, AIDA, request_id, extend_days=1).json()["expires_at"] > iso_in(hours=23)
+
+
+async def test_expire_due(db: Database) -> None:
+    now = datetime.now(UTC)
+    for telegram_id in (1, 2):
+        await upsert_user(
+            db, TelegramUser(id=telegram_id, username=f"u{telegram_id}"), is_admin=False
+        )
+    past, future = utc_iso(now - timedelta(minutes=1)), utc_iso(now + timedelta(days=1))
+    stamp = utc_iso(now)
+    rows = [(1, "open", past), (2, "open", future), (3, "in_progress", past)]
+    async with db.transaction() as conn:
+        for request_id, status, expires_at in rows:
+            await conn.execute(
+                "INSERT INTO requests (id, user_id, direction, amount, rate_type, rate_value, "
+                "status, created_at, updated_at, expires_at) "
+                "VALUES (?, 1, 'KZT_KRW', 100, 'market', 0, ?, ?, ?, ?)",
+                (request_id, status, stamp, stamp, expires_at),
+            )
+            await conn.execute(
+                "INSERT INTO deals (request_id, author_id, responder_id, status, "
+                "created_at, updated_at) VALUES (?, 1, 2, ?, ?, ?)",
+                (request_id, "accepted" if status == "in_progress" else "pending", stamp, stamp),
+            )
+
+    assert await requests.expire_due(db) == 1
+    assert await requests.expire_due(db) == 0
+    async with db.conn.execute(
+        "SELECT r.status, d.status FROM requests r JOIN deals d ON d.request_id = r.id "
+        "ORDER BY r.id"
+    ) as cursor:
+        statuses = [tuple(row) for row in await cursor.fetchall()]
+    assert statuses == [("expired", "declined"), ("open", "pending"), ("in_progress", "accepted")]
+
+
+def test_my_requests_include_recently_expired(client: TestClient, settings: Settings) -> None:
+    lazily_expired = create(client, AIDA)["id"]
+    expired = create(client, AIDA)["id"]
+    long_ago = create(client, AIDA)["id"]
+    sql(
+        settings,
+        "UPDATE requests SET expires_at = ? WHERE id = ?",
+        (iso_in(hours=-1), lazily_expired),
+    )
+    sql(
+        settings,
+        "UPDATE requests SET status = 'expired', expires_at = ? WHERE id = ?",
+        (iso_in(hours=-23), expired),
+    )
+    sql(settings, "UPDATE requests SET expires_at = ? WHERE id = ?", (iso_in(hours=-25), long_ago))
+
+    response = client.get("/api/my/requests", headers=auth_as(AIDA))
+    listed = [(item["id"], item["status"]) for item in response.json()]
+    assert listed == [(expired, "expired"), (lazily_expired, "expired")]
 
 
 # --- Matches ---

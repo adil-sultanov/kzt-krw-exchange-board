@@ -9,6 +9,7 @@ import type {
   MeUpdate,
   Rate,
   RequestCreate,
+  RequestUpdate,
 } from "./types";
 
 /** An API failure. `code` is the backend's machine code (see i18n.ts for messages). */
@@ -66,10 +67,13 @@ export const api = {
     call<ExchangeRequest[]>("GET", `/requests?${boardQuery(filters, offset, limit)}`),
   request: (id: number) => call<ExchangeRequest>("GET", `/requests/${id}`),
   createRequest: (body: RequestCreate) => call<CreatedRequest>("POST", "/requests", body),
+  /** Edits or extends the viewer's own open request. */
+  updateRequest: (id: number, body: RequestUpdate) =>
+    call<ExchangeRequest>("PATCH", `/requests/${id}`, body),
   takeRequest: (id: number) => call<Deal>("POST", `/requests/${id}/take`),
   /** Takes the viewer's own open request off the board ("Cancel request"). */
   closeRequest: (id: number) => call<ExchangeRequest>("POST", `/requests/${id}/close`),
-  /** The viewer's own requests that are on the board now. */
+  /** The viewer's own requests on the board now, and those that expired in the last day. */
   myRequests: () => call<ExchangeRequest[]>("GET", "/my/requests"),
   myDeals: () => call<Deal[]>("GET", "/my/deals"),
   deal: (id: number) => call<Deal>("GET", `/deals/${id}`),

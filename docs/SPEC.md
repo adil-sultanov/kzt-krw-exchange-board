@@ -15,7 +15,8 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   Filters. Hides the viewer's own requests and requests from banned users.
 - **Request detail** — what the viewer pays and gets, rate, author's completed-deals count,
   time left. Buttons: **I'll take it** (creates a pending deal, see Deal flow), **Report**;
-  on the author's own open request, **Cancel request**.
+  on the author's own open request, **Edit**, **Extend** and **Cancel request** (and how many
+  people are waiting for an answer); on their own expired request, **Post again**.
   Usernames are never shown before the author accepts.
 - **New request** — form: what the author buys ("Buy KRW" posts `KZT_KRW`, "Buy KZT" posts
   `KRW_KZT`), the amount they pay with a live "You get ≈" preview, rate (Market (default) /
@@ -25,23 +26,29 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   someone or cancels it, or when the time runs out. No free-text note, no payment methods
   (where to pay comes from the receiving details once a deal is accepted).
   Show matching opposite requests right after creation.
-- **My requests** — two tabs:
-  - *Posted*: edit, extend; see pending responders with Accept / Decline. (Closing is
-    already on My deals and the request screen, as **Cancel request**.)
-  - *Deals*: requests I took or deals I accepted, with status, a **Contact** button
-    once accepted, the other side's receiving details, and **I received the money**.
+- **My requests** (no separate screen: they're on My deals and the request screen):
+  - **Edit** changes the amount or rate (the direction and expiry stay). It's refused
+    (`request_has_responders`) while anyone's deal on it is pending, since they took the old
+    terms; they're answered in My deals.
+  - **Extend** keeps it on the board 1 or 3 days from now (a Telegram popup), only if that's
+    later than its current expiry. Pending responders stay.
+  - **Cancel request** (see Deal flow).
+  - Requests that expired in the last 24 h are listed with **Post again**: New request
+    prefilled with the same terms, subject to the usual limits.
 - **My deals** — first the viewer's requests on the board (open, not expired), each with
-  **Cancel request**. Then every deal the user is part of, in sections: *Active deals*
+  **Extend** and **Cancel request**, marked when it leaves the board within 6 h or when people
+  are waiting for an answer. Then every deal the user is part of, in sections: *Active deals*
   (`pending` or `accepted`; deals in progress come first and are outlined, then deals waiting
-  on the viewer, then the rest), *Completed*, *Declined*. My deals and the deal screen have a
-  **Refresh** button.
+  on the viewer, then the rest), *Completed*, *Declined*. Last, *Expired in the last day*,
+  with **Post again**. My deals and the deal screen have a **Refresh** button.
 - **Alerts** — saved searches, e.g. "KRW→KZT over 300,000 KRW"; new matching requests are
   highlighted in the app (no bot message).
 - **Profile / About** — name, username and completed deals count, receiving details per
   currency (KZT, KRW): bank and account holder, and account / card / phone number (max 100 chars
   each), disclaimer, links to Terms and Privacy (the footer credits the author).
-- The Board's **My deals** link shows a badge with the number of deals waiting on the viewer
-  (a pending responder to answer, or a payment to confirm once the other side has).
+- The Board's **My deals** link shows a badge with the number of things waiting on the viewer:
+  a pending responder to answer, a payment to confirm once the other side has, or one of
+  their requests leaving the board within 6 h (the in-app expiry notice).
 - A small gray "Made by @moonpie24" footer under every screen.
 
 **Auto-refresh**: the screen on top re-fetches its data while the app is in view (paused while
@@ -94,8 +101,10 @@ matches, and alerts are in-app too.
    (enforced by `UNIQUE (request_id, responder_id)`): after a decline they can't
    take the same request again.
 8. Closing (the author's **Cancel request**, only while `open`) or expiring a request declines
-   all its pending deals; until the expiry job runs, a pending deal on a past-due request is
-   already shown as declined. Requests that are `in_progress` can't be closed and don't expire.
+   all its pending deals. A background job marks past-due open requests `expired` every
+   5 minutes; until it runs, a past-due request already shows as expired and a pending deal on
+   it as declined. Requests that are `in_progress` can't be closed, edited or extended, and
+   don't expire.
 
 All state transitions happen in a single DB transaction with a status check in the
 `WHERE` clause (e.g. `UPDATE deals SET status='accepted' WHERE id=? AND status='pending'`),
@@ -127,10 +136,11 @@ All routes require valid initData.
 - `GET  /api/requests` (filters as query params)
 - `POST /api/requests`
 - `GET  /api/requests/{id}`
-- `PATCH /api/requests/{id}` (edit / extend — author only)
+- `PATCH /api/requests/{id}` (author only, `open` only: `amount` / `rate_value` to edit,
+  `extend_days` (1 or 3) to extend)
 - `POST /api/requests/{id}/close` ("Cancel request"; author only, `open` requests only)
-- `GET  /api/my/requests` (the caller's requests on the board; pending responders for each
-  request planned for milestone 4)
+- `GET  /api/my/requests` (the caller's requests on the board, then those expired in the last
+  24 h; each with `pending_count`, which only the author sees)
 - `POST /api/requests/{id}/take` (creates a pending deal for the caller)
 - `POST /api/requests/{id}/report`
 - `GET  /api/my/deals`

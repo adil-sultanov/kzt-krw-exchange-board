@@ -1,11 +1,12 @@
 // A small in-app navigation stack. The Mini App lives at a single URL (Telegram uses the
 // URL hash for launch data), so screens are React state rather than routes.
 import { createContext, useContext, useEffect, useRef } from "react";
-import type { CreatedRequest } from "./types";
+import type { CreatedRequest, ExchangeRequest, RequestTerms } from "./types";
 
 export type Route =
   | { name: "board" }
-  | { name: "new" }
+  | { name: "new"; prefill?: RequestTerms }
+  | { name: "edit"; request: ExchangeRequest }
   | { name: "created"; result: CreatedRequest }
   | { name: "request"; id: number }
   | { name: "deal"; id: number }

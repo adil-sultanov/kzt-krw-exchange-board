@@ -20,7 +20,9 @@ function Screen(props: { route: Route; active: boolean }) {
     case "board":
       return <Board active={active} />;
     case "new":
-      return <NewRequest active={active} />;
+      return <NewRequest active={active} prefill={route.prefill} />;
+    case "edit":
+      return <NewRequest active={active} edit={route.request} />;
     case "created":
       return <Created active={active} result={route.result} />;
     case "request":
