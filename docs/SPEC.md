@@ -36,12 +36,14 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   - **Cancel request** (see Deal flow).
   - Requests that expired in the last 24 h are listed with **Post again**: New request
     prefilled with the same terms, subject to the usual limits.
-- **My deals** — first the viewer's requests on the board (open, not expired), each with
-  **Extend** and **Cancel request**, marked when it leaves the board within 6 h or when people
-  are waiting for an answer. Then every deal the user is part of, in sections: *Active deals*
-  (`pending` or `accepted`; deals in progress come first and are outlined, then deals waiting
-  on the viewer, then the rest), *Completed*, *Declined*. Last, *Expired in the last day*,
-  with **Post again**. My deals and the deal screen have a **Refresh** button.
+- **My deals** — sections *Active*, *Completed*, *Declined*, then *Expired in the last day*
+  (with **Post again**). *Active* holds the user's `pending` / `accepted` deals and their
+  requests on the board (open, not expired), each request once, with **Extend** and **Cancel
+  request**: a pending deal on it isn't listed apart. When someone took it, the card reads
+  "Waiting for your answer" and opens that deal (the first taker's; after answering, the next
+  one's); otherwise it's marked when it leaves the board within 6 h. Order: deals in progress
+  (outlined), then what's waiting on the viewer, then the rest, their idle requests last.
+  My deals and the deal screen have a **Refresh** button.
 - **Profile / About** — name, username and completed deals count, receiving details per
   currency (KZT, KRW): bank and account holder, and account / card / phone number (max 100 chars
   each), disclaimer, links to Terms and Privacy (the footer credits the author).

@@ -2,6 +2,9 @@
 
 import logging
 import math
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 import httpx
 from pydantic import BaseModel
@@ -10,10 +13,43 @@ from app.db import Database, utc_now
 
 logger = logging.getLogger(__name__)
 
-# Free, keyless, updated daily. Returns {"result": "success", "rates": {"KRW": ...}, ...}.
-RATE_SOURCE_URL = "https://open.er-api.com/v6/latest/KZT"
-RATE_SOURCE_NAME = "open.er-api.com"
 FETCH_TIMEOUT = 10.0
+
+
+def _parse_currency_api(data: Any) -> float:
+    # {"date": "...", "kzt": {"krw": ..., ...}}
+    return float(data["kzt"]["krw"])
+
+
+def _parse_er_api(data: Any) -> float:
+    # {"result": "success", "rates": {"KRW": ...}, ...}
+    if data.get("result") != "success":
+        raise ValueError("rate source returned an error")
+    return float(data["rates"]["KRW"])
+
+
+@dataclass(frozen=True)
+class RateSource:
+    name: str
+    url: str
+    parse: Callable[[Any], float]
+
+
+# Free and keyless, tried in order. fawazahmed0/currency-api is the closest to the rate Google
+# shows; its two URLs serve the same data. open.er-api.com is further off but independent.
+RATE_SOURCES = (
+    RateSource(
+        "currency-api",
+        "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/kzt.json",
+        _parse_currency_api,
+    ),
+    RateSource(
+        "currency-api",
+        "https://latest.currency-api.pages.dev/v1/currencies/kzt.json",
+        _parse_currency_api,
+    ),
+    RateSource("open.er-api.com", "https://open.er-api.com/v6/latest/KZT", _parse_er_api),
+)
 
 
 class ReferenceRate(BaseModel):
@@ -42,29 +78,39 @@ async def save_reference_rate(db: Database, rate: float, source: str) -> Referen
     return saved
 
 
-async def fetch_krw_per_kzt(client: httpx.AsyncClient) -> float:
-    response = await client.get(RATE_SOURCE_URL, timeout=FETCH_TIMEOUT)
+async def fetch_krw_per_kzt(client: httpx.AsyncClient, source: RateSource) -> float:
+    response = await client.get(source.url, timeout=FETCH_TIMEOUT)
     response.raise_for_status()
     data = response.json()
-    if not isinstance(data, dict) or data.get("result") != "success":
+    if not isinstance(data, dict):
         raise ValueError("rate source returned an error")
-    rate = float(data["rates"]["KRW"])
+    rate = source.parse(data)
     if not math.isfinite(rate) or rate <= 0:
         raise ValueError("rate source returned an invalid rate")
     return rate
 
 
+async def _fetch_first(client: httpx.AsyncClient) -> tuple[float, str] | None:
+    for source in RATE_SOURCES:
+        try:
+            return await fetch_krw_per_kzt(client, source), source.name
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            logger.warning(
+                "Reference rate fetch from %s failed: %s", source.url, type(exc).__name__
+            )
+    return None
+
+
 async def refresh_reference_rate(
     db: Database, client: httpx.AsyncClient | None = None
 ) -> ReferenceRate | None:
-    """Fetch and store the latest rate. On failure, keep the previous one and return None."""
-    try:
-        if client is None:
-            async with httpx.AsyncClient() as own_client:
-                rate = await fetch_krw_per_kzt(own_client)
-        else:
-            rate = await fetch_krw_per_kzt(client)
-    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-        logger.warning("Reference rate refresh failed: %s", type(exc).__name__)
+    """Fetch and store the latest rate. If all sources fail, keep the previous one; return None."""
+    if client is None:
+        async with httpx.AsyncClient() as own_client:
+            fetched = await _fetch_first(own_client)
+    else:
+        fetched = await _fetch_first(client)
+    if fetched is None:
         return None
-    return await save_reference_rate(db, rate, RATE_SOURCE_NAME)
+    rate, source = fetched
+    return await save_reference_rate(db, rate, source)

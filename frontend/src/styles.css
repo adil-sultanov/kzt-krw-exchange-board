@@ -259,11 +259,25 @@ p {
 /* --- Controls --- */
 
 .segmented {
+  position: relative;
   display: flex;
   background: var(--section-bg);
   border-radius: 12px;
   padding: 3px;
   gap: 3px;
+}
+
+/* The selected option's highlight, one option wide; it slides to the one picked. */
+.segmented-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px - (var(--count) - 1) * 3px) / var(--count));
+  border-radius: 9px;
+  background: var(--button);
+  transform: translateX(calc(var(--index) * (100% + 3px)));
+  transition: transform 0.25s cubic-bezier(0.3, 0.7, 0.4, 1);
 }
 
 .section-body .segmented,
@@ -272,6 +286,7 @@ p {
 }
 
 .segmented button {
+  position: relative;
   flex: 1;
   min-width: 0;
   border: 0;
@@ -281,10 +296,10 @@ p {
   font-size: 14px;
   font-weight: 500;
   white-space: nowrap;
+  transition: color 0.2s;
 }
 
 .segmented button.selected {
-  background: var(--button);
   color: var(--button-text);
   font-weight: 600;
 }
@@ -528,6 +543,30 @@ p {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* Board results: they fade in when the tab or filters change, and the old ones stay up
+   meanwhile. Those are dimmed only if loading takes a moment (the delay), so a fast load
+   just swaps them. */
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: fade-in 0.2s ease-out;
+  transition: opacity 0.15s;
+}
+
+.results.stale {
+  opacity: 0.45;
+  pointer-events: none;
+  transition-delay: 0.2s;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }
 
 .card {
@@ -1116,4 +1155,13 @@ p {
   padding: 4px;
   color: var(--hint);
   font-size: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segmented-thumb,
+  .segmented button,
+  .results {
+    transition: none;
+    animation: none;
+  }
 }

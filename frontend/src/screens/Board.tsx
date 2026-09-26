@@ -22,9 +22,21 @@ import {
   type Rate,
 } from "../types";
 
-const RATE_SOURCE_URL = "https://www.exchangerate-api.com";
+// By the `source` the backend stores with the rate.
+const RATE_SOURCE_URLS: Partial<Record<string, string>> = {
+  "currency-api": "https://github.com/fawazahmed0/exchange-api",
+  "open.er-api.com": "https://www.exchangerate-api.com",
+};
 const MAX_RELOAD = 100; // the API's page size limit
 const AMOUNT_DEBOUNCE_MS = 400;
+
+/** A loaded page of the board, and the filters it's for. */
+interface Results {
+  filters: BoardFilters;
+  items: ExchangeRequest[];
+  /** Goes up with each new set of filters. */
+  key: number;
+}
 
 const NO_FILTERS: BoardFilters = {
   direction: null,
@@ -35,16 +47,23 @@ const NO_FILTERS: BoardFilters = {
 
 function RateCard(props: { rate: Rate | null }) {
   const { rate } = props;
+  const sourceUrl = rate?.source ? RATE_SOURCE_URLS[rate.source] : undefined;
+  const sourceLabel = rate?.source ? t.rate.attribution[rate.source] : undefined;
   return (
     <div className="rate-card">
       <div className="rate-head">
         <span className="rate-title">{t.rate.title}</span>
         {rate?.fetched_at && (
           <span className="hint small">
-            {formatKstShort(rate.fetched_at)} ·{" "}
-            <button type="button" className="link-button" onClick={() => openLink(RATE_SOURCE_URL)}>
-              {t.rate.attribution}
-            </button>
+            {formatKstShort(rate.fetched_at)}
+            {sourceUrl && sourceLabel && (
+              <>
+                {" · "}
+                <button type="button" className="link-button" onClick={() => openLink(sourceUrl)}>
+                  {sourceLabel}
+                </button>
+              </>
+            )}
           </span>
         )}
       </div>
@@ -63,7 +82,7 @@ function RateCard(props: { rate: Rate | null }) {
 export function Board(props: { active: boolean }) {
   const nav = useNav();
   const [filters, setFilters] = useState(NO_FILTERS);
-  const [items, setItems] = useState<ExchangeRequest[] | null>(null);
+  const [shown, setShown] = useState<Results | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +97,7 @@ export function Board(props: { active: boolean }) {
   // Responses to superseded loads (e.g. after a filter change) are ignored.
   const loadSeq = useRef(0);
   const shownCount = useRef(0);
-  shownCount.current = items?.length ?? 0;
+  shownCount.current = shown?.items.length ?? 0;
 
   /** A quiet load (polling) keeps the list if it fails; the next one retries. */
   const load = useCallback(
@@ -88,7 +107,11 @@ export function Board(props: { active: boolean }) {
       try {
         const page = await api.board(filters, 0, limit);
         if (seq !== loadSeq.current) return;
-        setItems(page);
+        setShown((prev) => ({
+          filters,
+          items: page,
+          key: prev && prev.filters !== filters ? prev.key + 1 : (prev?.key ?? 0),
+        }));
         setHasMore(page.length === limit);
         setError(null);
       } catch (e) {
@@ -109,8 +132,8 @@ export function Board(props: { active: boolean }) {
     [],
   );
 
+  // New filters: what's shown stays up until their results are in (see `stale`).
   useEffect(() => {
-    setItems(null);
     void load(BOARD_PAGE_SIZE);
   }, [load]);
 
@@ -144,15 +167,15 @@ export function Board(props: { active: boolean }) {
   }, [minText, maxText]);
 
   const loadMore = async () => {
-    if (!items) return;
+    if (!shown) return;
     const seq = loadSeq.current;
     setLoadingMore(true);
     try {
-      const page = await api.board(filters, items.length);
+      const page = await api.board(filters, shown.items.length);
       if (seq !== loadSeq.current) return;
       // New requests may shift pages; skip any already shown.
-      const seen = new Set(items.map((item) => item.id));
-      setItems([...items, ...page.filter((item) => !seen.has(item.id))]);
+      const seen = new Set(shown.items.map((item) => item.id));
+      setShown({ ...shown, items: [...shown.items, ...page.filter((item) => !seen.has(item.id))] });
       setHasMore(page.length === BOARD_PAGE_SIZE);
     } catch (e) {
       if (seq === loadSeq.current) setError(errorCode(e));
@@ -190,6 +213,10 @@ export function Board(props: { active: boolean }) {
   const sorts = getting ? BOARD_SORTS : BOARD_SORTS.filter((sort) => !AMOUNT_SORTS.includes(sort));
   const activeFilterCount =
     (filters.minAmount !== null || filters.maxAmount !== null ? 1 : 0) + (filters.sort !== "newest" ? 1 : 0);
+  // Results for the previous tab or filters, while the new ones load. If that fails, they're
+  // hidden rather than passed off as the new ones.
+  const stale = shown !== null && shown.filters !== filters;
+  const results = stale && error ? null : shown;
 
   return (
     <div className="screen">
@@ -277,28 +304,32 @@ export function Board(props: { active: boolean }) {
       )}
 
       {error && <ErrorBox code={error} onRetry={() => void load(shownCount.current)} />}
-      {!items && !error && <SkeletonList />}
-      {items && items.length === 0 && (
-        <Empty
-          title={activeFilterCount > 0 ? t.board.emptyFiltered : t.board.empty}
-          hint={t.board.emptyHint}
-        />
-      )}
-      {items && items.length > 0 && (
-        <div className="list">
-          {items.map((item) => (
-            <RequestCard
-              key={item.id}
-              request={item}
-              onOpen={() => nav.push({ name: "request", id: item.id })}
+      {!shown && !error && <SkeletonList />}
+      {results && (
+        // A new key for new filters' results, so they fade in.
+        <div key={results.key} className={stale ? "results stale" : "results"} aria-busy={stale}>
+          {results.items.length === 0 ? (
+            <Empty
+              title={activeFilterCount > 0 ? t.board.emptyFiltered : t.board.empty}
+              hint={t.board.emptyHint}
             />
-          ))}
+          ) : (
+            <div className="list">
+              {results.items.map((item) => (
+                <RequestCard
+                  key={item.id}
+                  request={item}
+                  onOpen={() => nav.push({ name: "request", id: item.id })}
+                />
+              ))}
+            </div>
+          )}
+          {hasMore && (
+            <button type="button" className="secondary-button" disabled={loadingMore || stale} onClick={loadMore}>
+              {loadingMore ? t.loading : t.board.loadMore}
+            </button>
+          )}
         </div>
-      )}
-      {items && hasMore && (
-        <button type="button" className="secondary-button" disabled={loadingMore} onClick={loadMore}>
-          {loadingMore ? t.loading : t.board.loadMore}
-        </button>
       )}
     </div>
   );

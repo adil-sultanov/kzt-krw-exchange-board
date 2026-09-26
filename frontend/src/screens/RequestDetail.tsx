@@ -169,7 +169,7 @@ export function RequestDetail(props: { id: number; active: boolean }) {
       ) : !open ? (
         <Notice tone="warning">{t.detail.notOpen}</Notice>
       ) : request.is_own ? (
-        <Notice>{pending > 0 ? t.detail.ownPending(pending) : t.detail.own}</Notice>
+        <Notice>{pending > 0 ? t.detail.ownPending : t.detail.own}</Notice>
       ) : null}
       {ownOpen && expiresSoon(request) && <Notice tone="warning">{t.detail.expiresSoon}</Notice>}
       {blocked && <Notice tone="warning">{blocked}</Notice>}

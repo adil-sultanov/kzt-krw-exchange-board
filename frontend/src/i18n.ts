@@ -35,7 +35,11 @@ export const t = {
     pair: (rate: string) => `1 ₸ = ${rate} ₩`,
     inverse: (rate: string) => `1 ₩ = ${rate} ₸`,
     unavailable: "Market rate unavailable right now.",
-    attribution: "ExchangeRate-API",
+    // By the `source` the backend stores with the rate.
+    attribution: {
+      "currency-api": "Currency API",
+      "open.er-api.com": "ExchangeRate-API",
+    } as Partial<Record<string, string>>,
     // Always for the viewer: "better" means they get more than at the market rate.
     market: "Market rate",
     better: (percent: string) => `${percent} better rate`,
@@ -82,8 +86,7 @@ export const t = {
     until: (time: string) => `until ${time}`,
     status: "Status",
     own: "It's on the board. The bot will message you when someone takes it.",
-    ownPending: (count: number) =>
-      (count === 1 ? "1 person wants" : `${count} people want`) + " to take it. Answer in My deals.",
+    ownPending: "Someone took it and is waiting for your answer in My deals.",
     expiresSoon: "It leaves the board soon. Extend it to keep it up.",
     edit: "Edit",
     editLocked: "Someone is waiting for your answer, so the amount and rate can't change until you answer.",
@@ -226,10 +229,7 @@ export const t = {
     title: "My deals",
     empty: "No deals yet",
     emptyHint: "Take a request on the board, or post your own.",
-    onBoard: "Your requests on the board",
     expired: "Expired in the last day",
-    waiting: (count: number) =>
-      count === 1 ? "1 person waiting for your answer" : `${count} people waiting for your answer`,
     expiresSoon: (left: string) => `Leaves the board in ${left}`,
     active: "Active",
     noActive: "No active deals right now.",

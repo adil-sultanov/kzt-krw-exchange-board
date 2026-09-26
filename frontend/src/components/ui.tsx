@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type CSSProperties, type ReactNode, useRef, useState } from "react";
 import { formatAmountInput } from "../format";
 import { errorMessage, t } from "../i18n";
 import { AUTHOR_URL, AUTHOR_USERNAME } from "../links";
@@ -10,15 +10,18 @@ interface Option<T> {
   label: string;
 }
 
-/** Pick exactly one option. */
+/** Pick exactly one option. The highlight slides over to the one picked. */
 export function Segmented<T extends string | number>(props: {
   options: Option<T>[];
   value: T;
   onChange: (value: T) => void;
   label?: string;
 }) {
+  const index = props.options.findIndex((option) => option.value === props.value);
+  const thumb = { "--count": props.options.length, "--index": index } as CSSProperties;
   return (
     <div className="segmented" role="radiogroup" aria-label={props.label}>
+      {index >= 0 && <span className="segmented-thumb" style={thumb} aria-hidden="true" />}
       {props.options.map((option) => (
         <button
           key={String(option.value)}
@@ -27,7 +30,8 @@ export function Segmented<T extends string | number>(props: {
           aria-checked={option.value === props.value}
           className={option.value === props.value ? "selected" : ""}
           onClick={() => {
-            if (option.value !== props.value) haptic("selection");
+            if (option.value === props.value) return;
+            haptic("selection");
             props.onChange(option.value);
           }}
         >
@@ -125,18 +129,23 @@ export function AmountInput(props: {
   );
 }
 
-// Keeps the spinner up long enough to see, even when the reload is instant.
-const MIN_SPIN_MS = 500;
-
-/** A round refresh button that spins until `onRefresh` settles. */
+/**
+ * A round refresh button that spins until `onRefresh` settles. The spin always ends on a full
+ * turn (so at least one, even when the reload is instant): stopping mid-turn would snap it back.
+ */
 export function RefreshButton(props: { onRefresh: () => Promise<unknown> }) {
-  const [busy, setBusy] = useState(false);
+  const [spinning, setSpinning] = useState(false);
+  const loading = useRef(false);
   const refresh = async () => {
-    if (busy) return;
-    setBusy(true);
+    if (spinning) return;
+    loading.current = true;
+    setSpinning(true);
     haptic("selection");
-    await Promise.all([props.onRefresh(), new Promise((resolve) => setTimeout(resolve, MIN_SPIN_MS))]);
-    setBusy(false);
+    try {
+      await props.onRefresh();
+    } finally {
+      loading.current = false;
+    }
   };
   return (
     <button
@@ -144,10 +153,13 @@ export function RefreshButton(props: { onRefresh: () => Promise<unknown> }) {
       className="icon-button"
       aria-label={t.refresh}
       title={t.refresh}
-      disabled={busy}
+      disabled={spinning}
       onClick={() => void refresh()}
+      onAnimationIteration={() => {
+        if (!loading.current) setSpinning(false);
+      }}
     >
-      <RefreshIcon spinning={busy} />
+      <RefreshIcon spinning={spinning} />
     </button>
   );
 }

@@ -89,8 +89,9 @@ the Vite dev server. The app only works inside Telegram, since it needs signed l
 Backend tests: `.venv/bin/pytest`; lint: `.venv/bin/ruff check .`.
 Frontend type check: `npm run typecheck`.
 
-The reference rate comes from [ExchangeRate-API](https://www.exchangerate-api.com)'s free
-endpoint and is refreshed hourly.
+The reference rate comes from [Currency API](https://github.com/fawazahmed0/exchange-api)
+(closest to the rate Google shows), falling back to [ExchangeRate-API](https://www.exchangerate-api.com)'s
+free endpoint, and is refreshed hourly.
 
 ## Roadmap
 
