@@ -81,11 +81,15 @@ so keep copies private (`rsync -a user@server:exchange-app/backups/ ./exchange-b
 To restore: `docker compose stop app`, copy a backup over `data/exchange.db`, delete
 `data/exchange.db-wal` / `-shm`, then `docker compose start app`.
 
-## Roadmap
+## Screenshots
 
-- [x] Board, requests, deal flow, matches, reports and admin tools
-- [x] Docker deploy, daily backups, group-only access
-- [ ] Screenshots
+| Board | New request | Posted | My deals |
+|:-:|:-:|:-:|:-:|
+| <img src="docs/screenshots/board.jpg" width="200"> | <img src="docs/screenshots/new-request.jpg" width="200"> | <img src="docs/screenshots/posted.jpg" width="200"> | <img src="docs/screenshots/my-deals.jpg" width="200"> |
+
+| Deal in progress | Deal completed | Bot |
+|:-:|:-:|:-:|
+| <img src="docs/screenshots/deal.jpg" width="200"> | <img src="docs/screenshots/deal-completed.jpg" width="200"> | <img src="docs/screenshots/bot.jpg" width="200"> |
 
 ## License
 

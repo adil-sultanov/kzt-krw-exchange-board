@@ -37,7 +37,7 @@ when stored data or behavior changes.
 - API errors: `{"detail": "<machine_code>"}`; frontend maps codes in `frontend/src/i18n.ts`.
 - UI English only; all UI strings in `i18n.ts`. Use Telegram theme vars, MainButton, BackButton.
 - Python 3.12, type hints, ruff, pytest. TypeScript strict, no unexplained `any`.
-- Keep README current (setup, screenshots, roadmap).
+- Keep README current (features, setup, deploy, screenshots).
 
 ## Stack
 FastAPI + aiosqlite (SQLite, WAL) + aiogram 3 polling in one process; APScheduler; React + Vite + TS.
@@ -65,4 +65,4 @@ Docker + HTTPS for deploy; `cloudflared` tunnel for local dev.
 6. ✅ Reports (on requests and accepted deals; "disputes" are deal reports), in-app admin
    screen (resolve, ban/unban), owner-editable About & support page
 7. ✅ Docker + HTTPS deploy (Compose + Caddy), daily backups (SQLite backup API).
-   Deployed to production. Left: README screenshots
+   Deployed to production; README screenshots
