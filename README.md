@@ -112,8 +112,11 @@ jobs in a single process, which SQLite and bot polling need) behind
 4. **Configure** on the server:
    ```bash
    git clone <repo> exchange-app && cd exchange-app
-   cp .env.example .env   # set BOT_TOKEN (production bot), DOMAIN, OWNER_ID, ADMIN_IDS
+   cp .env.example .env   # set BOT_TOKEN (production bot), DOMAIN, OWNER_ID, ADMIN_IDS, GROUP_ID
    ```
+   To limit the board to your group chat, add the bot to the group as an admin with every
+   permission turned off, then find the group's ID in `docker compose logs app | grep GROUP_ID`
+   and set `GROUP_ID` (then `docker compose up -d`).
    Compose sets `WEBAPP_URL` to `https://$DOMAIN` and the container paths for the database
    and backups itself, so the other `.env` values can stay as they are.
 5. **Start**: `docker compose up -d --build`. Migrations run at startup, and the bot sets its

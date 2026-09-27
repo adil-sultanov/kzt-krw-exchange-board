@@ -12,13 +12,14 @@ from app.bot.handlers import router
 from app.bot.middleware import UserRefreshMiddleware
 from app.config import Settings
 from app.db import Database
+from app.services.membership import Membership
 
 logger = logging.getLogger(__name__)
 
 
-def build_dispatcher(settings: Settings, db: Database) -> Dispatcher:
-    # settings and db are injected into handlers and middleware as keyword data.
-    dp = Dispatcher(settings=settings, db=db)
+def build_dispatcher(settings: Settings, db: Database, membership: Membership) -> Dispatcher:
+    # settings, db and membership are injected into handlers and middleware as keyword data.
+    dp = Dispatcher(settings=settings, db=db, membership=membership)
     # Registered after aiogram's own context middleware, so event_from_user is set.
     dp.update.outer_middleware(UserRefreshMiddleware())
     dp.include_router(router)
@@ -28,10 +29,10 @@ def build_dispatcher(settings: Settings, db: Database) -> Dispatcher:
 class BotRunner:
     """Polls for updates. The Bot (and its HTTP session) is owned by the app lifespan."""
 
-    def __init__(self, settings: Settings, db: Database, bot: Bot) -> None:
+    def __init__(self, settings: Settings, db: Database, bot: Bot, membership: Membership) -> None:
         self.settings = settings
         self.bot = bot
-        self.dp = build_dispatcher(settings, db)
+        self.dp = build_dispatcher(settings, db, membership)
         self._task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:

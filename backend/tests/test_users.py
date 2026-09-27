@@ -1,11 +1,13 @@
 from unittest.mock import AsyncMock
 
+from aiogram.types import Chat
 from aiogram.types import User as AiogramUser
 
 from app.bot.middleware import UserRefreshMiddleware
 from app.config import Settings
 from app.db import Database
 from app.models import TelegramUser
+from app.services.membership import Membership
 from app.services.users import upsert_user
 
 
@@ -73,12 +75,51 @@ async def test_admins_added_in_the_app_stay_admins(db: Database) -> None:
     assert (await upsert_user(db, TelegramUser(id=1), config_admin=False)).is_admin
 
 
-async def test_bot_middleware_refreshes_user(db: Database, settings: Settings) -> None:
+BEK_BOT_USER = AiogramUser(id=5, is_bot=False, first_name="Bek", username="bek_new")
+
+
+async def run_middleware(
+    db: Database, settings: Settings, chat_type: str, membership: Membership
+) -> dict[str, object]:
+    """Runs the middleware for an update from Bek; returns the data the handler got."""
     handler = AsyncMock(return_value="handled")
-    from_user = AiogramUser(id=5, is_bot=False, first_name="Bek", username="bek_new")
-    result = await UserRefreshMiddleware()(
-        handler, object(), {"event_from_user": from_user, "db": db, "settings": settings}
-    )
-    assert result == "handled"
+    data = {
+        "event_from_user": BEK_BOT_USER,
+        "event_chat": Chat(id=5, type=chat_type),
+        "db": db,
+        "settings": settings,
+        "membership": membership,
+    }
+    assert await UserRefreshMiddleware()(handler, object(), data) == "handled"
     handler.assert_awaited_once()
+    return handler.await_args.args[1]
+
+
+def fixed_lookup(member: bool) -> Membership:
+    async def lookup(group_id: int, user_id: int) -> bool:
+        return member
+
+    return Membership(-100, lookup)
+
+
+async def test_bot_middleware_refreshes_user(db: Database, settings: Settings) -> None:
+    data = await run_middleware(db, settings, "private", Membership(None, None))
+    assert data["is_member"] is True
+    assert await username_of(db, 5) == "bek_new"
+
+
+async def test_bot_middleware_ignores_group_updates(db: Database, settings: Settings) -> None:
+    data = await run_middleware(db, settings, "supergroup", Membership(None, None))
+    assert data["is_member"] is False
+    async with db.conn.execute("SELECT COUNT(*) FROM users") as cursor:
+        assert (await cursor.fetchone())[0] == 0
+
+
+async def test_bot_middleware_skips_non_members(db: Database, settings: Settings) -> None:
+    data = await run_middleware(db, settings, "private", fixed_lookup(False))
+    assert data["is_member"] is False
+    async with db.conn.execute("SELECT COUNT(*) FROM users") as cursor:
+        assert (await cursor.fetchone())[0] == 0
+    data = await run_middleware(db, settings, "private", fixed_lookup(True))
+    assert data["is_member"] is True
     assert await username_of(db, 5) == "bek_new"

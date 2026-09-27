@@ -6,7 +6,6 @@ import {
   formatAmountInput,
   formatDecimalInput,
   formatRatePair,
-  formatSide,
   parseAmount,
   parseDecimal,
 } from "../format";
@@ -37,6 +36,9 @@ import {
  */
 type RateChoice = "market" | "ask" | "offer";
 const RATE_CHOICES: RateChoice[] = ["market", "ask", "offer"];
+
+/** The side whose amount the viewer typed; the other is converted from it at the request's rate. */
+type TypedSide = "pay" | "get";
 
 interface FormErrors {
   amount?: string;
@@ -74,6 +76,7 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
     return terms ? formValues(terms) : null;
   });
   const [buy, setBuy] = useState<Currency>(initial?.buy ?? "KRW");
+  const [typed, setTyped] = useState<TypedSide>("pay");
   const [amountText, setAmountText] = useState(initial?.amountText ?? "");
   const [rateChoice, setRateChoice] = useState<RateChoice>(initial?.rateChoice ?? "market");
   const [percentText, setPercentText] = useState(initial?.percentText ?? "");
@@ -89,12 +92,17 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
 
   const direction = postDirection(buy);
   const pay = giveCurrency(direction);
-  const amount = parseAmount(amountText);
+  const typedAmount = parseAmount(amountText);
   const percent = rateChoice === "market" ? 0 : parseDecimal(percentText);
   // The offset is on the rate (KRW per 1 KZT): more KRW per KZT is more for whoever gets KRW.
   const gainSign = rateChoice === "offer" ? -1 : 1;
   const offset = (buy === "KRW" ? gainSign : -gainSign) * (percent ?? 0);
   const effectiveRate = referenceRate !== null ? referenceRate * (1 + offset / 100) : null;
+  const converted = (value: number | null, from: Currency) =>
+    value !== null && effectiveRate !== null ? Math.round(convert(value, from, effectiveRate)) : null;
+  // The request's amount is always what the author pays.
+  const amount = typed === "pay" ? typedAmount : converted(typedAmount, buy);
+  const gets = typed === "get" ? typedAmount : converted(amount, pay);
 
   const errors: FormErrors = {};
   if (amount === null || amount <= 0) errors.amount = t.form.errors.amount;
@@ -161,10 +169,29 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
   }
 
   const shown = showErrors ? errors : {};
-  const gets =
-    amount !== null && effectiveRate !== null && !errors.amount && !errors.rate
-      ? convert(amount, pay, effectiveRate)
-      : null;
+  const amountInput = (side: TypedSide) => {
+    const value = side === typed ? amountText : formatAmountInput(String((side === "pay" ? amount : gets) ?? ""));
+    const invalid = Boolean(shown.amount) && side === typed;
+    const label = side === "pay" ? t.side.pay : t.side.get;
+    // Without a market rate, only the amount paid can be entered.
+    const disabled = side === "get" && effectiveRate === null;
+    return (
+      <input
+        className={invalid ? "exchange-input invalid" : "exchange-input"}
+        inputMode="numeric"
+        autoComplete="off"
+        aria-label={label}
+        aria-invalid={invalid}
+        disabled={disabled}
+        placeholder={disabled ? t.side.unknown("").trim() : t.form.amountPlaceholder}
+        value={value}
+        onChange={(event) => {
+          setTyped(side);
+          setAmountText(formatAmountInput(event.target.value));
+        }}
+      />
+    );
+  };
   return (
     <div className="screen">
       {edit ? (
@@ -186,24 +213,12 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
       <ExchangeBox
         pay={
           <ExchangeRow label={t.side.pay} currency={pay}>
-            <input
-              className={shown.amount ? "exchange-input invalid" : "exchange-input"}
-              inputMode="numeric"
-              autoComplete="off"
-              aria-label={t.side.pay}
-              aria-invalid={Boolean(shown.amount)}
-              placeholder={t.form.amountPlaceholder}
-              value={amountText}
-              onChange={(event) => setAmountText(formatAmountInput(event.target.value))}
-            />
+            {amountInput("pay")}
           </ExchangeRow>
         }
         get={
           <ExchangeRow label={t.side.get} currency={buy} emphasis>
-            <span className={gets === null ? "hint" : undefined}>
-              {/* "≈ 0" until there's an amount; "—" without a market rate to convert at. */}
-              {formatSide({ currency: buy, amount: gets ?? (referenceRate === null ? null : 0), approx: true })}
-            </span>
+            {amountInput("get")}
           </ExchangeRow>
         }
       />

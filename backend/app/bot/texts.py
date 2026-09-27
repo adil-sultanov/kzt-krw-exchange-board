@@ -12,6 +12,10 @@ WELCOME = (
     f"Made by {AUTHOR}\n"
     f"Terms: {TERMS_URL}"
 )
+NOT_MEMBER = (
+    "This board is only for members of our group chat. "
+    "Ask a member to add you, then send /start again."
+)
 OPEN_APP_BUTTON = "Open exchange board"
 OPEN_DEAL_BUTTON = "Open deal"
 MENU_BUTTON = "Board"

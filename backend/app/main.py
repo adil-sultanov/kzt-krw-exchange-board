@@ -13,12 +13,14 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
+from app.bot.membership import telegram_member_lookup
 from app.bot.notifier import BotNotifier
 from app.bot.runner import BotRunner
 from app.config import Settings, get_settings
 from app.db import Database
 from app.jobs import build_scheduler
 from app.services.errors import ServiceError
+from app.services.membership import Membership
 from app.services.notifications import NullNotifier
 
 
@@ -34,11 +36,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await db.connect()
         await db.migrate()
         app.state.db = db
-        bot = Bot(settings.bot_token.get_secret_value()) if settings.run_bot else None
-        notifier = BotNotifier(bot, settings.webapp_url) if bot is not None else None
+        # The membership check needs the Bot API even when the bot itself isn't running.
+        needs_bot = settings.run_bot or settings.group_id is not None
+        bot = Bot(settings.bot_token.get_secret_value()) if needs_bot else None
+        membership = Membership(
+            settings.group_id, telegram_member_lookup(bot) if bot is not None else None
+        )
+        app.state.membership = membership
+        notifier = BotNotifier(bot, settings.webapp_url) if bot and settings.run_bot else None
         app.state.notifier = notifier or NullNotifier()
         scheduler = build_scheduler(db, settings) if settings.run_jobs else None
-        bot_runner = BotRunner(settings, db, bot) if bot is not None else None
+        bot_runner = BotRunner(settings, db, bot, membership) if bot and settings.run_bot else None
         try:
             if scheduler is not None:
                 scheduler.start()

@@ -22,7 +22,8 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   closest in size first); on their own expired request, **Post again**.
   Usernames are never shown before the author accepts.
 - **New request** — form: what the author buys ("Buy KRW" posts `KZT_KRW`, "Buy KZT" posts
-  `KRW_KZT`), the amount they pay with a live "You get ≈" preview, rate (Market (default) /
+  `KRW_KZT`), the amount they pay or the amount they get (either can be typed; the other is
+  converted at the request's rate, and the request stores what they pay, rounded), rate (Market (default) /
   Ask more % (better for the author) / Offer more % (better for whoever takes it), up to 20%;
   always relative to the reference rate, no fixed rates),
   duration (1 / 3 days), with a note that the request leaves the board once the author accepts
@@ -90,7 +91,8 @@ for navigation where natural. Deep links into a screen use the Mini App `startap
 parameter (e.g. `req_123`, `deal_45`).
 
 ## Bot messages
-The bot answers `/start` with a button that opens the Mini App, sets the chat menu button, and
+The bot answers `/start` (in private chats only) with a button that opens the Mini App, or
+without one for non-members of the group (see Group members only), sets the chat menu button, and
 sends exactly two notifications, each with an **Open deal** button (a `web_app` button whose URL
 carries `?startapp=deal_<id>`):
 - to the author, when someone takes their request (amount, direction, the responder's
@@ -149,6 +151,19 @@ so double taps and races between two open copies of the app are harmless.
   deals, requests, or messages.
 - A username is required to create or take a request (the Contact link needs it).
   Explain this in the UI to users without one. Do not rely on `tg://user?id=` links.
+
+## Group members only
+- With `GROUP_ID` set, only members of that Telegram group chat can use the board: every API
+  request checks membership (`getChatMember`) before anything else, and non-members get
+  `not_group_member` (403) and no user row. `ADMIN_IDS` / `OWNER_ID` are always allowed.
+- A confirmed member is cached for 10 minutes, but any change to someone's membership in the
+  group (a `chat_member` update: joining, leaving, removal, restriction) drops them from the
+  cache, so leaving ends access at once. Non-members aren't cached, so joining works on the next try. If Telegram can't be reached,
+  a previously confirmed member keeps access and anyone else gets `membership_check_failed`.
+- The bot is in the group as an admin with no permissions (non-admin bots may not see every
+  member). It never posts there and ignores the group's messages; it only logs the group's
+  ID when it's added and uses membership changes to update the cache. `/start` from a non-member gets a short "members only" reply, no button.
+- Unset (`GROUP_ID=`): open to everyone, as in development.
 
 ## Trust and moderation
 - Completed-deal count shown on requests and on the author's view of each responder

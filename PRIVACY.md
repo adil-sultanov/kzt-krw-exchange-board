@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-09-27_
+_Last updated: 2026-09-28_
 
 This policy explains what the KZT ↔ KRW Exchange Board Telegram bot and Mini App (the
 "Service") stores and why. The Service is operated by Adil Sultanov
@@ -17,6 +17,12 @@ This policy explains what the KZT ↔ KRW Exchange Board Telegram bot and Mini A
   whether your account is banned.
 - The Service stores **no donation data**: donations (optional, on the About page) happen
   outside the Service.
+
+- The Service is only for members of one Telegram group chat. When you use it, the Service
+  asks Telegram whether you're a member of that group, and nothing else about it; it keeps
+  the answer in memory for up to 10 minutes. The bot notices when someone joins or leaves the
+  group, only to update that answer. It never reads or stores the group's messages. If you're
+  not a member, nothing about you is stored.
 
 ## Who can see what
 - Requests on the board show no name or username, only your completed-deal count.

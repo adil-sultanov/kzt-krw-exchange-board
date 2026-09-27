@@ -1,12 +1,14 @@
 # Terms of Use
 
-_Last updated: 2026-09-27_
+_Last updated: 2026-09-28_
 
 These terms apply to the KZT ↔ KRW Exchange Board Telegram bot and Mini App (the
 "Service"), operated by Adil Sultanov ([@moonpie24](https://t.me/moonpie24)). By using the
 Service you agree to them. If you don't agree, don't use it.
 
 ## What the Service is
+- The Service is only for members of the operator's Telegram group chat. Leaving the group
+  ends access.
 - A **free noticeboard** where people post and find requests to exchange KZT and KRW.
 - It **never holds, transfers, or processes money** and takes no fees or commissions.
   It is not an exchange, a payment service, a bank, or an escrow.

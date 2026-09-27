@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     admin_ids: Annotated[list[int], NoDecode] = []
     # The app's owner: always an admin, and the only one who can edit the About page.
     owner_id: int | None = None
+    # Only members of this Telegram group chat may use the board (anyone if unset). The bot
+    # must be in the group, ideally as an admin with no permissions.
+    group_id: int | None = None
     cors_origins: Annotated[list[str], NoDecode] = []
     init_data_max_age: int = 24 * 60 * 60
     run_bot: bool = True
@@ -44,7 +47,7 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
-    @field_validator("backup_dir", mode="before")
+    @field_validator("backup_dir", "group_id", mode="before")
     @classmethod
     def _empty_is_none(cls, value: Any) -> Any:
         return None if isinstance(value, str) and not value.strip() else value

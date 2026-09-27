@@ -411,6 +411,8 @@ const errorMessages: Record<string, string> = {
   auth_required: "Please open this app from Telegram.",
   init_data_invalid: "Couldn't verify your Telegram login. Please reopen the app.",
   init_data_expired: "Your session has expired. Please reopen the app.",
+  not_group_member: "This board is only for members of our group chat. Ask a member to add you, then try again.",
+  membership_check_failed: "Couldn't check your group membership. Please try again in a minute.",
   invalid_input: "Some fields are invalid. Please check and try again.",
   username_required: t.form.usernameRequired,
   user_banned: t.form.banned,

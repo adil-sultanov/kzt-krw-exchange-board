@@ -31,3 +31,7 @@ class ConflictError(ServiceError):
 
 class RateLimitedError(ServiceError):
     status_code = 429
+
+
+class UnavailableError(ServiceError):
+    status_code = 503

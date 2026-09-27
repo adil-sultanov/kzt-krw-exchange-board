@@ -7,7 +7,8 @@ Schema source of truth: `backend/app/migrations/`.
 ## Hard rules
 - Never holds or moves money; users pay each other privately. **Free forever**: no fees or
   monetization (Korean FX law / visa risk). The only exception is voluntary donations on the
-  About page, which never unlock features. No group-chat integration.
+  About page, which never unlock features. No group-chat integration beyond the membership check
+  (`GROUP_ID`): the bot never posts in, or stores anything from, the group.
 - The bot sends only two messages: "someone took your request" (to the author) and "your deal
   was accepted" (to the responder), plus its `/start` reply. Every other update is in-app only.
 - Users identified only by `telegram_id`. `username` is a nullable, non-unique cache refreshed
