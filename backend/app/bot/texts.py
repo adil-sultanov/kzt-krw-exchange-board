@@ -6,11 +6,11 @@ AUTHOR = "@moonpie24"
 TERMS_URL = "https://github.com/adil-sultanov/kzt-krw-exchange-board/blob/main/TERMS.md"
 
 WELCOME = (
-    "Hi! This is a free noticeboard for students exchanging KZT ↔ KRW.\n\n"
-    "Post a request or find one on the board. The bot messages you when someone takes "
-    "your request and when your deal is accepted; everything else is in the app. "
-    "The app never handles money: you agree and pay each other directly.\n\n"
-    f"Made by {AUTHOR} · Terms: {TERMS_URL}"
+    "A free noticeboard for students exchanging KZT ↔ KRW.\n\n"
+    "Post a request or take one from the board. Payments are made directly between users; "
+    "the app never handles money.\n\n"
+    f"Made by {AUTHOR}\n"
+    f"Terms: {TERMS_URL}"
 )
 OPEN_APP_BUTTON = "Open exchange board"
 OPEN_DEAL_BUTTON = "Open deal"
