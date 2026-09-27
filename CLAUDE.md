@@ -64,4 +64,4 @@ Docker + HTTPS for deploy; `cloudflared` tunnel for local dev.
 6. ✅ Reports (on requests and accepted deals; "disputes" are deal reports), in-app admin
    screen (resolve, ban/unban), owner-editable About & support page
 7. ✅ Docker + HTTPS deploy (Compose + Caddy), daily backups (SQLite backup API).
-   Left: first production deploy, README screenshots
+   Deployed to production. Left: README screenshots

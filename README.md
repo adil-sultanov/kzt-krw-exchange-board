@@ -159,7 +159,8 @@ _Coming soon._
       and posting limits, an owner-editable About & support page, and owner tools (admins by
       username, deleting deals)
 - [x] Docker deployment (Compose, Caddy for HTTPS) and daily backups
-- [ ] First production deploy, screenshots
+- [x] First production deploy
+- [ ] Screenshots
 
 ## Disclaimer
 
