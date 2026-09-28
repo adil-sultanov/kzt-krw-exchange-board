@@ -12,6 +12,8 @@ import { FAST_POLL_MS, usePolling } from "../polling";
 import { confirm, haptic } from "../telegram";
 import {
   type Deal,
+  dealTerms,
+  dealWhole,
   type ExchangeRequest,
   expiresSoon,
   extendOptions,
@@ -20,16 +22,22 @@ import {
   sortDeals,
 } from "../types";
 
+/** "Counter offer · …" on a counter offer's card. */
+function marked(deal: Deal, text: string): string {
+  return deal.partial ? t.myDeals.counter(text) : text;
+}
+
 function dealStatus(deal: Deal): CardStatus {
   if (needsMyAction(deal)) {
-    return { text: deal.status === "pending" ? t.deal.needsAnswer : t.deal.needsConfirm, tone: "action" };
+    const text = deal.status === "pending" ? t.deal.needsAnswer : t.deal.needsConfirm;
+    return { text: marked(deal, text), tone: "action" };
   }
-  return { text: t.dealStatus[deal.status], tone: "active" };
+  return { text: marked(deal, t.dealStatus[deal.status]), tone: "active" };
 }
 
 /** On the author's own request: someone took it, or it's about to leave the board. */
 function ownRequestStatus(request: ExchangeRequest, taker: Deal | undefined): CardStatus | null {
-  if (taker) return { text: t.deal.needsAnswer, tone: "action" };
+  if (taker) return { text: marked(taker, t.deal.needsAnswer), tone: "action" };
   const left = timeLeft(request.expires_at);
   return left && expiresSoon(request) ? { text: t.myDeals.expiresSoon(left), tone: "action" } : null;
 }
@@ -56,25 +64,31 @@ function Group(props: { title: string; children: ReactNode }) {
   );
 }
 
-// Whether the viewer folded the Completed list, remembered on this device.
-const COMPLETED_FOLDED_KEY = "myDeals.completedFolded";
+// Whether the viewer folded the Completed or Declined list, remembered on this device.
+const FOLDED_KEYS = {
+  completed: "myDeals.completedFolded",
+  declined: "myDeals.declinedFolded",
+} as const;
 
-function readFolded(): boolean {
+function readFolded(key: string): boolean {
   try {
-    return localStorage.getItem(COMPLETED_FOLDED_KEY) === "1";
+    return localStorage.getItem(key) === "1";
   } catch {
     return false;
   }
 }
 
-/** A group the viewer can hide and show by tapping its title, which shows how many it holds. */
-function FoldableGroup(props: { title: string; count: number; children: ReactNode }) {
-  const [folded, setFolded] = useState(readFolded);
+/**
+ * A group the viewer can hide and show by tapping its title, which shows how many it holds. The
+ * choice is remembered under `storageKey`.
+ */
+function FoldableGroup(props: { title: string; count: number; storageKey: string; children: ReactNode }) {
+  const [folded, setFolded] = useState(() => readFolded(props.storageKey));
   const toggle = () => {
     haptic("selection");
     setFolded(!folded);
     try {
-      localStorage.setItem(COMPLETED_FOLDED_KEY, folded ? "0" : "1");
+      localStorage.setItem(props.storageKey, folded ? "0" : "1");
     } catch {
       // Not remembered then; it still folds.
     }
@@ -163,7 +177,8 @@ export function MyDeals(props: { active: boolean }) {
   const dealCard = (deal: Deal) => (
     <RequestCard
       key={deal.id}
-      request={deal.request}
+      request={dealTerms(deal)}
+      whole={dealWhole(deal)}
       status={isActiveDeal(deal) ? dealStatus(deal) : null}
       highlight={deal.status === "accepted"}
       profile={deal.other_profile}
@@ -176,7 +191,9 @@ export function MyDeals(props: { active: boolean }) {
   const requestCard = (request: ExchangeRequest, taker: Deal | undefined) => (
     <div key={`request-${request.id}`} className="card-stack">
       <RequestCard
-        request={request}
+        // Someone's counter offer waiting for an answer: what it asks for, over the whole request.
+        request={taker?.partial ? dealTerms(taker) : request}
+        whole={taker?.partial ? request : null}
         status={ownRequestStatus(request, taker)}
         profile={taker ? taker.other_profile : undefined}
         deals={taker ? taker.other_completed_deals : undefined}
@@ -222,13 +239,18 @@ export function MyDeals(props: { active: boolean }) {
 
   // Pending deals on a request on the board are answered from its card. (Closing a request
   // declines them, so they're all there; any other one keeps its own card, just in case.)
+  // Accepted counter offers on it are listed as deals of their own.
   const rank = (item: ActiveItem) => {
     if ("deal" in item) return item.deal.status === "accepted" ? 0 : needsMyAction(item.deal) ? 1 : 2;
     return item.taker || expiresSoon(item.request) ? 1 : 3;
   };
   const active: ActiveItem[] = [
     ...deals
-      .filter((deal) => isActiveDeal(deal) && !(deal.role === "author" && onBoardIds.has(deal.request.id)))
+      .filter(
+        (deal) =>
+          isActiveDeal(deal) &&
+          !(deal.status === "pending" && deal.role === "author" && onBoardIds.has(deal.request.id)),
+      )
       .map((deal) => ({ deal })),
     ...onBoard.map((request) => ({ request, taker: firstTaker(lists?.deals ?? [], request.id) })),
   ].sort((a, b) => rank(a) - rank(b));
@@ -253,11 +275,15 @@ export function MyDeals(props: { active: boolean }) {
         </Group>
       )}
       {completed.length > 0 && (
-        <FoldableGroup title={t.myDeals.completed} count={completed.length}>
+        <FoldableGroup title={t.myDeals.completed} count={completed.length} storageKey={FOLDED_KEYS.completed}>
           {completed.map(dealCard)}
         </FoldableGroup>
       )}
-      {declined.length > 0 && <Group title={t.myDeals.declined}>{declined.map(dealCard)}</Group>}
+      {declined.length > 0 && (
+        <FoldableGroup title={t.myDeals.declined} count={declined.length} storageKey={FOLDED_KEYS.declined}>
+          {declined.map(dealCard)}
+        </FoldableGroup>
+      )}
       {expired.length > 0 && (
         <Group title={t.myDeals.expired}>
           {expired.map((request) => (

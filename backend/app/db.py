@@ -86,7 +86,9 @@ class Database:
         """Apply pending `NNN_name.sql` files in order. Returns the versions applied.
 
         Each file runs in its own transaction, so migration files must not contain
-        BEGIN/COMMIT themselves.
+        BEGIN/COMMIT themselves. Foreign keys are off while they run, so a migration can
+        rebuild a table others refer to (SQLite's way of changing a table's constraints);
+        `PRAGMA foreign_key_check` must find nothing broken before it commits.
         """
         await self.conn.execute(
             "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -100,21 +102,32 @@ class Database:
         for version, name, sql in migrations:
             if version in applied:
                 continue
-            # executescript commits any open transaction first, so BEGIN/COMMIT go in the
-            # script itself. The file name is safe to inline: it matched _MIGRATION_NAME.
+            # executescript commits any open transaction first, so BEGIN goes in the script
+            # itself. The file name is safe to inline: it matched _MIGRATION_NAME.
             script = (
                 f"BEGIN IMMEDIATE;\n{sql}\n;\n"
                 "INSERT INTO schema_migrations (version, name, applied_at) "
                 f"VALUES ({version}, '{name}', '{utc_now()}');\n"
-                "COMMIT;"
             )
             async with self._write_lock:
+                # Takes effect only outside a transaction.
+                await self.conn.execute("PRAGMA foreign_keys=OFF")
                 try:
                     await self.conn.executescript(script)
+                    async with self.conn.execute("PRAGMA foreign_key_check") as cursor:
+                        broken = await cursor.fetchall()
+                    if broken:
+                        raise RuntimeError(
+                            f"Migration {version} breaks foreign keys in: "
+                            + ", ".join(sorted({row[0] for row in broken}))
+                        )
+                    await self.conn.execute("COMMIT")
                 except BaseException:
                     if self.conn.in_transaction:
                         await self.conn.execute("ROLLBACK")
                     raise
+                finally:
+                    await self.conn.execute("PRAGMA foreign_keys=ON")
             newly_applied.append(version)
         return newly_applied
 

@@ -23,6 +23,7 @@ function DealCard(props: { deal: ListedDeal; busy: boolean; onDelete: (() => voi
       <div className="admin-head">
         <strong>
           {t.admin.deal(deal.id)} · {t.dealStatus[deal.status]}
+          {deal.partial && ` · ${t.admin.counterOffer}`}
         </strong>
         <span className="hint small">{formatKst(deal.updated_at)}</span>
       </div>
@@ -115,7 +116,7 @@ export function AllDeals(props: { active: boolean }) {
   const [busy, setBusy] = useState(false);
 
   const remove = async (deal: ListedDeal) => {
-    if (busy || !(await confirm(t.allDeals.deleteConfirm(deal.id, deal.status === "accepted")))) return;
+    if (busy || !(await confirm(t.allDeals.deleteConfirm(deal.id, deal.status === "accepted" && !deal.partial)))) return;
     setBusy(true);
     setActionError(null);
     try {

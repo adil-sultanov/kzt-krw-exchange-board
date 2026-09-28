@@ -9,6 +9,7 @@ export type Route =
   | { name: "edit"; request: ExchangeRequest }
   | { name: "created"; result: CreatedRequest }
   | { name: "request"; id: number }
+  | { name: "counter"; request: ExchangeRequest }
   | { name: "deal"; id: number }
   | { name: "deals" }
   | { name: "profile" }

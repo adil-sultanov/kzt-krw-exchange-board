@@ -80,12 +80,16 @@ export const t = {
     needsAction: (count: number) =>
       count === 1 ? "1 thing needs your attention" : `${count} things need your attention`,
     profile: "Profile",
+    take: "Take request",
+    counterOffer: "Counter offer",
   },
 
   card: {
     deals: (count: number) => (count === 1 ? "1 deal" : `${count} deals`),
     timeLeft: (left: string) => `${left} left`,
     openProfile: (username: string) => `Open @${username}'s Telegram profile`,
+    /** Under a counter offer's amounts: the request it's part of, from the viewer's side. */
+    whole: (pay: string, get: string) => `Whole request: ${pay} → ${get}`,
   },
 
   detail: {
@@ -95,11 +99,14 @@ export const t = {
     timeLeft: "Time left",
     until: (time: string) => `until ${time}`,
     status: "Status",
-    own: "It's on the board. The bot will message you when someone takes it.",
-    ownPending: "Someone took it and is waiting for your answer in My deals.",
+    own: "It's on the board. The bot will message you when someone takes it or sends a counter offer.",
+    ownPending: "Someone is waiting for your answer in My deals.",
     expiresSoon: "It leaves the board soon. Extend it to keep it up.",
     edit: "Edit",
-    editLocked: "Someone is waiting for your answer, so the amount and rate can't change until you answer.",
+    editLocked: "Someone is waiting for your answer, so the terms can't change until you answer.",
+    counterOffers: "Counter offers",
+    counterFrom: (money: string) => `From ${money}`,
+    counterOff: "Whole amount only",
     postAgain: "Post again",
     matches: "Requests going the other way",
     responded: {
@@ -110,7 +117,8 @@ export const t = {
     } satisfies Record<DealStatus, string>,
     notOpen: "This request is no longer on the board.",
     removed: "An admin took this request off the board.",
-    take: "I'll take it",
+    take: "Take request",
+    counterOffer: "Counter offer",
     takeConfirm: (get: string, pay: string) =>
       `You get ${get} and pay ${pay}.\n\n` +
       "The author gets a message. If they accept, you'll see each other's contact and payment details.",
@@ -136,6 +144,7 @@ export const t = {
 
   deal: {
     title: "Deal",
+    counterTitle: "Counter offer",
     needsAnswer: "Waiting for your answer",
     needsConfirm: "Confirm you got the money",
     them: "With",
@@ -145,6 +154,11 @@ export const t = {
       authorPending: {
         title: "Someone wants to take your request",
         body: "Accept to swap Telegram contacts and payment details.",
+      },
+      authorCounter: {
+        title: "Someone sent a counter offer",
+        body: (part: string, whole: string) =>
+          `They want ${part} of the ${whole} you pay. Accept to swap contacts; the rest stays on the board.`,
       },
       responderPending: {
         title: "Waiting for the author",
@@ -179,6 +193,9 @@ export const t = {
     acceptConfirm:
       "Accept this person? You'll swap contacts, and your request leaves the board. " +
       "Anyone else waiting is declined. An accepted deal can't be cancelled.",
+    acceptCounterConfirm: (left: string) =>
+      `Accept this counter offer? You'll swap contacts, and ${left} stays on the board. ` +
+      "Offers for more than that are declined. An accepted deal can't be cancelled.",
     decline: "Decline",
     declineConfirm: "Decline this person? They can't take this request again.",
     contact: "Message on Telegram",
@@ -193,6 +210,23 @@ export const t = {
     report: "Report a problem",
     reported:
       "You reported this deal, and an admin will review it. It stays open until you both confirm.",
+  },
+
+  counter: {
+    title: "Counter offer",
+    intro:
+      "Ask for part of this request. If the author accepts, you exchange that part, " +
+      "and the rest stays on the board for others.",
+    yourOffer: "Your offer",
+    range: (min: string, max: string) => `From ${min} up to ${max}.`,
+    submit: "Send counter offer",
+    unavailable: "You can't send a counter offer on this request any more.",
+    off: "The author only deals in the whole amount. You can take the whole request instead.",
+    errors: {
+      amount: "Enter an amount.",
+      belowMinimum: (money: string) => `At least ${money}: the author's minimum.`,
+      aboveAmount: (money: string) => `At most ${money}, the whole request.`,
+    },
   },
 
   report: {
@@ -258,6 +292,7 @@ export const t = {
     emptyResolved: "No resolved reports yet",
     request: (id: number) => `Request #${id}`,
     deal: (id: number) => `Deal #${id}`,
+    counterOffer: "Counter offer",
     from: "From",
     about: "About",
     author: "author",
@@ -422,6 +457,7 @@ export const t = {
     noActive: "No active deals right now.",
     completed: "Completed",
     declined: "Declined",
+    counter: (status: string) => `Counter offer · ${status}`,
     show: "Show",
     hide: "Hide",
   },
@@ -446,7 +482,14 @@ export const t = {
     rateNow: (rate: string) => `Now ${rate}`,
     duration: "Keep on the board",
     days: (days: number) => (days === 1 ? "1 day" : `${days} days`),
-    durationHint: "It leaves the board early once you accept someone or cancel it.",
+    durationHint: "It leaves the board early once you accept someone for all of it, or cancel it.",
+    counter: "Counter offers",
+    counterHint:
+      "Let people take just part of your request: set the smallest part you'd accept. " +
+      "Leave it empty to deal only in the whole amount.",
+    counterLabel: "Smallest part",
+    counterPlaceholder: "Optional",
+    counterRange: (min: string, max: string) => `People can ask for ${min} up to ${max}.`,
     submit: "Post request",
     save: "Save changes",
     errors: {
@@ -454,6 +497,7 @@ export const t = {
       amountTooLarge: "That amount is too large.",
       percent: "Enter a percentage.",
       percentRange: (max: number) => `At most ${max}%.`,
+      counterAboveAmount: "At most the amount you pay.",
     },
     usernameRequired:
       "You need a Telegram username to post a request: it's how the other person contacts you. " +
@@ -498,7 +542,11 @@ const errorMessages: Record<string, string> = {
   already_responded: "You've already taken this request.",
   request_not_open: "This request is no longer open.",
   request_has_responders:
-    "Someone is waiting for your answer, so the amount and rate can't change. Answer them first.",
+    "Someone is waiting for your answer, so the terms can't change. Answer them first.",
+  counter_offers_off: "The author only deals in the whole amount.",
+  counter_below_minimum: "That's below the author's minimum counter offer.",
+  counter_above_amount: "That's more than what's left of this request.",
+  counter_minimum_too_large: "The smallest counter offer can't be more than the amount you pay.",
   already_extended: "It's already on the board for longer than that.",
   deal_not_found: "This deal doesn't exist.",
   not_request_author: "Only the request's author can do this.",

@@ -3,13 +3,31 @@ import { api, type DealAction, errorCode } from "../api";
 import { RequestExchange } from "../components/Exchange";
 import { CheckIcon, FlagIcon } from "../components/icons";
 import { ReceiveHint } from "../components/ReceiveHint";
+import { WholeRequest } from "../components/RequestCard";
 import { CopyButton, ErrorBox, Loading, Notice, Row, TitleWithRefresh } from "../components/ui";
-import { describeRateGain, formatKst, formatProfile, formatRatePair, formatSide, rateTone } from "../format";
+import {
+  describeRateGain,
+  formatKst,
+  formatMoney,
+  formatProfile,
+  formatRatePair,
+  formatSide,
+  rateTone,
+} from "../format";
 import { t } from "../i18n";
 import { useNav, useReactivated } from "../nav";
 import { FAST_POLL_MS, usePolling } from "../polling";
 import { confirm, haptic, type MainButtonConfig, openTelegramLink, useMainButton } from "../telegram";
-import { type Contact, type Deal, isActiveDeal, viewerRateGain, viewerSides } from "../types";
+import {
+  type Contact,
+  type Deal,
+  dealTerms,
+  dealWhole,
+  giveCurrency,
+  isActiveDeal,
+  viewerRateGain,
+  viewerSides,
+} from "../types";
 
 type Busy = DealAction | "contact" | null;
 /** `action` asks something of the viewer, `neutral` is waiting or over. */
@@ -19,10 +37,14 @@ type BannerTone = "action" | "neutral" | "success";
 function banner(deal: Deal): { text: { title: string; body: string }; tone: BannerTone } {
   const b = t.deal.banner;
   switch (deal.status) {
-    case "pending":
-      return deal.role === "author"
-        ? { text: b.authorPending, tone: "action" }
-        : { text: b.responderPending, tone: "neutral" };
+    case "pending": {
+      if (deal.role !== "author") return { text: b.responderPending, tone: "neutral" };
+      if (!deal.partial) return { text: b.authorPending, tone: "action" };
+      // The request's amount is what's still on the board, all of which the author pays.
+      const currency = giveCurrency(deal.request.direction);
+      const body = b.authorCounter.body(formatMoney(deal.amount, currency), formatMoney(deal.request.amount, currency));
+      return { text: { title: b.authorCounter.title, body }, tone: "action" };
+    }
     case "accepted":
       if (deal.my_confirmed) return { text: b.waitingForThem, tone: "neutral" };
       return { text: deal.other_confirmed ? b.otherConfirmed : b.accepted, tone: "action" };
@@ -131,9 +153,13 @@ export function DealScreen(props: { id: number; active: boolean }) {
   const accepted = deal?.status === "accepted";
   let mainButton: MainButtonConfig | null = null;
   if (authorPending) {
+    const left = deal.request.amount - deal.amount;
+    const question = deal.partial
+      ? t.deal.acceptCounterConfirm(formatMoney(left, giveCurrency(deal.request.direction)))
+      : t.deal.acceptConfirm;
     mainButton = {
       text: t.deal.accept,
-      onClick: () => void act("accept", t.deal.acceptConfirm),
+      onClick: () => void act("accept", question),
       loading: busy === "accept",
     };
   } else if (accepted) {
@@ -144,13 +170,19 @@ export function DealScreen(props: { id: number; active: boolean }) {
   if (error) return <div className="screen"><ErrorBox code={error} onRetry={load} /></div>;
   if (!deal) return <div className="screen"><Loading /></div>;
 
-  const { pay, get } = viewerSides(deal.request);
-  const gain = viewerRateGain(deal.request);
+  const terms = dealTerms(deal);
+  const whole = dealWhole(deal);
+  const { pay, get } = viewerSides(terms);
+  const gain = viewerRateGain(terms);
   const { text, tone } = banner(deal);
   const otherTag = formatProfile(deal.other_profile);
   return (
     <div className="screen">
-      <TitleWithRefresh eyebrow={t.deal.title} title={t.buy[get.currency]} onRefresh={load} />
+      <TitleWithRefresh
+        eyebrow={deal.partial ? t.deal.counterTitle : t.deal.title}
+        title={t.buy[get.currency]}
+        onRefresh={load}
+      />
 
       <div className={`banner ${tone}`}>
         <p className="banner-title">{text.title}</p>
@@ -159,7 +191,8 @@ export function DealScreen(props: { id: number; active: boolean }) {
       {actionError && <ErrorBox code={actionError} />}
       {isActiveDeal(deal) && <ReceiveHint currency={get.currency} />}
 
-      <RequestExchange request={deal.request} />
+      <RequestExchange request={terms} />
+      {whole && <WholeRequest request={whole} className="center" />}
 
       {accepted && contact && (
         <div className="pay-to">

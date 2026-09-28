@@ -48,9 +48,14 @@ def deal_requested(deal: DealOut) -> str:
     gives: Currency = "KZT" if request.direction == "KZT_KRW" else "KRW"
     buys: Currency = "KRW" if gives == "KZT" else "KZT"
     who = _profile(deal.other_profile)
+    wants = (
+        f"sent a counter offer: {_money(deal.amount, gives)} of the "
+        f"{_money(request.amount, gives)} you're exchanging for {buys} {FLAG[buys]}"
+        if deal.partial
+        else f"wants to take your request: buy {buys} {FLAG[buys]} for {_money(deal.amount, gives)}"
+    )
     return (
-        f"🔔 {who or 'Someone'} wants to take your request: "
-        f"buy {buys} {FLAG[buys]} for {_money(request.amount, gives)}.\n"
+        f"🔔 {who or 'Someone'} {wants}.\n"
         f"They have {_deals(deal.other_completed_deals)}. "
         "Open the deal to accept or decline."
     )
@@ -63,6 +68,6 @@ def deal_accepted(deal: DealOut) -> str:
     pays: Currency = "KRW" if gets == "KZT" else "KZT"
     return (
         "✅ Your deal was accepted: "
-        f"you get {_money(request.amount, gets)} {FLAG[gets]} and pay in {pays} {FLAG[pays]}.\n"
+        f"you get {_money(deal.amount, gets)} {FLAG[gets]} and pay in {pays} {FLAG[pays]}.\n"
         "Open the deal to message them and see where to pay."
     )

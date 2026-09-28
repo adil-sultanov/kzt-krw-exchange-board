@@ -17,10 +17,13 @@ reposting, and there was no way to tell who had reliably completed exchanges bef
 - **Live market rate**: requests follow the reference rate, ± a few % if you like
 - **Post a request** by typing what you pay *or* what you get; it expires after 1 or 3 days
 - **Deals**: take a request → the author accepts → both see each other's contact
+- **Counter offers**: ask for part of a request (at least the author's optional minimum); once
+  accepted, the rest stays on the board with its amount reduced
 - **Profiles**: name, university and year of enrollment, shown as a tag on every request and
   deal ("Adil Sultanov, UNIST, 2022"); needed to post or take a request
 - **Saved receiving details** (bank, account), shown only to the other side of an accepted deal
-- **Bot notifications** only when someone takes your request and when your deal is accepted
+- **Bot notifications** only when someone takes your request (or sends a counter offer) and
+  when your deal is accepted
 - **Matches** going the other way, shown after posting
 - **Trust**: completed-deal counts, reports, admin review and bans; admins see every request
   on the board and can take any of them off it

@@ -11,7 +11,8 @@ This policy explains what the KZT ↔ KRW Exchange Board Telegram bot and Mini A
   username, and first name. The username is refreshed each time you use the Service.
 - **Your profile**: the first and last name, university and year of enrollment you enter
   in the app. They're needed to post or take a request.
-- **Your requests and deals**: amounts, rates, statuses, and times.
+- **Your requests and deals**: amounts (including the smallest counter offer you accept, and
+  the part a counter offer asks for), rates, statuses, and times.
 - **Receiving details** you choose to add in your profile: a bank and account holder name, and
   an account, card or phone number (for example, a Kaspi number or a Korean bank account).
 - **Reports** you submit: the request or deal, the user it's about, the reason you picked,
@@ -32,8 +33,8 @@ This policy explains what the KZT ↔ KRW Exchange Board Telegram bot and Mini A
   check who they'd trade with. Your profile is also shown to the other person in each of
   your deals. Your Telegram ID is not shown.
 - Your **receiving details** are shown only to the other person in a deal, and only after
-  the request's author accepts it. That's also when someone who took your request gets a
-  button to message you.
+  the request's author accepts it. That's also when someone who took your request (or sent a
+  counter offer on it) gets a button to message you.
 - The operator and admins see reports in the app: the reporter's and the reported user's
   Telegram ID, username, name, profile, completed-deal count, and the request or deal
   involved. They never see anyone's receiving details there. Reported users aren't told who
@@ -47,8 +48,9 @@ This policy explains what the KZT ↔ KRW Exchange Board Telegram bot and Mini A
 - The operator can access the database to run the Service and to handle reports.
 
 Your data is never sold or shared with third parties for advertising. There is no analytics
-or tracking. The bot messages you only when someone takes your request (the message shows their
-profile: name, university and year of enrollment) and when your deal is accepted. These
+or tracking. The bot messages you only when someone takes your request or sends a counter offer on it (the
+message shows their profile: name, university and year of enrollment) and when your deal is
+accepted. These
 messages never contain anyone's username. The Service runs inside Telegram, and
 [Telegram's privacy policy](https://telegram.org/privacy) applies to Telegram itself.
 

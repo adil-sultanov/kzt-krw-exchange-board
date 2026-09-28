@@ -80,6 +80,8 @@ export const api = {
   updateRequest: (id: number, body: RequestUpdate) =>
     call<ExchangeRequest>("PATCH", `/requests/${id}`, body),
   takeRequest: (id: number) => call<Deal>("POST", `/requests/${id}/take`),
+  /** Asks for part of someone else's request (`amount` in its currency). */
+  counterOffer: (id: number, amount: number) => call<Deal>("POST", `/requests/${id}/counter`, { amount }),
   /** Takes the viewer's own open request off the board ("Cancel request"). */
   closeRequest: (id: number) => call<ExchangeRequest>("POST", `/requests/${id}/close`),
   /** The viewer's own requests on the board now, and those that expired in the last day. */

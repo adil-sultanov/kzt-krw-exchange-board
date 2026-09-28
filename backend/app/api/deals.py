@@ -1,7 +1,7 @@
 from fastapi import APIRouter, status
 
 from app.api.deps import CurrentUser, DbDep, NotifierDep
-from app.models import ContactOut, DealOut, ReportCreate, ReportOut
+from app.models import ContactOut, CounterOfferCreate, DealOut, ReportCreate, ReportOut
 from app.services import deals, reports
 
 router = APIRouter()
@@ -12,6 +12,13 @@ async def take_request(
     user: CurrentUser, db: DbDep, notifier: NotifierDep, request_id: int
 ) -> DealOut:
     return await deals.take_request(db, user, request_id, notifier)
+
+
+@router.post("/requests/{request_id}/counter", status_code=status.HTTP_201_CREATED)
+async def counter_offer(
+    user: CurrentUser, db: DbDep, notifier: NotifierDep, request_id: int, body: CounterOfferCreate
+) -> DealOut:
+    return await deals.take_request(db, user, request_id, notifier, body.amount)
 
 
 @router.get("/my/deals")

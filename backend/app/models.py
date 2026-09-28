@@ -211,10 +211,15 @@ class RequestCreate(BaseModel):
     # Percent offset from the reference (market) rate: 0 is the market rate itself.
     rate_value: float = 0
     duration_days: DurationDays
+    # The smallest counter offer the author accepts, in the request's currency (at most the
+    # amount). Null turns counter offers off.
+    min_counter_amount: Amount | None = None
 
     @model_validator(mode="after")
     def _check_rate(self) -> Self:
         self.rate_value = _check_offset(self.rate_value)
+        if self.min_counter_amount is not None and self.min_counter_amount > self.amount:
+            raise ValueError("minimum counter offer above the amount")
         return self
 
 
@@ -222,19 +227,26 @@ class RequestUpdate(BaseModel):
     """The author's changes to their open request. A field left out is unchanged.
 
     `extend_days` moves the expiry to that many days from now (it never shortens it).
+    `min_counter_amount` set to null turns counter offers off.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     amount: Amount | None = None
     rate_value: float | None = None
+    min_counter_amount: Amount | None = None
     extend_days: DurationDays | None = None
 
     @model_validator(mode="after")
     def _check(self) -> Self:
         if self.rate_value is not None:
             self.rate_value = _check_offset(self.rate_value)
-        if self.amount is None and self.rate_value is None and self.extend_days is None:
+        if (
+            self.amount is None
+            and self.rate_value is None
+            and self.extend_days is None
+            and "min_counter_amount" not in self.model_fields_set
+        ):
             raise ValueError("nothing to change")
         return self
 
@@ -250,6 +262,8 @@ class RequestOut(BaseModel):
     rate_value: float
     # KRW per 1 KZT at the current reference rate (null while none is available).
     effective_rate: float | None
+    # The smallest counter offer the author accepts (null: counter offers are off).
+    min_counter_amount: int | None
     status: RequestStatus
     # An admin took it off the board (status `closed`), or it was closed by its author's ban.
     removed_by_admin: bool
@@ -290,6 +304,14 @@ class RateOut(BaseModel):
 # --- Deals ---
 
 
+class CounterOfferCreate(BaseModel):
+    """Part of someone else's request, in its currency (what the responder gets)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    amount: Amount
+
+
 class DealOut(BaseModel):
     """A deal as one of its two participants sees it. Never includes usernames."""
 
@@ -297,6 +319,14 @@ class DealOut(BaseModel):
     status: DealStatus
     # The viewer's side: 'author' posted the request, 'responder' took it.
     role: DealRole
+    # What the deal is for, in the request's currency: the whole request, or the part a
+    # counter offer asked for. `partial`: less than the whole request, whose rest stays on the
+    # board once it's accepted.
+    amount: int
+    partial: bool
+    # The whole request the deal is part of, in its currency: what's on the board now while the
+    # deal is pending, else what it was when the deal was accepted (or declined).
+    request_amount: int
     other_completed_deals: int
     other_profile: Profile | None
     # Whether each side confirmed receiving the other's payment.
@@ -383,6 +413,8 @@ class AdminRequestOut(BaseModel):
 class AdminDealOut(BaseModel):
     id: int
     status: DealStatus
+    # A counter offer for part of the request (whose amount is then the deal's).
+    partial: bool
     author_confirmed: bool
     responder_confirmed: bool
 
@@ -427,10 +459,12 @@ class AdminAdd(BaseModel):
 
 
 class ListedDealOut(BaseModel):
-    """Any deal, as admins see it in All deals. Never includes receiving details."""
+    """Any deal, as admins see it in All deals. Never includes receiving details. The
+    request's `amount` is the deal's (part of it, for a counter offer)."""
 
     id: int
     status: DealStatus
+    partial: bool
     author_confirmed: bool
     responder_confirmed: bool
     created_at: str

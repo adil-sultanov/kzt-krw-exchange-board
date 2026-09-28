@@ -1,5 +1,5 @@
-"""Deals: taking a request, accepting / declining responders, confirming payment
-received, contact links.
+"""Deals: taking a request (or part of it, as a counter offer), accepting / declining
+responders, confirming payment received, contact links.
 
 Every state change runs in one transaction with the expected status in the UPDATE's
 WHERE clause, so double taps and races between two open copies of the app are harmless.
@@ -9,6 +9,12 @@ accepted, after the transaction commits; everything else is shown only in the ap
 An accepted deal can't be cancelled: once contacts are exchanged, money may already have
 moved, and cancelling would let one side back out after being paid. It ends only when
 both sides confirm they received the money.
+
+A counter offer asks for part of a request (at least the author's minimum). Accepting it
+keeps the request on the board with that part taken off its amount; pending offers for more
+than what's left are declined, and its responder may respond to the rest again. Accepting a
+deal for all of what's left (taking the request) puts the request in progress, off the board,
+and it completes with that deal.
 
 Finished deals are deleted a month after they end (the cleanup job); completed-deal counts
 are kept on users, so they don't change.
@@ -33,7 +39,7 @@ from app.models import (
 )
 from app.services.errors import ConflictError, NotFoundError, PermissionDeniedError
 from app.services.notifications import Notifier
-from app.services.requests import get_requests_by_ids
+from app.services.requests import COUNTS_AS_RESPONSE, get_requests_by_ids
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +50,9 @@ MY_DEALS_LIMIT = 100
 
 # A deal with its request's current state.
 _LOAD_DEAL = """
-SELECT d.id, d.request_id, d.author_id, d.responder_id, d.status,
+SELECT d.id, d.request_id, d.author_id, d.responder_id, d.status, d.amount, d.partial,
        d.author_confirmed, d.responder_confirmed,
-       r.status AS request_status, r.expires_at, r.direction
+       r.status AS request_status, r.expires_at, r.direction, r.amount AS request_amount
 FROM deals d
 JOIN requests r ON r.id = d.request_id
 WHERE d.id = ?
@@ -54,7 +60,8 @@ WHERE d.id = ?
 
 # Columns for DealOut, except `request`. :viewer is the caller.
 _SELECT_DEALS = """
-SELECT d.id, d.status, d.request_id, d.created_at, d.updated_at,
+SELECT d.id, d.status, d.amount, d.partial, d.request_amount, d.request_id, d.created_at,
+       d.updated_at,
        CASE WHEN d.author_id = :viewer THEN 'author' ELSE 'responder' END AS role,
        CASE WHEN d.author_id = :viewer THEN d.author_confirmed
             ELSE d.responder_confirmed END AS my_confirmed,
@@ -146,6 +153,9 @@ def _to_out(row: aiosqlite.Row, request: RequestOut) -> DealOut:
     # deal on a past-due request (which can no longer be accepted) is already declined.
     if data["status"] == "pending" and request.status == "expired":
         data["status"] = "declined"
+    # A pending deal is part of what's on the board now.
+    if data["status"] == "pending" or data["request_amount"] is None:
+        data["request_amount"] = max(request.amount, data["amount"])
     return DealOut.model_validate(data)
 
 
@@ -186,8 +196,13 @@ async def get_contact(db: Database, viewer_id: int, deal_id: int) -> ContactOut:
 # --- State changes ---
 
 
-async def take_request(db: Database, user: User, request_id: int, notifier: Notifier) -> DealOut:
-    """Create a pending deal on someone else's open request, with the caller as responder."""
+async def take_request(
+    db: Database, user: User, request_id: int, notifier: Notifier, amount: int | None = None
+) -> DealOut:
+    """Create a pending deal on someone else's open request, with the caller as responder:
+    for all of it, or for `amount` of it (a counter offer, in the request's currency), which
+    must be at least the author's minimum and at most the request's amount.
+    """
     if user.is_banned:
         raise PermissionDeniedError("user_banned")
     if not user.username:
@@ -199,8 +214,8 @@ async def take_request(db: Database, user: User, request_id: int, notifier: Noti
     async with db.transaction() as conn:
         request = await _fetchone(
             conn,
-            "SELECT r.user_id, r.status, r.expires_at, u.is_banned "
-            "FROM requests r JOIN users u ON u.telegram_id = r.user_id WHERE r.id = ?",
+            "SELECT r.user_id, r.status, r.expires_at, r.amount, r.min_counter_amount, "
+            "u.is_banned FROM requests r JOIN users u ON u.telegram_id = r.user_id WHERE r.id = ?",
             (request_id,),
         )
         if request is None or (request["is_banned"] and request["user_id"] != user.telegram_id):
@@ -209,20 +224,31 @@ async def take_request(db: Database, user: User, request_id: int, notifier: Noti
             raise PermissionDeniedError("own_request")
         existing = await _fetchone(
             conn,
-            "SELECT 1 FROM deals WHERE request_id = ? AND responder_id = ?",
+            "SELECT 1 FROM deals WHERE request_id = ? AND responder_id = ? "
+            f"AND {COUNTS_AS_RESPONSE}",
             (request_id, user.telegram_id),
         )
         if existing is not None:
             raise ConflictError("already_responded")
         if request["status"] != "open" or request["expires_at"] <= now:
             raise ConflictError("request_not_open")
+        if amount is None:
+            amount = request["amount"]
+        elif request["min_counter_amount"] is None:
+            raise ConflictError("counter_offers_off")
+        elif amount < request["min_counter_amount"]:
+            raise ConflictError("counter_below_minimum")
+        elif amount > request["amount"]:
+            raise ConflictError("counter_above_amount")
         cursor = await conn.execute(
             """
-            INSERT INTO deals (request_id, author_id, responder_id, created_at, updated_at)
-            SELECT id, user_id, ?, ?, ? FROM requests
-            WHERE id = ? AND status = 'open' AND expires_at > ?
+            INSERT INTO deals (request_id, author_id, responder_id, amount, partial,
+                               request_amount, created_at, updated_at)
+            SELECT id, user_id, :responder, :amount, :amount < amount, amount, :now, :now
+            FROM requests
+            WHERE id = :id AND status = 'open' AND expires_at > :now AND amount >= :amount
             """,
-            (user.telegram_id, now, now, request_id, now),
+            {"responder": user.telegram_id, "amount": amount, "now": now, "id": request_id},
         )
         if cursor.rowcount != 1 or cursor.lastrowid is None:
             raise ConflictError("request_not_open")
@@ -234,7 +260,13 @@ async def take_request(db: Database, user: User, request_id: int, notifier: Noti
 
 
 async def accept_deal(db: Database, actor_id: int, deal_id: int, notifier: Notifier) -> DealOut:
-    """Author accepts a responder: the request goes in progress, other responders are declined."""
+    """Author accepts a responder.
+
+    For all of what's left of the request, it goes in progress and the other responders are
+    declined. For part of it (a counter offer), it stays on the board with that part taken off
+    its amount; other offers stay pending if they still fit in what's left, and are declined if
+    not.
+    """
     now = utc_now()
     async with db.transaction() as conn:
         deal = await _load_for(conn, deal_id, actor_id, "author")
@@ -243,23 +275,49 @@ async def accept_deal(db: Database, actor_id: int, deal_id: int, notifier: Notif
         if deal["request_status"] != "open" or deal["expires_at"] <= now:
             raise ConflictError("request_not_open")
         request_id = deal["request_id"]
+        amount = deal["amount"]
+        partial = amount < deal["request_amount"]
         await _update_one(
             conn,
-            "UPDATE deals SET status = 'accepted', updated_at = ? "
+            "UPDATE deals SET status = 'accepted', partial = ?, request_amount = ?, updated_at = ? "
             "WHERE id = ? AND status = 'pending'",
-            (now, deal_id),
+            (partial, deal["request_amount"], now, deal_id),
         )
-        await _update_one(
-            conn,
-            "UPDATE requests SET status = 'in_progress', updated_at = ? "
-            "WHERE id = ? AND status = 'open' AND expires_at > ?",
-            (now, request_id, now),
-        )
-        await conn.execute(
-            "UPDATE deals SET status = 'declined', updated_at = ? "
-            "WHERE request_id = ? AND status = 'pending'",
-            (now, request_id),
-        )
+        guard = "id = :id AND status = 'open' AND expires_at > :now"
+        params = {"id": request_id, "amount": amount, "now": now}
+        if partial:
+            await _update_one(
+                conn,
+                "UPDATE requests SET amount = amount - :amount, updated_at = :now "
+                f"WHERE {guard} AND amount > :amount",
+                params,
+            )
+            # What's left now: offers for more are declined, one for all of it is no longer
+            # partial.
+            await conn.execute(
+                "UPDATE deals SET status = 'declined', updated_at = :now "
+                "WHERE request_id = :id AND status = 'pending' "
+                "AND amount > (SELECT amount FROM requests WHERE id = :id)",
+                params,
+            )
+            await conn.execute(
+                "UPDATE deals SET partial = 0 "
+                "WHERE request_id = :id AND status = 'pending' "
+                "AND amount = (SELECT amount FROM requests WHERE id = :id)",
+                params,
+            )
+        else:
+            await _update_one(
+                conn,
+                "UPDATE requests SET status = 'in_progress', updated_at = :now "
+                f"WHERE {guard} AND amount = :amount",
+                params,
+            )
+            await conn.execute(
+                "UPDATE deals SET status = 'declined', updated_at = :now "
+                "WHERE request_id = :id AND status = 'pending'",
+                params,
+            )
         responder_id = deal["responder_id"]
 
     notifier.deal_accepted(responder_id, await get_deal(db, responder_id, deal_id))
@@ -285,7 +343,8 @@ async def decline_deal(db: Database, actor_id: int, deal_id: int) -> DealOut:
 
 async def confirm_received(db: Database, actor_id: int, deal_id: int) -> DealOut:
     """The caller received the other side's payment. Once both have, the deal completes:
-    deal and request -> completed, and both users' completed_deals += 1.
+    deal -> completed (and its request, unless the deal was for part of it), and both users'
+    completed_deals += 1.
 
     Confirming twice is a no-op.
     """
@@ -324,12 +383,14 @@ async def _confirm(
     )
     if cursor.rowcount != 1:
         return
-    await _update_one(
-        conn,
-        "UPDATE requests SET status = 'completed', updated_at = ? "
-        "WHERE id = ? AND status = 'in_progress'",
-        (now, deal["request_id"]),
-    )
+    # A counter offer's request goes on without it (on the board, or with another deal).
+    if not deal["partial"]:
+        await _update_one(
+            conn,
+            "UPDATE requests SET status = 'completed', updated_at = ? "
+            "WHERE id = ? AND status = 'in_progress'",
+            (now, deal["request_id"]),
+        )
     await conn.execute(
         "UPDATE users SET completed_deals = completed_deals + 1, updated_at = ? "
         "WHERE telegram_id IN (?, ?)",

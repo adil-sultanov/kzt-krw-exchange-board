@@ -91,6 +91,8 @@ export interface ExchangeRequest {
   rate_value: number;
   /** KRW per 1 KZT at the current reference rate (null while none is available). */
   effective_rate: number | null;
+  /** The smallest counter offer the author accepts, in `amount`'s currency (null: they don't). */
+  min_counter_amount: number | null;
   status: RequestStatus;
   /** An admin took it off the board (status `closed`), or its author's ban did. */
   removed_by_admin: boolean;
@@ -113,6 +115,17 @@ export interface Deal {
   id: number;
   status: DealStatus;
   role: DealRole;
+  /**
+   * What the deal is for, in the request's currency: all of it, or the part a counter offer
+   * asked for. `partial`: less than the whole request, whose rest stays on the board once accepted.
+   */
+  amount: number;
+  partial: boolean;
+  /**
+   * The whole request the deal is part of: what's on the board now while it's pending, else what
+   * it was when the deal was accepted (or declined).
+   */
+  request_amount: number;
   other_completed_deals: number;
   other_profile: Profile | null;
   /** Whether each side confirmed receiving the other's payment. */
@@ -219,7 +232,14 @@ export interface AdminReport {
   reporter: AdminUser;
   reported: AdminUser | null;
   request: AdminRequest;
-  deal: { id: number; status: DealStatus; author_confirmed: boolean; responder_confirmed: boolean } | null;
+  /** `partial`: a counter offer, whose amount is the request's here. */
+  deal: {
+    id: number;
+    status: DealStatus;
+    partial: boolean;
+    author_confirmed: boolean;
+    responder_confirmed: boolean;
+  } | null;
 }
 
 /** Where admin rights come from: OWNER_ID, ADMIN_IDS, or the owner adding them in the app. */
@@ -229,10 +249,12 @@ export interface AdminEntry extends AdminUser {
   source: AdminSource;
 }
 
-/** Any deal, as admins see it in All deals. */
+/** Any deal, as admins see it in All deals. The request's `amount` is the deal's. */
 export interface ListedDeal {
   id: number;
   status: DealStatus;
+  /** A counter offer for part of the request. */
+  partial: boolean;
   author_confirmed: boolean;
   responder_confirmed: boolean;
   created_at: string;
@@ -257,17 +279,23 @@ export interface RequestCreate {
   /** Percent offset from the reference (market) rate; 0 is the market rate. */
   rate_value: number;
   duration_days: DurationDays;
+  /** The smallest counter offer to accept (at most `amount`); null turns counter offers off. */
+  min_counter_amount: number | null;
 }
 
-/** The author's changes to their open request. `extend_days` moves the expiry to that many days from now. */
+/**
+ * The author's changes to their open request. `extend_days` moves the expiry to that many days
+ * from now; `min_counter_amount: null` turns counter offers off.
+ */
 export interface RequestUpdate {
   amount?: number;
   rate_value?: number;
+  min_counter_amount?: number | null;
   extend_days?: DurationDays;
 }
 
 /** A request's terms, e.g. to post an expired one again. */
-export type RequestTerms = Pick<ExchangeRequest, "direction" | "amount" | "rate_value">;
+export type RequestTerms = Pick<ExchangeRequest, "direction" | "amount" | "rate_value" | "min_counter_amount">;
 
 export interface CreatedRequest {
   request: ExchangeRequest;
@@ -334,6 +362,31 @@ export function viewerSides(request: ExchangeRequest): { pay: Side; get: Side } 
 export function viewerRateGain(request: Pick<ExchangeRequest, "direction" | "rate_value" | "is_own">): number {
   const authorGain = request.direction === "KZT_KRW" ? request.rate_value : -request.rate_value;
   return request.is_own ? authorGain : -authorGain;
+}
+
+/** Whether someone else can respond to the request: it's open and the viewer hasn't yet. */
+export function canRespond(request: ExchangeRequest): boolean {
+  return !request.is_own && request.status === "open" && request.my_deal_id === null;
+}
+
+/** Whether the viewer can respond to requests at all: posting and taking need a username and a profile. */
+export function mayRespond(me: Me): boolean {
+  return !me.is_banned && Boolean(me.username) && hasProfile(me);
+}
+
+/** Whether someone can offer to take part of the request rather than all of it. */
+export function takesCounterOffers(request: ExchangeRequest): boolean {
+  return request.min_counter_amount !== null && request.min_counter_amount < request.amount;
+}
+
+/** The request as a deal covers it: its amount is the deal's (a part of it, for a counter offer). */
+export function dealTerms(deal: Deal): ExchangeRequest {
+  return { ...deal.request, amount: deal.amount };
+}
+
+/** For a counter offer, the whole request it's part of (see `Deal.request_amount`); else null. */
+export function dealWhole(deal: Deal): ExchangeRequest | null {
+  return deal.partial ? { ...deal.request, amount: deal.request_amount } : null;
 }
 
 /** Whether the viewer has saved where they receive a currency. */

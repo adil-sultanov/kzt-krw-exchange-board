@@ -37,9 +37,10 @@ BOARD_REQUESTS_LIMIT = 500
 _SELECT_REPORTS = f"""
 SELECT rp.id, rp.category, rp.reason AS note, rp.created_at, rp.resolved, rp.resolved_at,
        rp.reporter_id, rp.reported_id, rp.request_id, rp.deal_id,
-       r.user_id AS author_id, r.direction, r.amount, r.status AS request_status,
+       r.user_id AS author_id, r.direction, COALESCE(d.amount, r.amount) AS amount,
+       r.status AS request_status,
        {REMOVED_BY_ADMIN} AS removed_by_admin,
-       d.status AS deal_status, d.author_confirmed, d.responder_confirmed
+       d.status AS deal_status, d.partial, d.author_confirmed, d.responder_confirmed
 FROM reports rp
 JOIN requests r ON r.id = rp.request_id
 LEFT JOIN deals d ON d.id = rp.deal_id
@@ -98,6 +99,7 @@ def _report_out(row: aiosqlite.Row, users: dict[int, AdminUserOut]) -> AdminRepo
         deal = AdminDealOut(
             id=row["deal_id"],
             status=row["deal_status"],
+            partial=row["partial"],
             author_confirmed=row["author_confirmed"],
             responder_confirmed=row["responder_confirmed"],
         )
@@ -337,9 +339,9 @@ async def remove_admin(db: Database, actor: User, settings: Settings, user_id: i
 # --- All deals and cancelled requests ---
 
 _SELECT_ALL_DEALS = f"""
-SELECT d.id, d.status, d.author_confirmed, d.responder_confirmed, d.created_at, d.updated_at,
-       d.author_id, d.responder_id, d.request_id,
-       r.direction, r.amount, r.status AS request_status, {REMOVED_BY_ADMIN} AS removed_by_admin
+SELECT d.id, d.status, d.partial, d.author_confirmed, d.responder_confirmed, d.created_at,
+       d.updated_at, d.author_id, d.responder_id, d.request_id,
+       r.direction, d.amount, r.status AS request_status, {REMOVED_BY_ADMIN} AS removed_by_admin
 FROM deals d
 JOIN requests r ON r.id = d.request_id
 WHERE d.status IN ({{statuses}})
@@ -366,6 +368,7 @@ async def list_deals(db: Database, actor: User, *, active: bool) -> list[ListedD
         ListedDealOut(
             id=row["id"],
             status=row["status"],
+            partial=row["partial"],
             author_confirmed=row["author_confirmed"],
             responder_confirmed=row["responder_confirmed"],
             created_at=row["created_at"],
@@ -415,7 +418,9 @@ async def list_cancelled_requests(db: Database, actor: User) -> list[CancelledRe
             tuple(takers),
         ) as cursor:
             for deal in await cursor.fetchall():
-                takers[deal["request_id"]].append(deal["responder_id"])
+                # Someone can have taken it again after a counter offer; list them once.
+                if deal["responder_id"] not in takers[deal["request_id"]]:
+                    takers[deal["request_id"]].append(deal["responder_id"])
     user_ids = {row["user_id"] for row in rows}
     user_ids |= {row["closed_by"] for row in rows if row["closed_by"] is not None}
     user_ids |= {user_id for ids in takers.values() for user_id in ids}
@@ -445,22 +450,23 @@ async def delete_deal(db: Database, actor: User, settings: Settings, deal_id: in
     """Delete any deal, e.g. one left stuck when a side disappeared. Nobody is notified; the
     deal just disappears from both sides' My deals.
 
-    Deleting an accepted deal closes its request (in progress until now), since nobody else can
-    take it; it's then listed as cancelled, by the owner. Completed-deal counts don't change.
+    Deleting an accepted deal for a whole request closes the request (in progress until now),
+    since nobody else can take it; it's then listed as cancelled, by the owner. (A counter
+    offer's request stays as it is.) Completed-deal counts don't change.
     Reports on the deal stay, as reports on its request.
     """
     _require_owner(actor, settings)
     now = utc_now()
     async with db.transaction() as conn:
         async with conn.execute(
-            "SELECT request_id, status FROM deals WHERE id = ?", (deal_id,)
+            "SELECT request_id, status, partial FROM deals WHERE id = ?", (deal_id,)
         ) as cursor:
             deal = await cursor.fetchone()
         if deal is None:
             raise NotFoundError("deal_not_found")
         await conn.execute("UPDATE reports SET deal_id = NULL WHERE deal_id = ?", (deal_id,))
         await conn.execute("DELETE FROM deals WHERE id = ?", (deal_id,))
-        if deal["status"] == "accepted":
+        if deal["status"] == "accepted" and not deal["partial"]:
             await conn.execute(
                 "UPDATE requests SET status = 'closed', close_reason = 'deal_deleted', "
                 "closed_by = ?, updated_at = ? WHERE id = ? AND status = 'in_progress'",

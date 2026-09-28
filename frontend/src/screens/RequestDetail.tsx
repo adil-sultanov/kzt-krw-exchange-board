@@ -10,6 +10,7 @@ import { askExtendDays } from "../extend";
 import {
   describeRateGain,
   formatKst,
+  formatMoney,
   formatProfile,
   formatRatePair,
   formatSide,
@@ -23,10 +24,14 @@ import { useNav, useReactivated } from "../nav";
 import { SLOW_POLL_MS, usePolling } from "../polling";
 import { confirm, haptic, type MainButtonConfig, useMainButton } from "../telegram";
 import {
+  canRespond,
   type ExchangeRequest,
   expiresSoon,
   extendOptions,
+  giveCurrency,
   hasProfile,
+  mayRespond,
+  takesCounterOffers,
   viewerRateGain,
   viewerSides,
 } from "../types";
@@ -136,14 +141,7 @@ export function RequestDetail(props: { id: number; active: boolean }) {
     }
   };
 
-  const canTake =
-    request !== null &&
-    !request.is_own &&
-    request.status === "open" &&
-    request.my_deal_id === null &&
-    !me.is_banned &&
-    Boolean(me.username) &&
-    hasProfile(me);
+  const canTake = request !== null && canRespond(request) && mayRespond(me);
   const myDealId = request?.my_deal_id ?? null;
   let mainButton: MainButtonConfig | null = null;
   if (canTake) mainButton = { text: t.detail.take, onClick: take, loading: taking };
@@ -205,6 +203,13 @@ export function RequestDetail(props: { id: number; active: boolean }) {
             <span className={authorTag ? "hint small" : undefined}>{t.deals(request.author_completed_deals)}</span>
           </Row>
         )}
+        {open && (
+          <Row label={t.detail.counterOffers}>
+            {takesCounterOffers(request) && request.min_counter_amount !== null
+              ? t.detail.counterFrom(formatMoney(request.min_counter_amount, giveCurrency(request.direction)))
+              : t.detail.counterOff}
+          </Row>
+        )}
         {left ? (
           <Row label={t.detail.timeLeft}>
             <span>{left}</span>
@@ -219,6 +224,15 @@ export function RequestDetail(props: { id: number; active: boolean }) {
         )}
       </div>
 
+      {canTake && takesCounterOffers(request) && (
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => nav.push({ name: "counter", request })}
+        >
+          {t.detail.counterOffer}
+        </button>
+      )}
       {/* Taking it means receiving the currency the author gives. */}
       {canTake && <ReceiveHint currency={get.currency} />}
 

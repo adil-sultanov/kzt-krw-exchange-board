@@ -11,6 +11,7 @@ from app.db import Database, utc_iso, utc_now
 from app.models import BoardFilters, Profile, RequestCreate, RequestOut, RequestUpdate, User
 from app.services.errors import (
     ConflictError,
+    InvalidInputError,
     NotFoundError,
     PermissionDeniedError,
     RateLimitedError,
@@ -29,9 +30,14 @@ logger = logging.getLogger(__name__)
 # `removed_by_admin`. Requests that aren't closed have no reason, which reads as false.
 REMOVED_BY_ADMIN = "COALESCE(r.close_reason, 'author') != 'author'"
 
+# A deal that still counts as its responder's response to the request: any but an accepted
+# counter offer. That part is their deal, and the rest of the request is open to them like to
+# anyone else. Unqualified columns of `deals`.
+COUNTS_AS_RESPONSE = "NOT (partial = 1 AND status IN ('accepted', 'completed'))"
+
 # Columns for RequestOut. :ref is the reference rate (NULL if unknown), :viewer the caller.
 _SELECT = f"""
-SELECT r.id, r.direction, r.amount, r.rate_value,
+SELECT r.id, r.direction, r.amount, r.rate_value, r.min_counter_amount,
        r.status, {REMOVED_BY_ADMIN} AS removed_by_admin, r.created_at, r.expires_at,
        u.completed_deals AS author_completed_deals, u.username AS author_username,
        u.profile_first_name, u.profile_last_name, u.university, u.enrollment_year,
@@ -43,7 +49,10 @@ SELECT r.id, r.direction, r.amount, r.rate_value,
        :ref * (1 + r.rate_value / 100.0) AS effective_rate
 FROM requests r
 JOIN users u ON u.telegram_id = r.user_id
-LEFT JOIN deals d ON d.request_id = r.id AND d.responder_id = :viewer
+LEFT JOIN deals d ON d.id = (
+    SELECT id FROM deals WHERE request_id = r.id AND responder_id = :viewer
+    AND {COUNTS_AS_RESPONSE} ORDER BY id DESC LIMIT 1
+)
 """
 
 # Open, not yet expired, not the viewer's own, author not banned.
@@ -123,14 +132,15 @@ async def create_request(db: Database, user: User, data: RequestCreate) -> Reque
         cursor = await conn.execute(
             """
             INSERT INTO requests (user_id, direction, amount, rate_type, rate_value,
-                                  created_at, updated_at, expires_at)
-            VALUES (?, ?, ?, 'market', ?, ?, ?, ?)
+                                  min_counter_amount, created_at, updated_at, expires_at)
+            VALUES (?, ?, ?, 'market', ?, ?, ?, ?, ?)
             """,
             (
                 user.telegram_id,
                 data.direction,
                 data.amount,
                 data.rate_value,
+                data.min_counter_amount,
                 now,
                 now,
                 expires_at,
@@ -226,7 +236,8 @@ async def close_open_request(
 async def update_request(
     db: Database, user: User, request_id: int, data: RequestUpdate
 ) -> RequestOut:
-    """The author edits the amount or rate of their open request, or extends it.
+    """The author edits the amount, rate or smallest counter offer of their open request, or
+    extends it.
 
     Changing the terms is refused while anyone is waiting for an answer: they took the
     request as it was. Extending doesn't change the terms, so it's always allowed.
@@ -237,7 +248,8 @@ async def update_request(
     now = utc_iso(now_dt)
     async with db.transaction() as conn:
         async with conn.execute(
-            "SELECT user_id, status, expires_at, amount, rate_value FROM requests WHERE id = ?",
+            "SELECT user_id, status, expires_at, amount, rate_value, min_counter_amount "
+            "FROM requests WHERE id = ?",
             (request_id,),
         ) as cursor:
             request = await cursor.fetchone()
@@ -253,6 +265,14 @@ async def update_request(
             changes["amount"] = data.amount
         if data.rate_value is not None and data.rate_value != request["rate_value"]:
             changes["rate_value"] = data.rate_value
+        if (
+            "min_counter_amount" in data.model_fields_set
+            and data.min_counter_amount != request["min_counter_amount"]
+        ):
+            changes["min_counter_amount"] = data.min_counter_amount
+        minimum = changes.get("min_counter_amount", request["min_counter_amount"])
+        if minimum is not None and minimum > changes.get("amount", request["amount"]):
+            raise InvalidInputError("counter_minimum_too_large")
         if changes:
             pending = await _count(
                 conn,

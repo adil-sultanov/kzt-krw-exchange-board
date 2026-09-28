@@ -3,23 +3,28 @@ import { api, BOARD_PAGE_SIZE, errorCode } from "../api";
 import { DealsIcon, FiltersIcon, ProfileIcon, SortOrderIcon } from "../components/icons";
 import { RequestCard } from "../components/RequestCard";
 import { Empty, ErrorBox, RefreshButton, Segmented, SkeletonList } from "../components/ui";
-import { formatKstShort, formatRate, formatRatePair } from "../format";
-import { t } from "../i18n";
+import { formatKstShort, formatRate, formatRatePair, formatSide } from "../format";
+import { errorMessage, t } from "../i18n";
+import { useMe } from "../me";
 import { loadMyLists } from "../myLists";
 import { useNav, useReactivated } from "../nav";
 import { SLOW_POLL_MS, usePolling } from "../polling";
-import { haptic, openLink, useMainButton } from "../telegram";
+import { alert, confirm, haptic, openLink, useMainButton } from "../telegram";
 import {
   BOARD_SORTS,
   type BoardFilters,
   boardDirection,
+  canRespond,
   type Currency,
   CURRENCIES,
   type ExchangeRequest,
   expiresSoon,
   giveCurrency,
+  mayRespond,
   needsMyAction,
   type Rate,
+  takesCounterOffers,
+  viewerSides,
 } from "../types";
 
 // By the `source` the backend stores with the rate.
@@ -76,6 +81,59 @@ function RateCard(props: { rate: Rate | null }) {
   );
 }
 
+/**
+ * A request on the board, with Counter offer (if its author takes them) and Take request under it
+ * while the viewer can respond. Without a username or profile, both open the request, which says
+ * what's missing.
+ */
+function BoardCard(props: {
+  request: ExchangeRequest;
+  busy: boolean;
+  disabled: boolean;
+  onTake: () => void;
+}) {
+  const me = useMe();
+  const nav = useNav();
+  const { request } = props;
+  const open = () => nav.push({ name: "request", id: request.id });
+  const card = <RequestCard request={request} onOpen={open} />;
+  if (!canRespond(request)) return card;
+  const ready = mayRespond(me);
+  return (
+    <div className="card-stack">
+      {card}
+      <div className="card-actions">
+        {props.busy ? (
+          <button type="button" className="card-action" disabled>
+            {t.loading}
+          </button>
+        ) : (
+          <>
+            {takesCounterOffers(request) && (
+              <button
+                type="button"
+                className="card-action neutral"
+                disabled={props.disabled}
+                onClick={() => (ready ? nav.push({ name: "counter", request }) : open())}
+              >
+                {t.board.counterOffer}
+              </button>
+            )}
+            <button
+              type="button"
+              className="card-action neutral strong"
+              disabled={props.disabled}
+              onClick={() => (ready ? props.onTake() : open())}
+            >
+              {t.board.take}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function Board(props: { active: boolean }) {
   const nav = useNav();
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
@@ -88,6 +146,8 @@ export function Board(props: { active: boolean }) {
   // their requests about to leave the board.
   const [actionCount, setActionCount] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
+  // The request being taken from its card.
+  const [taking, setTaking] = useState<number | null>(null);
 
   // Responses to superseded loads (e.g. after a filter change) are ignored.
   const loadSeq = useRef(0);
@@ -145,6 +205,25 @@ export function Board(props: { active: boolean }) {
   });
 
   const refresh = () => Promise.all([load(shownCount.current), loadRate(), loadBadge()]);
+
+  const take = async (request: ExchangeRequest) => {
+    if (taking !== null) return;
+    const { pay, get } = viewerSides(request);
+    if (!(await confirm(t.detail.takeConfirm(formatSide(get), formatSide(pay))))) return;
+    setTaking(request.id);
+    try {
+      const deal = await api.takeRequest(request.id);
+      haptic("success");
+      nav.push({ name: "deal", id: deal.id });
+    } catch (e) {
+      haptic("error");
+      // A popup: the card may be far down the list, away from any inline message.
+      await alert(errorMessage(errorCode(e)));
+    } finally {
+      setTaking(null);
+      void load(shownCount.current, true);
+    }
+  };
 
   const loadMore = async () => {
     if (!shown) return;
@@ -262,10 +341,12 @@ export function Board(props: { active: boolean }) {
           ) : (
             <div className="list">
               {results.items.map((item) => (
-                <RequestCard
+                <BoardCard
                   key={item.id}
                   request={item}
-                  onOpen={() => nav.push({ name: "request", id: item.id })}
+                  busy={taking === item.id}
+                  disabled={taking !== null}
+                  onTake={() => void take(item)}
                 />
               ))}
             </div>

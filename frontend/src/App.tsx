@@ -10,6 +10,7 @@ import { Admins } from "./screens/Admins";
 import { AllDeals } from "./screens/AllDeals";
 import { Board } from "./screens/Board";
 import { BoardRequests } from "./screens/BoardRequests";
+import { CounterOffer } from "./screens/CounterOffer";
 import { Created } from "./screens/Created";
 import { DealScreen } from "./screens/Deal";
 import { MyDeals } from "./screens/MyDeals";
@@ -33,6 +34,8 @@ function Screen(props: { route: Route; active: boolean }) {
       return <Created active={active} result={route.result} />;
     case "request":
       return <RequestDetail id={route.id} active={active} />;
+    case "counter":
+      return <CounterOffer active={active} request={route.request} />;
     case "deal":
       return <DealScreen id={route.id} active={active} />;
     case "deals":

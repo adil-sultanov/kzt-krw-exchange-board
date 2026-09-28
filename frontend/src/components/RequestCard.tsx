@@ -1,6 +1,16 @@
 import { describeRateGain, formatProfile, formatSide, rateTone, timeLeft } from "../format";
 import { t } from "../i18n";
 import { type ExchangeRequest, type Profile, viewerRateGain, viewerSides } from "../types";
+
+/** The whole request under a counter offer's amounts, dimmed. */
+export function WholeRequest(props: { request: ExchangeRequest; className?: string }) {
+  const { pay, get } = viewerSides(props.request);
+  return (
+    <span className={props.className ? `whole-request ${props.className}` : "whole-request"}>
+      {t.card.whole(formatSide(pay), formatSide(get))}
+    </span>
+  );
+}
 import { ArrowIcon } from "./icons";
 import { UsernameTag } from "./UsernameTag";
 
@@ -24,7 +34,7 @@ export interface CardStatus {
  * outlines the card, e.g. for a deal in progress. `profile` and `deals` are the other side's
  * profile tag ("Adil Sultanov, UNIST, 2022") and completed-deal count (by default the author's,
  * hidden on the viewer's own requests). `time` shows the time left while the request is on the
- * board.
+ * board. `whole` is the whole request under a counter offer's amounts (shown dimmed below them).
  */
 export function RequestCard(props: {
   request: ExchangeRequest;
@@ -34,6 +44,7 @@ export function RequestCard(props: {
   profile?: Profile | null;
   deals?: number | null;
   time?: boolean;
+  whole?: ExchangeRequest | null;
 }) {
   const { request } = props;
   const fallback: CardStatus | null = request.my_deal_status
@@ -81,6 +92,7 @@ export function RequestCard(props: {
           <span className="side-value get">{formatSide(get)}</span>
         </span>
       </span>
+      {props.whole && <WholeRequest request={props.whole} />}
       <span className="card-meta">
         <span className={`rate-tag ${rateTone(gain)}`}>{describeRateGain(gain)}</span>
         {deals !== null && <span>{t.card.deals(deals)}</span>}

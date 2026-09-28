@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { formatSide } from "../format";
+import { formatAmountInput, formatSide } from "../format";
 import { t } from "../i18n";
 import type { Currency, ExchangeRequest } from "../types";
 import { viewerSides } from "../types";
@@ -30,6 +30,32 @@ export function ExchangeRow(props: {
         <CurrencyChip currency={props.currency} />
       </div>
     </div>
+  );
+}
+
+/**
+ * An amount typed into the exchange box, with thousands separators. Disabled (e.g. a side that
+ * can't be converted without a market rate), it shows a dash.
+ */
+export function AmountInput(props: {
+  label: string;
+  value: string;
+  onChange: (text: string) => void;
+  invalid?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <input
+      className={props.invalid ? "exchange-input invalid" : "exchange-input"}
+      inputMode="numeric"
+      autoComplete="off"
+      aria-label={props.label}
+      aria-invalid={props.invalid}
+      disabled={props.disabled}
+      placeholder={props.disabled ? t.side.unknown("").trim() : t.form.amountPlaceholder}
+      value={props.value}
+      onChange={(event) => props.onChange(formatAmountInput(event.target.value))}
+    />
   );
 }
 

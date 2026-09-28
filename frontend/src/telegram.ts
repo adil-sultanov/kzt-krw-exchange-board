@@ -54,6 +54,7 @@ interface WebApp {
   openLink(url: string): void;
   openTelegramLink(url: string): void;
   showConfirm(message: string, callback: (confirmed: boolean) => void): void;
+  showAlert(message: string, callback?: () => void): void;
   showPopup(
     params: { title?: string; message: string; buttons?: PopupButton[] },
     callback?: (buttonId: string) => void,
@@ -134,6 +135,15 @@ export async function copyText(text: string): Promise<boolean> {
 export function confirm(message: string): Promise<boolean> {
   if (!tg?.isVersionAtLeast("6.2")) return Promise.resolve(window.confirm(message));
   return new Promise((resolve) => tg.showConfirm(message, resolve));
+}
+
+/** Native alert popup, e.g. for an action's error where an inline message could be scrolled away. */
+export function alert(message: string): Promise<void> {
+  if (!tg?.isVersionAtLeast("6.2")) {
+    window.alert(message);
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => tg.showAlert(message, resolve));
 }
 
 /**

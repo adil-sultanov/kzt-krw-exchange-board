@@ -57,6 +57,7 @@ def test_list_and_resolve_reports(client: TestClient) -> None:
     assert deal_report["deal"] == {
         "id": deal_id,
         "status": "accepted",
+        "partial": False,
         "author_confirmed": False,
         "responder_confirmed": False,
     }

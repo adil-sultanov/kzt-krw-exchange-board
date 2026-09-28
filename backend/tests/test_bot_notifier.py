@@ -16,7 +16,10 @@ class FakeBot:
 
 
 def make_deal(
-    role: str = "author", direction: str = "KZT_KRW", other_profile: Profile | None = None
+    role: str = "author",
+    direction: str = "KZT_KRW",
+    other_profile: Profile | None = None,
+    amount: int = 150_000,
 ) -> DealOut:
     request = RequestOut(
         id=7,
@@ -24,6 +27,7 @@ def make_deal(
         amount=150_000,
         rate_value=0,
         effective_rate=2.7,
+        min_counter_amount=None,
         status="open",
         removed_by_admin=False,
         author_completed_deals=0,
@@ -40,6 +44,9 @@ def make_deal(
         id=42,
         status="pending",
         role=role,  # type: ignore[arg-type]
+        amount=amount,
+        partial=amount < request.amount,
+        request_amount=request.amount,
         other_completed_deals=3,
         other_profile=other_profile,
         my_confirmed=False,
@@ -78,6 +85,17 @@ async def test_deal_requested_message() -> None:
     assert button.web_app.url == "https://example.test?startapp=deal_42"
 
 
+async def test_counter_offer_message() -> None:
+    bot = FakeBot()
+    notifier = notifier_with(bot)
+    notifier.deal_requested(1, make_deal(amount=50_000))
+    await notifier.aclose()
+    [(_, text, _)] = bot.sent
+    assert text.startswith(
+        "🔔 Someone sent a counter offer: 50,000 ₸ of the 150,000 ₸ you're exchanging for KRW 🇰🇷."
+    )
+
+
 async def test_deal_requested_without_a_profile() -> None:
     # Takers need a profile now, but it can be cleared after taking.
     bot = FakeBot()
@@ -97,6 +115,15 @@ async def test_deal_accepted_message() -> None:
     [(chat_id, text, _)] = bot.sent
     assert chat_id == 2
     assert "you get 150,000 ₩ 🇰🇷 and pay in KZT 🇰🇿" in text
+
+
+async def test_counter_offer_accepted_message() -> None:
+    bot = FakeBot()
+    notifier = notifier_with(bot)
+    notifier.deal_accepted(2, make_deal("responder", "KRW_KZT", amount=40_000))
+    await notifier.aclose()
+    [(_, text, _)] = bot.sent
+    assert "you get 40,000 ₩ 🇰🇷 and pay in KZT 🇰🇿" in text
 
 
 async def test_no_button_without_https() -> None:

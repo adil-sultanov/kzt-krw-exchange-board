@@ -43,6 +43,7 @@ function ReportCard(props: { report: AdminReport; busy: boolean; onAction: (acti
           <>
             <br />
             {t.admin.deal(deal.id)} · {t.dealStatus[deal.status]}
+            {deal.partial && ` · ${t.admin.counterOffer}`}
             <br />
             <span className="hint">
               {t.admin.paid(t.admin.author, deal.author_confirmed)} ·{" "}
@@ -80,7 +81,7 @@ function ReportCard(props: { report: AdminReport; busy: boolean; onAction: (acti
             type="button"
             className="secondary-button destructive"
             disabled={busy}
-            onClick={() => void deleteDeal(deal.id, deal.status === "accepted")}
+            onClick={() => void deleteDeal(deal.id, deal.status === "accepted" && !deal.partial)}
           >
             {t.allDeals.delete}
           </button>
