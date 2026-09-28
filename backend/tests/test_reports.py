@@ -66,7 +66,10 @@ def test_banned_authors_requests_cant_be_reported(client: TestClient, settings: 
 
 
 def test_reports_are_rate_limited(client: TestClient) -> None:
-    authors = [{"id": 100 + n, "username": f"author{n}"} for n in range(MAX_REPORTS_PER_DAY + 1)]
+    authors = [
+        {"id": 100 + n, "first_name": "Author", "username": f"author{n}"}
+        for n in range(MAX_REPORTS_PER_DAY + 1)
+    ]
     request_ids = [create(client, author)["id"] for author in authors]
     for request_id in request_ids[:-1]:
         assert report_request(client, BEK, request_id).status_code == 201

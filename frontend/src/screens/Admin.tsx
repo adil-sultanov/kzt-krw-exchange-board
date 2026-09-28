@@ -2,7 +2,7 @@ import { useState } from "react";
 import { api, errorCode } from "../api";
 import { displayName, Person } from "../components/AdminPerson";
 import { Empty, ErrorBox, Segmented, SkeletonList, TitleWithRefresh } from "../components/ui";
-import { formatKst, formatMoney } from "../format";
+import { formatKst, formatMoney, requestStatus } from "../format";
 import { t } from "../i18n";
 import { useMe } from "../me";
 import { useTabList } from "../tabList";
@@ -25,7 +25,7 @@ function ReportCard(props: { report: AdminReport; busy: boolean; onAction: (acti
   };
 
   const deleteDeal = async (id: number, accepted: boolean) => {
-    if (!(await confirm(t.ownerDeals.deleteConfirm(id, accepted)))) return;
+    if (!(await confirm(t.allDeals.deleteConfirm(id, accepted)))) return;
     onAction(() => api.deleteDeal(id));
   };
 
@@ -38,7 +38,7 @@ function ReportCard(props: { report: AdminReport; busy: boolean; onAction: (acti
       {report.note && <p className="admin-note">{report.note}</p>}
       <p className="small">
         {t.admin.request(request.id)} · {formatMoney(request.amount, giveCurrency(request.direction))} ·{" "}
-        {t.status[request.status]}
+        {requestStatus(request)}
         {deal && (
           <>
             <br />
@@ -82,7 +82,7 @@ function ReportCard(props: { report: AdminReport; busy: boolean; onAction: (acti
             disabled={busy}
             onClick={() => void deleteDeal(deal.id, deal.status === "accepted")}
           >
-            {t.ownerDeals.delete}
+            {t.allDeals.delete}
           </button>
         )}
       </div>

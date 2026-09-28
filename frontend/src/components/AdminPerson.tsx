@@ -1,3 +1,4 @@
+import { formatProfile } from "../format";
 import { t } from "../i18n";
 import { openTelegramLink } from "../telegram";
 import type { AdminUser } from "../types";
@@ -14,6 +15,7 @@ export function Person(props: { label?: string; user: AdminUser; role?: string |
     t.deals(user.completed_deals),
     user.open_reports > 0 ? t.admin.openReports(user.open_reports) : null,
   ].filter(Boolean);
+  const profile = formatProfile(user.profile);
   return (
     <div className="admin-person">
       {props.label && <span className="hint small">{props.label}</span>}
@@ -34,6 +36,7 @@ export function Person(props: { label?: string; user: AdminUser; role?: string |
         {user.is_banned && <span className="rate-tag worse">{t.admin.banned}</span>}
         {user.is_admin && <span className="rate-tag market">{t.admin.isAdmin}</span>}
       </span>
+      {profile && <span className="small">{profile}</span>}
       <span className="hint small">
         {tags.join(" · ")} · ID {user.telegram_id}
       </span>

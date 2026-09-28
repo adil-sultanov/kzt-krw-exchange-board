@@ -9,7 +9,19 @@ from app.db import Database, utc_iso
 from app.models import TelegramUser
 from app.services import requests
 from app.services.users import upsert_user
-from tests.helpers import AIDA, BEK, DANA, NO_USERNAME, VALID, auth_as, create, post, sql
+from tests.helpers import (
+    AIDA,
+    BEK,
+    DANA,
+    NO_USERNAME,
+    VALID,
+    auth_as,
+    create,
+    fill_profile,
+    post,
+    sql,
+    take,
+)
 
 PAST = "2000-01-01T00:00:00+00:00"
 
@@ -44,9 +56,9 @@ def test_create_request(client: TestClient) -> None:
     assert request["author_completed_deals"] == 0
     assert request["expires_at"] > request["created_at"]
     assert body["matches"] == []
-    # The author's identity is never exposed.
+    # The author's username is shown, never their Telegram ID.
     assert "user_id" not in request
-    assert "aida" not in response.text
+    assert request["author_username"] == "aida"
 
 
 def test_create_requires_auth(client: TestClient) -> None:
@@ -57,6 +69,46 @@ def test_create_requires_username(client: TestClient) -> None:
     response = post(client, NO_USERNAME)
     assert response.status_code == 403
     assert response.json() == {"detail": "username_required"}
+
+
+def test_create_requires_a_full_profile(client: TestClient) -> None:
+    fill_profile(client, AIDA)
+    client.patch("/api/me", json={"university": ""}, headers=auth_as(AIDA))
+    response = client.post("/api/requests", json=VALID, headers=auth_as(AIDA))
+    assert (response.status_code, response.json()) == (403, {"detail": "profile_required"})
+
+
+def test_requests_show_the_authors_profile(client: TestClient) -> None:
+    request_id = create(client, AIDA)["id"]
+    expected = {
+        "first_name": "Aida",
+        "last_name": "Testova",
+        "university": "UNIST",
+        "enrollment_year": 2022,
+    }
+    assert board(client, BEK)[0]["author_profile"] == expected
+    detail = client.get(f"/api/requests/{request_id}", headers=auth_as(BEK)).json()
+    assert detail["author_profile"] == expected
+    # With the author's username, but never their Telegram ID.
+    assert detail["author_username"] == "aida"
+    assert "user_id" not in detail and "author_id" not in detail
+
+    # Clearing it later hides what was cleared (all of it: no profile at all).
+    client.patch("/api/me", json={"university": ""}, headers=auth_as(AIDA))
+    assert board(client, BEK)[0]["author_profile"]["university"] is None
+    cleared = {"profile_first_name": "", "profile_last_name": "", "enrollment_year": None}
+    client.patch("/api/me", json=cleared, headers=auth_as(AIDA))
+    assert board(client, BEK)[0]["author_profile"] is None
+
+
+def test_board_shows_the_authors_current_username(client: TestClient) -> None:
+    create(client, AIDA)
+    assert board(client, BEK)[0]["author_username"] == "aida"
+    # Usernames aren't stored with requests: a new one shows at once, and none shows as null.
+    client.get("/api/me", headers=auth_as({**AIDA, "username": "aida_new"}))
+    assert board(client, BEK)[0]["author_username"] == "aida_new"
+    client.get("/api/me", headers=auth_as({"id": AIDA["id"], "first_name": "Aida"}))
+    assert board(client, BEK)[0]["author_username"] is None
 
 
 def test_banned_user_cannot_post(client: TestClient, settings: Settings) -> None:
@@ -100,6 +152,7 @@ def test_create_normalizes_input(client: TestClient) -> None:
 def test_create_defaults_to_market_rate(client: TestClient, settings: Settings) -> None:
     sql(settings, "INSERT INTO reference_rate VALUES (1, 2.7, 'test', '2026-01-01T00:00:00+00:00')")
     body = {key: value for key, value in VALID.items() if key != "rate_value"}
+    fill_profile(client, AIDA)
     response = client.post("/api/requests", json=body, headers=auth_as(AIDA))
     assert response.status_code == 201
     request = response.json()["request"]
@@ -212,7 +265,7 @@ def test_request_detail(client: TestClient) -> None:
     response = client.get(f"/api/requests/{request_id}", headers=auth_as(BEK))
     assert response.status_code == 200
     assert response.json()["is_own"] is False
-    assert "aida" not in response.text
+    assert response.json()["author_username"] == "aida"
     own = client.get(f"/api/requests/{request_id}", headers=auth_as(AIDA)).json()
     assert own["is_own"] is True
 
@@ -321,7 +374,7 @@ def test_edit_amount_and_rate(client: TestClient) -> None:
 
 def test_pending_count_is_for_the_author_only(client: TestClient) -> None:
     request_id = create(client, AIDA)["id"]
-    client.post(f"/api/requests/{request_id}/take", headers=auth_as(BEK))
+    take(client, BEK, request_id)
     own = client.get(f"/api/requests/{request_id}", headers=auth_as(AIDA)).json()
     other = client.get(f"/api/requests/{request_id}", headers=auth_as(DANA)).json()
     assert (own["pending_count"], other["pending_count"]) == (1, None)
@@ -329,7 +382,7 @@ def test_pending_count_is_for_the_author_only(client: TestClient) -> None:
 
 def test_edit_refused_while_responders_wait(client: TestClient) -> None:
     request_id = create(client, AIDA, duration_days=1)["id"]
-    client.post(f"/api/requests/{request_id}/take", headers=auth_as(BEK))
+    take(client, BEK, request_id)
     response = edit(client, AIDA, request_id, amount=1)
     assert (response.status_code, response.json()) == (409, {"detail": "request_has_responders"})
     # Unchanged values and extending don't change the terms.

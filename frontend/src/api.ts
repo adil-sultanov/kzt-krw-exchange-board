@@ -2,17 +2,19 @@ import { tg } from "./telegram";
 import type {
   About,
   AboutUpdate,
+  AdminBoardRequest,
   AdminEntry,
   AdminReport,
   AdminUser,
   BoardFilters,
+  CancelledRequest,
   Contact,
   CreatedRequest,
   Deal,
   ExchangeRequest,
   Me,
   MeUpdate,
-  OwnerDeal,
+  ListedDeal,
   Rate,
   ReportCreate,
   ReportTarget,
@@ -98,12 +100,19 @@ export const api = {
   resolveReport: (id: number) => call<null>("POST", `/admin/reports/${id}/resolve`),
   setBanned: (userId: number, banned: boolean) =>
     call<AdminUser>("POST", `/admin/users/${userId}/${banned ? "ban" : "unban"}`),
+  /** Every request on the board now, newest first. */
+  boardRequests: () => call<AdminBoardRequest[]>("GET", "/admin/requests"),
+  /** Takes any request off the board, declining whoever was waiting. */
+  removeRequest: (id: number) => call<null>("POST", `/admin/requests/${id}/remove`),
   /** Owner only. */
   admins: () => call<AdminEntry[]>("GET", "/admin/admins"),
   addAdmin: (username: string) => call<AdminEntry>("POST", "/admin/admins", { username }),
   removeAdmin: (userId: number) => call<null>("DELETE", `/admin/admins/${userId}`),
-  /** Owner only: active deals (stalest first) or finished ones (newest first). */
-  ownerDeals: (active: boolean) => call<OwnerDeal[]>("GET", `/admin/deals?active=${active}`),
+  /** Active deals (stalest first) or finished ones (newest first). */
+  allDeals: (active: boolean) => call<ListedDeal[]>("GET", `/admin/deals?active=${active}`),
+  /** Requests their author or an admin took off the board, most recent first. */
+  cancelledRequests: () => call<CancelledRequest[]>("GET", "/admin/requests/cancelled"),
+  /** Owner only. */
   deleteDeal: (id: number) => call<null>("DELETE", `/admin/deals/${id}`),
 };
 

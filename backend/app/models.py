@@ -2,7 +2,9 @@
 
 import math
 import re
-from typing import Annotated, Literal, Self
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from typing import Annotated, Any, Literal, Self
 
 import aiosqlite
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -19,6 +21,32 @@ class TelegramUser(BaseModel):
     is_bot: bool = False
 
 
+class Profile(BaseModel):
+    """What a user tells others about themselves, shown as a tag on their requests and deals
+    ("Adil Sultanov, UNIST, 2022"). Typed in the app, unlike the Telegram `first_name`.
+    """
+
+    first_name: str | None
+    last_name: str | None
+    university: str | None
+    enrollment_year: int | None
+
+    @classmethod
+    def from_row(cls, row: Mapping[str, Any]) -> "Profile | None":
+        """From a row with the users table's profile columns; None if they're all empty."""
+        profile = cls(
+            first_name=row["profile_first_name"],
+            last_name=row["profile_last_name"],
+            university=row["university"],
+            enrollment_year=row["enrollment_year"],
+        )
+        return profile if any(profile.model_dump().values()) else None
+
+
+# The users table's profile columns, e.g. to select an author's or other side's profile.
+PROFILE_COLUMNS = ("profile_first_name", "profile_last_name", "university", "enrollment_year")
+
+
 class User(BaseModel):
     telegram_id: int
     username: str | None
@@ -30,6 +58,10 @@ class User(BaseModel):
     receive_kzt_account: str | None
     receive_krw_bank: str | None
     receive_krw_account: str | None
+    profile_first_name: str | None
+    profile_last_name: str | None
+    university: str | None
+    enrollment_year: int | None
     created_at: str
     updated_at: str
 
@@ -37,9 +69,21 @@ class User(BaseModel):
     def from_row(cls, row: aiosqlite.Row) -> Self:
         return cls.model_validate(dict(row))
 
+    @property
+    def has_profile(self) -> bool:
+        """The whole profile is filled in, as posting or taking a request needs."""
+        return all(getattr(self, column) for column in PROFILE_COLUMNS)
+
 
 MAX_BANK_LENGTH = 100
 MAX_ACCOUNT_LENGTH = 100
+MAX_NAME_LENGTH = 40
+MAX_UNIVERSITY_LENGTH = 60
+MIN_ENROLLMENT_YEAR = 2000
+# Besides letters (and digits, in a university's name). No commas: the tag separates with them.
+# U+2019 is the apostrophe phone keyboards type.
+_NAME_PUNCTUATION = frozenset(" -'\u2019.")
+_UNIVERSITY_PUNCTUATION = frozenset(" -'\u2019.&()")
 
 
 class MeOut(BaseModel):
@@ -57,10 +101,16 @@ class MeOut(BaseModel):
     receive_kzt_account: str | None
     receive_krw_bank: str | None
     receive_krw_account: str | None
+    # The profile shown on the user's requests and deals (see Profile).
+    profile_first_name: str | None
+    profile_last_name: str | None
+    university: str | None
+    enrollment_year: int | None
 
 
 class MeUpdate(BaseModel):
-    """Receiving details. A field left out is unchanged; an empty string clears it."""
+    """Profile and receiving details. A field left out is unchanged; an empty string (or a null
+    year) clears it."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -68,6 +118,31 @@ class MeUpdate(BaseModel):
     receive_kzt_account: str | None = None
     receive_krw_bank: str | None = None
     receive_krw_account: str | None = None
+    profile_first_name: str | None = None
+    profile_last_name: str | None = None
+    university: str | None = None
+    enrollment_year: Annotated[int, Field(strict=True)] | None = None
+
+    @field_validator("profile_first_name", "profile_last_name")
+    @classmethod
+    def _clean_name(cls, value: str | None) -> str:
+        value = _clean_profile_text(value, MAX_NAME_LENGTH, _NAME_PUNCTUATION, digits=False)
+        # "adil" -> "Adil", "zhan-ai" -> "Zhan-Ai"; the rest stays as typed ("McKay").
+        return re.sub(r"(^|[ -])(\w)", lambda m: m.group(1) + m.group(2).upper(), value)
+
+    @field_validator("university")
+    @classmethod
+    def _clean_university(cls, value: str | None) -> str:
+        return _clean_profile_text(
+            value, MAX_UNIVERSITY_LENGTH, _UNIVERSITY_PUNCTUATION, digits=True
+        )
+
+    @field_validator("enrollment_year")
+    @classmethod
+    def _check_year(cls, value: int | None) -> int | None:
+        if value is not None and not MIN_ENROLLMENT_YEAR <= value <= datetime.now(UTC).year + 1:
+            raise ValueError("enrollment year out of range")
+        return value
 
     @field_validator("receive_kzt_bank", "receive_krw_bank")
     @classmethod
@@ -84,6 +159,19 @@ def _clean_detail(value: str | None, max_length: int) -> str:
     value = (value or "").strip()
     if len(value) > max_length:
         raise ValueError("receiving details too long")
+    return value
+
+
+def _clean_profile_text(
+    value: str | None, max_length: int, punctuation: frozenset[str], *, digits: bool
+) -> str:
+    """Trimmed, with inner spaces collapsed. Shown to everyone on the board, so only letters
+    (digits if allowed) and a little punctuation: no links, emoji or line breaks."""
+    value = " ".join((value or "").split())
+    if len(value) > max_length:
+        raise ValueError("too long")
+    if not all(ch.isalpha() or (digits and ch.isdigit()) or ch in punctuation for ch in value):
+        raise ValueError("unexpected characters")
     return value
 
 
@@ -152,7 +240,8 @@ class RequestUpdate(BaseModel):
 
 
 class RequestOut(BaseModel):
-    """A request as any viewer may see it. Never includes the author's identity."""
+    """A request as any viewer may see it: the author's profile and current Telegram username
+    (so people can check who they'd trade with), never their Telegram ID."""
 
     id: int
     direction: Direction
@@ -162,7 +251,12 @@ class RequestOut(BaseModel):
     # KRW per 1 KZT at the current reference rate (null while none is available).
     effective_rate: float | None
     status: RequestStatus
+    # An admin took it off the board (status `closed`), or it was closed by its author's ban.
+    removed_by_admin: bool
     author_completed_deals: int
+    author_profile: Profile | None
+    # Read from the users table at load time (never stored with the request); null if none.
+    author_username: str | None
     is_own: bool
     # The viewer's own response to this request, if they took it.
     my_deal_id: int | None
@@ -204,6 +298,7 @@ class DealOut(BaseModel):
     # The viewer's side: 'author' posted the request, 'responder' took it.
     role: DealRole
     other_completed_deals: int
+    other_profile: Profile | None
     # Whether each side confirmed receiving the other's payment.
     my_confirmed: bool
     other_confirmed: bool
@@ -264,11 +359,16 @@ class AdminUserOut(BaseModel):
     telegram_id: int
     username: str | None
     first_name: str
+    profile: Profile | None
     completed_deals: int
     is_banned: bool
     is_admin: bool
     # Unresolved reports about this user.
     open_reports: int
+
+    @classmethod
+    def from_row(cls, row: aiosqlite.Row) -> Self:
+        return cls.model_validate({**dict(row), "profile": Profile.from_row(row)})
 
 
 class AdminRequestOut(BaseModel):
@@ -277,6 +377,7 @@ class AdminRequestOut(BaseModel):
     direction: Direction
     amount: int
     status: RequestStatus
+    removed_by_admin: bool
 
 
 class AdminDealOut(BaseModel):
@@ -325,8 +426,8 @@ class AdminAdd(BaseModel):
         return value
 
 
-class OwnerDealOut(BaseModel):
-    """Any deal, as the owner sees it in the deal list. Never includes receiving details."""
+class ListedDealOut(BaseModel):
+    """Any deal, as admins see it in All deals. Never includes receiving details."""
 
     id: int
     status: DealStatus
@@ -337,6 +438,49 @@ class OwnerDealOut(BaseModel):
     request: AdminRequestOut
     author: AdminUserOut
     responder: AdminUserOut
+
+
+# Why a request was taken off the board: its author cancelled it, an admin removed it, a ban
+# closed it, or the owner deleted its accepted deal.
+CloseReason = Literal["author", "admin", "ban", "deal_deleted"]
+
+
+class CancelledRequestOut(BaseModel):
+    """A request taken off the board, as admins see it in All deals. Never includes receiving
+    details."""
+
+    id: int
+    direction: Direction
+    amount: int
+    rate_value: float
+    created_at: str
+    closed_at: str
+    # Null for requests closed before this was recorded.
+    close_reason: CloseReason | None
+    # The author, or the admin who removed it, banned its author or deleted its deal.
+    closed_by: AdminUserOut | None
+    author: AdminUserOut
+    # People who had taken it (their deals were declined when it closed), first taker first.
+    takers: list[AdminUserOut]
+    # Unresolved reports about this request.
+    open_reports: int
+
+
+class AdminBoardRequestOut(BaseModel):
+    """A request on the board, as admins see it. Never includes receiving details."""
+
+    id: int
+    direction: Direction
+    amount: int
+    rate_value: float
+    effective_rate: float | None
+    created_at: str
+    expires_at: str
+    author: AdminUserOut
+    # Waiting for the author's answer, first taker first.
+    responders: list[AdminUserOut]
+    # Unresolved reports about this request.
+    open_reports: int
 
 
 # --- About page ---

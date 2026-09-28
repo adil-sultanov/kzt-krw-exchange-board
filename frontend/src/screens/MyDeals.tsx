@@ -166,6 +166,7 @@ export function MyDeals(props: { active: boolean }) {
       request={deal.request}
       status={isActiveDeal(deal) ? dealStatus(deal) : null}
       highlight={deal.status === "accepted"}
+      profile={deal.other_profile}
       deals={deal.other_completed_deals}
       time={deal.status === "pending"}
       onOpen={() => nav.push({ name: "deal", id: deal.id })}
@@ -177,6 +178,7 @@ export function MyDeals(props: { active: boolean }) {
       <RequestCard
         request={request}
         status={ownRequestStatus(request, taker)}
+        profile={taker ? taker.other_profile : undefined}
         deals={taker ? taker.other_completed_deals : undefined}
         onOpen={() => nav.push(taker ? { name: "deal", id: taker.id } : { name: "request", id: request.id })}
       />

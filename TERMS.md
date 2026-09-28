@@ -36,7 +36,8 @@ Service you agree to them. If you don't agree, don't use it.
 - Fraud, scams, or false requests or deal confirmations
 - Running a commercial or for-profit exchange business through the Service
 - Money laundering or any other illegal activity
-- Spam, harassment, or impersonating others
+- Spam, harassment, or impersonating others (including a false name or university in your
+  profile)
 - Scraping the Service, or copying or reusing its code or design (see [LICENSE](LICENSE))
 
 The operator may remove requests and deals and suspend or ban accounts at their discretion,

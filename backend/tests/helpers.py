@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.models import User
 
 BOT_TOKEN = "123456:TEST-token-for-tests"
 
@@ -57,12 +58,33 @@ VALID = {
 }
 
 
+def profile_of(user: dict[str, Any]) -> dict[str, Any]:
+    """A filled-in profile (as sent to PATCH /api/me), which posting and taking need."""
+    return {
+        "profile_first_name": user["first_name"],
+        "profile_last_name": "Testova",
+        "university": "UNIST",
+        "enrollment_year": 2022,
+    }
+
+
+def fill_profile(client: TestClient, user: dict[str, Any]) -> None:
+    response = client.patch("/api/me", json=profile_of(user), headers=auth_as(user))
+    assert response.status_code == 200, response.json()
+
+
+def with_profile(user: User) -> User:
+    """A user record as if they had filled in their profile (for calling services directly)."""
+    return user.model_copy(update=profile_of({"first_name": user.first_name or "Test"}))
+
+
 def sql(settings: Settings, query: str, params: tuple[Any, ...] = ()) -> None:
     with sqlite3.connect(settings.db_path) as conn:
         conn.execute(query, params)
 
 
 def post(client: TestClient, user: dict[str, Any], **overrides: Any) -> Any:
+    fill_profile(client, user)
     return client.post("/api/requests", json={**VALID, **overrides}, headers=auth_as(user))
 
 
@@ -70,3 +92,8 @@ def create(client: TestClient, user: dict[str, Any], **overrides: Any) -> dict[s
     response = post(client, user, **overrides)
     assert response.status_code == 201, response.json()
     return response.json()["request"]
+
+
+def take(client: TestClient, user: dict[str, Any], request_id: int) -> Any:
+    fill_profile(client, user)
+    return client.post(f"/api/requests/{request_id}/take", headers=auth_as(user))

@@ -4,7 +4,7 @@ import { RequestExchange } from "../components/Exchange";
 import { CheckIcon, FlagIcon } from "../components/icons";
 import { ReceiveHint } from "../components/ReceiveHint";
 import { CopyButton, ErrorBox, Loading, Notice, Row, TitleWithRefresh } from "../components/ui";
-import { describeRateGain, formatKst, formatRatePair, formatSide, rateTone } from "../format";
+import { describeRateGain, formatKst, formatProfile, formatRatePair, formatSide, rateTone } from "../format";
 import { t } from "../i18n";
 import { useNav, useReactivated } from "../nav";
 import { FAST_POLL_MS, usePolling } from "../polling";
@@ -28,6 +28,9 @@ function banner(deal: Deal): { text: { title: string; body: string }; tone: Bann
       return { text: deal.other_confirmed ? b.otherConfirmed : b.accepted, tone: "action" };
     case "declined": {
       const author = deal.role === "author";
+      if (deal.request.status === "closed" && deal.request.removed_by_admin) {
+        return { text: b.removed, tone: "neutral" };
+      }
       if (deal.request.status === "closed") {
         return { text: author ? b.cancelledAuthor : b.cancelledResponder, tone: "neutral" };
       }
@@ -144,6 +147,7 @@ export function DealScreen(props: { id: number; active: boolean }) {
   const { pay, get } = viewerSides(deal.request);
   const gain = viewerRateGain(deal.request);
   const { text, tone } = banner(deal);
+  const otherTag = formatProfile(deal.other_profile);
   return (
     <div className="screen">
       <TitleWithRefresh eyebrow={t.deal.title} title={t.buy[get.currency]} onRefresh={load} />
@@ -186,6 +190,7 @@ export function DealScreen(props: { id: number; active: boolean }) {
           {deal.request.effective_rate !== null && <span>{formatRatePair(deal.request.effective_rate)}</span>}
           <span className={`rate-tag ${rateTone(gain)}`}>{describeRateGain(gain)}</span>
         </Row>
+        {otherTag && <Row label={t.deal.them}>{otherTag}</Row>}
         <Row label={t.deal.theirDeals}>{t.deals(deal.other_completed_deals)}</Row>
         <Row label={t.deal.started}>{formatKst(deal.created_at)}</Row>
       </div>

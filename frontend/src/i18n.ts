@@ -1,6 +1,15 @@
 // All UI strings. The UI is English only; keep every user-visible string here.
 // Everything is worded from the viewer's side: what *you* pay and get.
-import type { AdminSource, BoardSort, Currency, DealStatus, ReportCategory, RequestStatus, SortOrder } from "./types";
+import type {
+  AdminSource,
+  BoardSort,
+  CloseReason,
+  Currency,
+  DealStatus,
+  ReportCategory,
+  RequestStatus,
+  SortOrder,
+} from "./types";
 
 export const t = {
   appTitle: "KZT ↔ KRW Exchange Board",
@@ -29,6 +38,8 @@ export const t = {
     closed: "Cancelled",
     expired: "Expired",
   } satisfies Record<RequestStatus, string>,
+  /** Status `closed`, when an admin (or its author's ban) took it off the board. */
+  removedStatus: "Removed by an admin",
 
   rate: {
     title: "Market rate",
@@ -74,6 +85,7 @@ export const t = {
   card: {
     deals: (count: number) => (count === 1 ? "1 deal" : `${count} deals`),
     timeLeft: (left: string) => `${left} left`,
+    openProfile: (username: string) => `Open @${username}'s Telegram profile`,
   },
 
   detail: {
@@ -97,6 +109,7 @@ export const t = {
       completed: "You completed this deal.",
     } satisfies Record<DealStatus, string>,
     notOpen: "This request is no longer on the board.",
+    removed: "An admin took this request off the board.",
     take: "I'll take it",
     takeConfirm: (get: string, pay: string) =>
       `You get ${get} and pay ${pay}.\n\n` +
@@ -105,6 +118,9 @@ export const t = {
     usernameRequired:
       "You need a Telegram username to take a request: it's how the author contacts you. " +
       "Set one in Telegram Settings, then reopen the app.",
+    profileRequired:
+      "Fill in your name, university and year of enrollment to take a request. " +
+      "The author sees them, as you see theirs.",
     banned: "Your account can't take requests.",
     report: "Report this request",
   },
@@ -122,6 +138,7 @@ export const t = {
     title: "Deal",
     needsAnswer: "Waiting for your answer",
     needsConfirm: "Confirm you got the money",
+    them: "With",
     theirDeals: "Their record",
     started: "Started",
     banner: {
@@ -151,6 +168,7 @@ export const t = {
       cancelledAuthor: { title: "Request cancelled", body: "You cancelled the request." },
       cancelledResponder: { title: "Request cancelled", body: "The author cancelled it." },
       expired: { title: "Request expired", body: "It expired before an answer." },
+      removed: { title: "Removed by an admin", body: "An admin took this request off the board." },
     },
     progress: {
       theyReceived: (currency: string) => `They received your ${currency}`,
@@ -251,12 +269,30 @@ export const t = {
     openReports: (count: number) => (count === 1 ? "1 open report" : `${count} open reports`),
     resolvedAt: (time: string) => `Resolved ${time}`,
     resolve: "Resolve",
+    reportsOnRequest: (count: number) => (count === 1 ? "1 open report" : `${count} open reports`),
     ban: "Ban",
     unban: "Unban",
     banConfirm: (name: string) =>
       `Ban ${name}? They can't post or take requests, their open requests are cancelled, and ` +
       "pending deals with them are declined. Deals already accepted carry on.",
     unbanConfirm: (name: string) => `Unban ${name}? Requests cancelled by the ban stay cancelled.`,
+  },
+
+  boardRequests: {
+    title: "Board requests",
+    hint: (count: number) =>
+      `${count === 1 ? "1 request" : `${count} requests`} on the board now, newest first.`,
+    empty: "The board is empty",
+    exchange: (pay: string, get: string) => `Author pays ${pay}, gets ${get}`,
+    posted: (time: string) => `Posted ${time}`,
+    leaves: (left: string) => `leaves in ${left}`,
+    author: "Author",
+    waiting: (count: number) => `Waiting for the author's answer (${count})`,
+    remove: "Remove from board",
+    removeConfirm: (id: number, waiting: number) =>
+      `Take request #${id} off the board?` +
+      (waiting > 0 ? ` ${waiting === 1 ? "The person" : `The ${waiting} people`} waiting are declined.` : "") +
+      " Nobody gets a message; the author and anyone who took it see that an admin removed it.",
   },
 
   admins: {
@@ -277,13 +313,31 @@ export const t = {
     } satisfies Record<AdminSource, string>,
   },
 
-  ownerDeals: {
+  allDeals: {
     title: "All deals",
     active: "Active",
     finished: "Finished",
+    cancelled: "Cancelled",
     activeHint: "Pending and accepted, least recently changed first.",
     finishedHint: "Completed and declined, newest first.",
+    cancelledHint:
+      "Requests taken off the board by their author or an admin, most recent first. " +
+      "Anyone who had taken one was declined.",
     empty: "No deals",
+    emptyCancelled: "No cancelled requests",
+    authorPays: (money: string, currency: string) => `Author pays ${money} for ${currency}`,
+    closedAt: (time: string) => `Closed ${time}`,
+    // `who` is the author or admin, e.g. "@aida".
+    closedBy: {
+      author: (who: string) => `Cancelled by its author, ${who}`,
+      admin: (who: string) => `Removed from the board by ${who}`,
+      ban: (who: string) => `Closed when ${who} banned its author`,
+      deal_deleted: (who: string) => `Closed when ${who} deleted its accepted deal`,
+    } satisfies Record<CloseReason, (who: string) => string>,
+    closedByAdmin: "Removed by an admin",
+    closedUnknown: "Cancelled (who did it wasn't recorded)",
+    closer: "Closed by",
+    takers: (count: number) => `Had taken it (${count})`,
     delete: "Delete deal",
     deleteConfirm: (id: number, accepted: boolean) =>
       `Delete deal #${id} for both sides? Nobody is notified.` +
@@ -304,6 +358,10 @@ export const t = {
     confirm: "Cancel this request? It leaves the board, and anyone waiting is declined.",
   },
 
+  profileHint: {
+    open: "Fill in profile",
+  },
+
   receiveHint: {
     missing: (currency: string) =>
       `Add where you receive ${currency}, so the other person knows where to pay you.`,
@@ -311,6 +369,18 @@ export const t = {
   },
 
   profile: {
+    you: "About you",
+    youHint: "Shown on your requests and deals. You need it to post or take a request.",
+    firstName: "First name",
+    firstNamePlaceholder: "e.g. Adil",
+    lastName: "Last name",
+    lastNamePlaceholder: "e.g. Sultanov",
+    university: "University",
+    universityPlaceholder: "e.g. UNIST",
+    year: "Year of enrollment",
+    yearPlaceholder: "Choose",
+    preview: (tag: string) => `Others see: ${tag}`,
+    invalid: "Use letters only in names (and digits in the university), with no commas or emoji.",
     receiving: "Where you receive money",
     receivingHint: "Shown only to the other side of an accepted deal.",
     bank: "Bank and name",
@@ -332,9 +402,10 @@ export const t = {
     more: "More",
     about: "About & support",
     admin: "Admin: reports",
+    boardRequests: "Admin: board requests",
+    allDeals: "Admin: all deals",
     owner: "Owner",
     admins: "Admins",
-    ownerDeals: "All deals",
   },
 
   footer: {
@@ -387,6 +458,9 @@ export const t = {
     usernameRequired:
       "You need a Telegram username to post a request: it's how the other person contacts you. " +
       "Set one in Telegram Settings, then reopen the app.",
+    profileRequired:
+      "Fill in your name, university and year of enrollment to post a request. " +
+      "They're shown on it, so people know who they're dealing with.",
     banned: "Your account can't post requests.",
     disclaimer: "The app never handles money: you pay each other directly, at your own risk.",
   },
@@ -415,6 +489,7 @@ const errorMessages: Record<string, string> = {
   membership_check_failed: "Couldn't check your group membership. Please try again in a minute.",
   invalid_input: "Some fields are invalid. Please check and try again.",
   username_required: t.form.usernameRequired,
+  profile_required: "Fill in your name, university and year of enrollment in Profile first.",
   user_banned: t.form.banned,
   too_many_open_requests: "You already have 5 open requests. Cancel one to post another.",
   rate_limited: "You're posting too often. Please try again in an hour.",

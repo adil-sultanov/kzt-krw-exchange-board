@@ -61,8 +61,9 @@ async def upsert_user(db: Database, tg_user: TelegramUser, *, config_admin: bool
     return User.from_row(row)
 
 
-async def update_receiving_details(db: Database, user_id: int, update: MeUpdate) -> User:
-    """Set the fields present in `update`; an empty value clears one."""
+async def update_me(db: Database, user_id: int, update: MeUpdate) -> User:
+    """Set the profile and receiving-details fields present in `update`; an empty value
+    clears one."""
     # Column names come from the model's fixed field names, never from input.
     fields = {name: getattr(update, name) or None for name in update.model_fields_set}
     async with db.transaction() as conn:

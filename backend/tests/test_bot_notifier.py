@@ -1,7 +1,7 @@
 from typing import Any
 
 from app.bot.notifier import BotNotifier, deal_url
-from app.models import DealOut, RequestOut
+from app.models import DealOut, Profile, RequestOut
 
 
 class FakeBot:
@@ -15,7 +15,9 @@ class FakeBot:
         self.sent.append((chat_id, text, reply_markup))
 
 
-def make_deal(role: str = "author", direction: str = "KZT_KRW") -> DealOut:
+def make_deal(
+    role: str = "author", direction: str = "KZT_KRW", other_profile: Profile | None = None
+) -> DealOut:
     request = RequestOut(
         id=7,
         direction=direction,  # type: ignore[arg-type]
@@ -23,7 +25,10 @@ def make_deal(role: str = "author", direction: str = "KZT_KRW") -> DealOut:
         rate_value=0,
         effective_rate=2.7,
         status="open",
+        removed_by_admin=False,
         author_completed_deals=0,
+        author_profile=None,
+        author_username=None,
         is_own=role == "author",
         my_deal_id=None,
         my_deal_status=None,
@@ -36,6 +41,7 @@ def make_deal(role: str = "author", direction: str = "KZT_KRW") -> DealOut:
         status="pending",
         role=role,  # type: ignore[arg-type]
         other_completed_deals=3,
+        other_profile=other_profile,
         my_confirmed=False,
         other_confirmed=False,
         my_report_open=False,
@@ -57,15 +63,29 @@ def test_deal_url() -> None:
 async def test_deal_requested_message() -> None:
     bot = FakeBot()
     notifier = notifier_with(bot)
-    notifier.deal_requested(1, make_deal())
+    taker = Profile(
+        first_name="Adil", last_name="Sultanov", university="UNIST", enrollment_year=2022
+    )
+    notifier.deal_requested(1, make_deal(other_profile=taker))
     await notifier.aclose()
 
     [(chat_id, text, markup)] = bot.sent
     assert chat_id == 1
+    assert text.startswith("🔔 Adil Sultanov, UNIST, 2022 wants to take your request: ")
     assert "buy KRW 🇰🇷 for 150,000 ₸" in text
     assert "3 completed deals" in text
     [[button]] = markup.inline_keyboard
     assert button.web_app.url == "https://example.test?startapp=deal_42"
+
+
+async def test_deal_requested_without_a_profile() -> None:
+    # Takers need a profile now, but it can be cleared after taking.
+    bot = FakeBot()
+    notifier = notifier_with(bot)
+    notifier.deal_requested(1, make_deal())
+    await notifier.aclose()
+    [(_, text, _)] = bot.sent
+    assert text.startswith("🔔 Someone wants to take your request: ")
 
 
 async def test_deal_accepted_message() -> None:

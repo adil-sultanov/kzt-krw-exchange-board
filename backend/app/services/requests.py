@@ -3,12 +3,12 @@ and closing; plus the expiry job."""
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 import aiosqlite
 
 from app.db import Database, utc_iso, utc_now
-from app.models import BoardFilters, RequestCreate, RequestOut, RequestUpdate, User
+from app.models import BoardFilters, Profile, RequestCreate, RequestOut, RequestUpdate, User
 from app.services.errors import (
     ConflictError,
     NotFoundError,
@@ -25,11 +25,16 @@ RECENTLY_EXPIRED = timedelta(hours=24)
 
 logger = logging.getLogger(__name__)
 
+# Whether an admin took request `r` off the board (see requests.close_reason), as RequestOut's
+# `removed_by_admin`. Requests that aren't closed have no reason, which reads as false.
+REMOVED_BY_ADMIN = "COALESCE(r.close_reason, 'author') != 'author'"
+
 # Columns for RequestOut. :ref is the reference rate (NULL if unknown), :viewer the caller.
-_SELECT = """
+_SELECT = f"""
 SELECT r.id, r.direction, r.amount, r.rate_value,
-       r.status, r.created_at, r.expires_at,
-       u.completed_deals AS author_completed_deals,
+       r.status, {REMOVED_BY_ADMIN} AS removed_by_admin, r.created_at, r.expires_at,
+       u.completed_deals AS author_completed_deals, u.username AS author_username,
+       u.profile_first_name, u.profile_last_name, u.university, u.enrollment_year,
        r.user_id = :viewer AS is_own,
        d.id AS my_deal_id, d.status AS my_deal_status,
        CASE WHEN r.user_id = :viewer THEN
@@ -63,6 +68,7 @@ _BOARD_ORDER = {
 def _to_out(row: aiosqlite.Row, now: str) -> RequestOut:
     data = dict(row)
     data["is_own"] = bool(data["is_own"])
+    data["author_profile"] = Profile.from_row(row)
     # Until the expiry job has run, a past-due open request is already expired to viewers,
     # and a pending response to it (which can no longer be accepted) is declined.
     if data["status"] == "open" and data["expires_at"] <= now:
@@ -91,6 +97,8 @@ async def create_request(db: Database, user: User, data: RequestCreate) -> Reque
         raise PermissionDeniedError("user_banned")
     if not user.username:
         raise PermissionDeniedError("username_required")
+    if not user.has_profile:
+        raise PermissionDeniedError("profile_required")
 
     now_dt = datetime.now(UTC)
     now = utc_iso(now_dt)
@@ -183,19 +191,36 @@ async def close_request(db: Database, actor_id: int, request_id: int) -> Request
             raise NotFoundError("request_not_found")
         if request["user_id"] != actor_id:
             raise PermissionDeniedError("not_request_author")
-        cursor = await conn.execute(
-            "UPDATE requests SET status = 'closed', updated_at = ? "
-            "WHERE id = ? AND status = 'open' AND expires_at > ?",
-            (now, request_id, now),
-        )
-        if cursor.rowcount != 1:
+        if not await close_open_request(conn, request_id, now, closed_by=actor_id, reason="author"):
             raise ConflictError("request_not_open")
-        await conn.execute(
-            "UPDATE deals SET status = 'declined', updated_at = ? "
-            "WHERE request_id = ? AND status = 'pending'",
-            (now, request_id),
-        )
     return await get_request(db, actor_id, request_id)
+
+
+async def close_open_request(
+    conn: aiosqlite.Connection,
+    request_id: int,
+    now: str,
+    *,
+    closed_by: int,
+    reason: Literal["author", "admin"],
+) -> bool:
+    """Take a request off the Board if it's still open, declining its pending responders, and
+    record who did it (its author, or an admin). Returns whether it was open. Runs inside the
+    caller's transaction.
+    """
+    cursor = await conn.execute(
+        "UPDATE requests SET status = 'closed', close_reason = ?, closed_by = ?, updated_at = ? "
+        "WHERE id = ? AND status = 'open' AND expires_at > ?",
+        (reason, closed_by, now, request_id, now),
+    )
+    if cursor.rowcount != 1:
+        return False
+    await conn.execute(
+        "UPDATE deals SET status = 'declined', updated_at = ? "
+        "WHERE request_id = ? AND status = 'pending'",
+        (now, request_id),
+    )
+    return True
 
 
 async def update_request(

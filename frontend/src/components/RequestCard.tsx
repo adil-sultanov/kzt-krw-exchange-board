@@ -1,7 +1,8 @@
-import { describeRateGain, formatSide, rateTone, timeLeft } from "../format";
+import { describeRateGain, formatProfile, formatSide, rateTone, timeLeft } from "../format";
 import { t } from "../i18n";
-import { type ExchangeRequest, viewerRateGain, viewerSides } from "../types";
+import { type ExchangeRequest, type Profile, viewerRateGain, viewerSides } from "../types";
 import { ArrowIcon } from "./icons";
+import { UsernameTag } from "./UsernameTag";
 
 /** `action` needs the viewer, `active` is under way, `muted` is over. */
 export type StatusTone = "action" | "active" | "muted";
@@ -15,17 +16,22 @@ export interface CardStatus {
  * A request as the viewer sees it: what they pay and get, the rate compared to the market,
  * the other side's record and the time left.
  *
+ * The author's username (on someone else's request) opens their Telegram profile, so the viewer
+ * can check who they'd trade with.
+ *
  * `status` is an optional line on top, e.g. the viewer's deal on this request (by default their
  * deal's status, if any; `null` shows none); `highlight`
- * outlines the card, e.g. for a deal in progress. `deals` is the other side's completed-deal
- * count (by default the author's, hidden on the viewer's own requests). `time` shows the time
- * left while the request is on the board.
+ * outlines the card, e.g. for a deal in progress. `profile` and `deals` are the other side's
+ * profile tag ("Adil Sultanov, UNIST, 2022") and completed-deal count (by default the author's,
+ * hidden on the viewer's own requests). `time` shows the time left while the request is on the
+ * board.
  */
 export function RequestCard(props: {
   request: ExchangeRequest;
   onOpen: () => void;
   status?: CardStatus | null;
   highlight?: boolean;
+  profile?: Profile | null;
   deals?: number | null;
   time?: boolean;
 }) {
@@ -39,11 +45,31 @@ export function RequestCard(props: {
   const status = props.status !== undefined ? props.status : fallback;
   const { pay, get } = viewerSides(request);
   const gain = viewerRateGain(request);
+  const profile = props.profile !== undefined ? props.profile : request.is_own ? null : request.author_profile;
+  const tag = formatProfile(profile);
+  const username = request.is_own ? null : request.author_username;
   const deals = props.deals !== undefined ? props.deals : request.is_own ? null : request.author_completed_deals;
   const left = (props.time ?? true) && request.status === "open" ? timeLeft(request.expires_at) : null;
   return (
-    <button type="button" className={props.highlight ? "card highlight" : "card"} onClick={props.onOpen}>
+    // A div, not a button: the username inside it is a button of its own.
+    <div
+      role="button"
+      tabIndex={0}
+      className={props.highlight ? "card tappable highlight" : "card tappable"}
+      onClick={props.onOpen}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        props.onOpen();
+      }}
+    >
       {status && <span className={`card-status ${status.tone}`}>{status.text}</span>}
+      {(tag || username) && (
+        <span className="card-author">
+          {tag && <span>{tag}</span>}
+          {username && <UsernameTag username={username} />}
+        </span>
+      )}
       <span className="card-amounts">
         <span className="card-side">
           <span className="side-label">{t.side.pay}</span>
@@ -60,6 +86,6 @@ export function RequestCard(props: {
         {deals !== null && <span>{t.card.deals(deals)}</span>}
         {left && <span className="card-time">{t.card.timeLeft(left)}</span>}
       </span>
-    </button>
+    </div>
   );
 }

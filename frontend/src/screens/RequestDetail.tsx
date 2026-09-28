@@ -1,11 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errorCode } from "../api";
 import { RequestExchange } from "../components/Exchange";
+import { ProfileRequired } from "../components/ProfileHint";
 import { ReceiveHint } from "../components/ReceiveHint";
 import { RequestCard } from "../components/RequestCard";
+import { UsernameTag } from "../components/UsernameTag";
 import { ErrorBox, Loading, Notice, Row } from "../components/ui";
 import { askExtendDays } from "../extend";
-import { describeRateGain, formatKst, formatRatePair, formatSide, rateTone, timeLeft } from "../format";
+import {
+  describeRateGain,
+  formatKst,
+  formatProfile,
+  formatRatePair,
+  formatSide,
+  rateTone,
+  requestStatus,
+  timeLeft,
+} from "../format";
 import { t } from "../i18n";
 import { useMe } from "../me";
 import { useNav, useReactivated } from "../nav";
@@ -15,6 +26,7 @@ import {
   type ExchangeRequest,
   expiresSoon,
   extendOptions,
+  hasProfile,
   viewerRateGain,
   viewerSides,
 } from "../types";
@@ -130,7 +142,8 @@ export function RequestDetail(props: { id: number; active: boolean }) {
     request.status === "open" &&
     request.my_deal_id === null &&
     !me.is_banned &&
-    Boolean(me.username);
+    Boolean(me.username) &&
+    hasProfile(me);
   const myDealId = request?.my_deal_id ?? null;
   let mainButton: MainButtonConfig | null = null;
   if (canTake) mainButton = { text: t.detail.take, onClick: take, loading: taking };
@@ -157,6 +170,8 @@ export function RequestDetail(props: { id: number; active: boolean }) {
         : !me.username
           ? t.detail.usernameRequired
           : null;
+  const needsProfile = !blocked && !request.is_own && open && request.my_deal_id === null && !hasProfile(me);
+  const authorTag = formatProfile(request.author_profile);
   return (
     <div className="screen">
       <div className="title-block">
@@ -167,12 +182,13 @@ export function RequestDetail(props: { id: number; active: boolean }) {
       {request.my_deal_status ? (
         <Notice>{t.detail.responded[request.my_deal_status]}</Notice>
       ) : !open ? (
-        <Notice tone="warning">{t.detail.notOpen}</Notice>
+        <Notice tone="warning">{request.removed_by_admin ? t.detail.removed : t.detail.notOpen}</Notice>
       ) : request.is_own ? (
         <Notice>{pending > 0 ? t.detail.ownPending : t.detail.own}</Notice>
       ) : null}
       {ownOpen && expiresSoon(request) && <Notice tone="warning">{t.detail.expiresSoon}</Notice>}
       {blocked && <Notice tone="warning">{blocked}</Notice>}
+      {needsProfile && <ProfileRequired text={t.detail.profileRequired} />}
       {actionError && <ErrorBox code={actionError} />}
 
       <RequestExchange request={request} />
@@ -182,14 +198,24 @@ export function RequestDetail(props: { id: number; active: boolean }) {
           {request.effective_rate !== null && <span>{formatRatePair(request.effective_rate)}</span>}
           <span className={`rate-tag ${rateTone(gain)}`}>{describeRateGain(gain)}</span>
         </Row>
-        {!request.is_own && <Row label={t.detail.author}>{t.deals(request.author_completed_deals)}</Row>}
+        {!request.is_own && (
+          <Row label={t.detail.author}>
+            {authorTag && <span>{authorTag}</span>}
+            {request.author_username && <UsernameTag username={request.author_username} />}
+            <span className={authorTag ? "hint small" : undefined}>{t.deals(request.author_completed_deals)}</span>
+          </Row>
+        )}
         {left ? (
           <Row label={t.detail.timeLeft}>
             <span>{left}</span>
             <span className="hint small">{t.detail.until(formatKst(request.expires_at))}</span>
           </Row>
         ) : (
-          !open && <Row label={t.detail.status}>{t.status[request.status]}</Row>
+          !open && (
+            <Row label={t.detail.status}>
+              {requestStatus(request)}
+            </Row>
+          )
         )}
       </div>
 

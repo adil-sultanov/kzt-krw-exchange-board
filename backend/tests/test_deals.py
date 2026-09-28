@@ -13,13 +13,20 @@ from app.services.errors import ConflictError
 from app.services.notifications import NullNotifier
 from app.services.users import upsert_user
 from tests.conftest import FakeNotifier
-from tests.helpers import AIDA, BEK, DANA, NO_USERNAME, VALID, auth_as, create, sql
+from tests.helpers import (
+    AIDA,
+    BEK,
+    DANA,
+    NO_USERNAME,
+    VALID,
+    auth_as,
+    create,
+    sql,
+    take,
+    with_profile,
+)
 
 PAST = "2000-01-01T00:00:00+00:00"
-
-
-def take(client: TestClient, user: dict[str, Any], request_id: int) -> Any:
-    return client.post(f"/api/requests/{request_id}/take", headers=auth_as(user))
 
 
 def taken(client: TestClient, user: dict[str, Any], request_id: int) -> dict[str, Any]:
@@ -61,12 +68,34 @@ def test_take_creates_pending_deal(client: TestClient, settings: Settings) -> No
     assert deal["request"]["my_deal_id"] == deal["id"]
     assert deal["request"]["my_deal_status"] == "pending"
     assert deal["other_completed_deals"] == 0
-    # No usernames before the author accepts.
-    assert "aida" not in response.text
+    # The author's username is on the request (as on the board); the contact link waits for
+    # the author to accept.
+    assert deal["request"]["author_username"] == "aida"
+    assert get(client, BEK, f"deals/{deal['id']}/contact").json() == {
+        "detail": "contact_unavailable"
+    }
     # The author sees the responder's record on their side of the deal.
     author_view = get(client, AIDA, f"deals/{deal['id']}").json()
     assert author_view["role"] == "author"
     assert author_view["other_completed_deals"] == 4
+
+
+def test_take_requires_a_profile(client: TestClient) -> None:
+    request_id = create(client, AIDA)["id"]
+    response = client.post(f"/api/requests/{request_id}/take", headers=auth_as(BEK))
+    assert (response.status_code, response.json()) == (403, {"detail": "profile_required"})
+
+
+def test_deals_show_the_other_sides_profile(client: TestClient) -> None:
+    request_id = create(client, AIDA)["id"]
+    deal_id = taken(client, BEK, request_id)["id"]
+    author_view = get(client, AIDA, f"deals/{deal_id}").json()
+    responder_view = get(client, BEK, f"deals/{deal_id}").json()
+    assert author_view["other_profile"]["first_name"] == "Bek"
+    assert responder_view["other_profile"]["first_name"] == "Aida"
+    assert [
+        deal["other_profile"]["first_name"] for deal in get(client, AIDA, "my/deals").json()
+    ] == ["Bek"]
 
 
 def test_request_detail_shows_viewers_own_deal(client: TestClient) -> None:
@@ -203,12 +232,14 @@ def test_decline(client: TestClient) -> None:
 
 
 async def test_concurrent_accepts_pick_exactly_one(db: Database) -> None:
-    author = await upsert_user(db, TelegramUser(id=1, username="aida"), config_admin=False)
+    author = with_profile(
+        await upsert_user(db, TelegramUser(id=1, username="aida"), config_admin=False)
+    )
     request = await requests.create_request(db, author, RequestCreate.model_validate(VALID))
     deal_ids = []
     for user_id, name in ((2, "bek"), (3, "dana")):
-        responder = await upsert_user(
-            db, TelegramUser(id=user_id, username=name), config_admin=False
+        responder = with_profile(
+            await upsert_user(db, TelegramUser(id=user_id, username=name), config_admin=False)
         )
         deal_ids.append((await deals.take_request(db, responder, request.id, NullNotifier())).id)
 
@@ -348,8 +379,12 @@ def test_confirm_rejections(client: TestClient) -> None:
 
 
 async def test_concurrent_final_confirmations_count_once(db: Database) -> None:
-    author = await upsert_user(db, TelegramUser(id=1, username="aida"), config_admin=False)
-    responder = await upsert_user(db, TelegramUser(id=2, username="bek"), config_admin=False)
+    author = with_profile(
+        await upsert_user(db, TelegramUser(id=1, username="aida"), config_admin=False)
+    )
+    responder = with_profile(
+        await upsert_user(db, TelegramUser(id=2, username="bek"), config_admin=False)
+    )
     request = await requests.create_request(db, author, RequestCreate.model_validate(VALID))
     deal_id = (await deals.take_request(db, responder, request.id, NullNotifier())).id
     await deals.accept_deal(db, 1, deal_id, NullNotifier())
@@ -517,3 +552,49 @@ async def test_delete_old_deals(db: Database) -> None:
         assert [row["id"] for row in await cursor.fetchall()] == [4, 5, 6, 7]
     async with db.conn.execute("SELECT completed_deals FROM users") as cursor:
         assert [row["completed_deals"] for row in await cursor.fetchall()] == [3, 3]
+
+
+def test_deals_under_way_carry_on_without_a_profile(client: TestClient) -> None:
+    """After the profile rule shipped, existing users had none: only posting and taking need
+    one. Everything on requests and deals already under way keeps working."""
+    request_id, accepted_id = accepted_deal(client)  # AIDA's request, BEK accepted
+    other_request = create(client, AIDA)["id"]
+    pending_id = taken(client, DANA, other_request)["id"]
+    third_request = create(client, AIDA, duration_days=1)["id"]
+    declined_id = taken(client, BEK, third_request)["id"]
+    cleared = {
+        "profile_first_name": "",
+        "profile_last_name": "",
+        "university": "",
+        "enrollment_year": None,
+    }
+    for user in (AIDA, BEK, DANA):
+        client.patch("/api/me", json=cleared, headers=auth_as(user))
+
+    # Viewing: no profile shows as none.
+    assert get(client, BEK, f"deals/{accepted_id}").json()["other_profile"] is None
+    assert get(client, DANA, "requests").json()[0]["author_profile"] is None
+    assert get(client, BEK, f"deals/{accepted_id}/contact").status_code == 200
+    # The author answers, extends and cancels; both sides confirm and report.
+    assert act(client, AIDA, declined_id, "decline").json()["status"] == "declined"
+    patch = client.patch(
+        f"/api/requests/{third_request}", json={"extend_days": 3}, headers=auth_as(AIDA)
+    )
+    assert patch.status_code == 200
+    assert act(client, AIDA, pending_id, "accept").json()["status"] == "accepted"
+    assert act(client, AIDA, accepted_id, "confirm").status_code == 200
+    report = client.post(
+        f"/api/deals/{accepted_id}/report", json={"category": "other"}, headers=auth_as(BEK)
+    )
+    assert report.status_code == 201
+    assert act(client, BEK, accepted_id, "confirm").json()["status"] == "completed"
+    closed = client.post(f"/api/requests/{third_request}/close", headers=auth_as(AIDA))
+    assert closed.json()["status"] == "closed"
+    assert get(client, AIDA, "my/deals").status_code == 200
+    assert get(client, AIDA, f"requests/{request_id}").json()["status"] == "completed"
+    # Only posting and taking ask for the profile.
+    assert take(client, DANA, create(client, BEK)["id"]).status_code == 201  # fills it again
+    for user in (AIDA, DANA):
+        client.patch("/api/me", json=cleared, headers=auth_as(user))
+    new = client.post("/api/requests", json=VALID, headers=auth_as(AIDA))
+    assert new.json() == {"detail": "profile_required"}

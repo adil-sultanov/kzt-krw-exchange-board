@@ -19,6 +19,9 @@ export const MAX_AMOUNT = 100_000_000;
 export const MAX_MARKET_OFFSET = 20;
 export const MAX_BANK_LENGTH = 100;
 export const MAX_ACCOUNT_LENGTH = 100;
+export const MAX_NAME_LENGTH = 40;
+export const MAX_UNIVERSITY_LENGTH = 60;
+export const MIN_ENROLLMENT_YEAR = 2000;
 export const MAX_REPORT_NOTE_LENGTH = 500;
 export const MAX_DONATE_OPTIONS = 6;
 export const MAX_DONATE_LABEL_LENGTH = 40;
@@ -39,12 +42,40 @@ export interface Me {
   receive_kzt_account: string | null;
   receive_krw_bank: string | null;
   receive_krw_account: string | null;
+  /** The profile shown on this user's requests and deals (see Profile). */
+  profile_first_name: string | null;
+  profile_last_name: string | null;
+  university: string | null;
+  enrollment_year: number | null;
 }
 
-/** Receiving details to save. A field left out is unchanged; "" or null clears it. */
+/** Profile and receiving details to save. A field left out is unchanged; "" or null clears it. */
 export type MeUpdate = Partial<
-  Pick<Me, "receive_kzt_bank" | "receive_kzt_account" | "receive_krw_bank" | "receive_krw_account">
+  Pick<
+    Me,
+    | "receive_kzt_bank"
+    | "receive_kzt_account"
+    | "receive_krw_bank"
+    | "receive_krw_account"
+    | "profile_first_name"
+    | "profile_last_name"
+    | "university"
+    | "enrollment_year"
+  >
 >;
+
+/** What a user tells others about themselves, shown as a tag: "Adil Sultanov, UNIST, 2022". */
+export interface Profile {
+  first_name: string | null;
+  last_name: string | null;
+  university: string | null;
+  enrollment_year: number | null;
+}
+
+/** Posting or taking a request needs the whole profile. */
+export function hasProfile(me: Me): boolean {
+  return Boolean(me.profile_first_name && me.profile_last_name && me.university && me.enrollment_year);
+}
 
 export interface Rate {
   rate: number | null;
@@ -61,7 +92,12 @@ export interface ExchangeRequest {
   /** KRW per 1 KZT at the current reference rate (null while none is available). */
   effective_rate: number | null;
   status: RequestStatus;
+  /** An admin took it off the board (status `closed`), or its author's ban did. */
+  removed_by_admin: boolean;
   author_completed_deals: number;
+  author_profile: Profile | null;
+  /** The author's current Telegram username (null if they have none). */
+  author_username: string | null;
   is_own: boolean;
   /** The viewer's own response to this request, if they took it. */
   my_deal_id: number | null;
@@ -78,6 +114,7 @@ export interface Deal {
   status: DealStatus;
   role: DealRole;
   other_completed_deals: number;
+  other_profile: Profile | null;
   /** Whether each side confirmed receiving the other's payment. */
   my_confirmed: boolean;
   other_confirmed: boolean;
@@ -118,10 +155,48 @@ export interface AdminUser {
   telegram_id: number;
   username: string | null;
   first_name: string;
+  profile: Profile | null;
   completed_deals: number;
   is_banned: boolean;
   is_admin: boolean;
   /** Unresolved reports about this user. */
+  open_reports: number;
+}
+
+/** Why a request left the board early: its author, an admin, a ban, or the owner deleting its deal. */
+export type CloseReason = "author" | "admin" | "ban" | "deal_deleted";
+
+/** A request taken off the board, as admins see it in All deals. */
+export interface CancelledRequest {
+  id: number;
+  direction: Direction;
+  amount: number;
+  rate_value: number;
+  created_at: string;
+  closed_at: string;
+  /** Null for requests closed before this was recorded. */
+  close_reason: CloseReason | null;
+  /** The author, or the admin who removed it, banned its author or deleted its deal. */
+  closed_by: AdminUser | null;
+  author: AdminUser;
+  /** People who had taken it (declined when it closed), first taker first. */
+  takers: AdminUser[];
+  open_reports: number;
+}
+
+/** A request on the board, as admins see it. */
+export interface AdminBoardRequest {
+  id: number;
+  direction: Direction;
+  amount: number;
+  rate_value: number;
+  effective_rate: number | null;
+  created_at: string;
+  expires_at: string;
+  author: AdminUser;
+  /** Waiting for the author's answer, first taker first. */
+  responders: AdminUser[];
+  /** Unresolved reports about this request. */
   open_reports: number;
 }
 
@@ -131,6 +206,7 @@ export interface AdminRequest {
   direction: Direction;
   amount: number;
   status: RequestStatus;
+  removed_by_admin: boolean;
 }
 
 export interface AdminReport {
@@ -153,8 +229,8 @@ export interface AdminEntry extends AdminUser {
   source: AdminSource;
 }
 
-/** Any deal, as the owner sees it in All deals. */
-export interface OwnerDeal {
+/** Any deal, as admins see it in All deals. */
+export interface ListedDeal {
   id: number;
   status: DealStatus;
   author_confirmed: boolean;

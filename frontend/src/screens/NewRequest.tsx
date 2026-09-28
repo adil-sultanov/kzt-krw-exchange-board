@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, errorCode } from "../api";
 import { ExchangeBox, ExchangeRow } from "../components/Exchange";
+import { ProfileRequired } from "../components/ProfileHint";
 import { ErrorBox, Notice, Section, Segmented } from "../components/ui";
 import {
   formatAmountInput,
@@ -22,6 +23,7 @@ import {
   type ExchangeRequest,
   getCurrency,
   giveCurrency,
+  hasProfile,
   MAX_AMOUNT,
   MAX_MARKET_OFFSET,
   postDirection,
@@ -146,10 +148,11 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
 
   // A username is needed to be contacted, which an existing request's author already was.
   const blocked = me.is_banned ? t.form.banned : !me.username && !edit ? t.form.usernameRequired : null;
+  const needsProfile = !blocked && !edit && !hasProfile(me);
   const title = edit ? t.form.editTitle : t.form.title;
 
   useMainButton(
-    props.active && !blocked
+    props.active && !blocked && !needsProfile
       ? {
           text: edit ? t.form.save : t.form.submit,
           onClick: submit,
@@ -159,11 +162,11 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
       : null,
   );
 
-  if (blocked) {
+  if (blocked || needsProfile) {
     return (
       <div className="screen">
         <h1 className="title">{title}</h1>
-        <Notice tone="warning">{blocked}</Notice>
+        {blocked ? <Notice tone="warning">{blocked}</Notice> : <ProfileRequired text={t.form.profileRequired} />}
       </div>
     );
   }

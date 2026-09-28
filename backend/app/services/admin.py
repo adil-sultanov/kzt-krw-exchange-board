@@ -1,35 +1,44 @@
-"""Admin tools: review reports, ban and unban users. Owner tools: add and remove admins,
-and delete any deal.
+"""Admin tools: review reports, ban and unban users, see every request on the board and take
+any of them off it, and see every deal and every cancelled request. Owner tools: add and
+remove admins, and delete any deal.
 
 Every function checks that the actor is an admin (owner included) or the owner.
 Admins see the current usernames of the people in a report, never their receiving details.
 """
 
+from datetime import UTC, datetime
 from typing import Any
 
 import aiosqlite
 
 from app.config import Settings
-from app.db import Database, utc_now
+from app.db import Database, utc_iso, utc_now
 from app.models import (
+    AdminBoardRequestOut,
     AdminDealOut,
     AdminOut,
     AdminReportOut,
     AdminRequestOut,
     AdminSource,
     AdminUserOut,
-    OwnerDealOut,
+    CancelledRequestOut,
+    ListedDealOut,
     User,
 )
 from app.services.errors import ConflictError, NotFoundError, PermissionDeniedError
+from app.services.rates import get_reference_rate
+from app.services.requests import REMOVED_BY_ADMIN, close_open_request
 
 REPORTS_LIMIT = 100
-OWNER_DEALS_LIMIT = 100
+ALL_DEALS_LIMIT = 100
+# The board is small (at most 5 open requests per user), so this is effectively all of it.
+BOARD_REQUESTS_LIMIT = 500
 
-_SELECT_REPORTS = """
+_SELECT_REPORTS = f"""
 SELECT rp.id, rp.category, rp.reason AS note, rp.created_at, rp.resolved, rp.resolved_at,
        rp.reporter_id, rp.reported_id, rp.request_id, rp.deal_id,
        r.user_id AS author_id, r.direction, r.amount, r.status AS request_status,
+       {REMOVED_BY_ADMIN} AS removed_by_admin,
        d.status AS deal_status, d.author_confirmed, d.responder_confirmed
 FROM reports rp
 JOIN requests r ON r.id = rp.request_id
@@ -42,7 +51,8 @@ LIMIT :limit
 # Explicit columns: receiving details must never reach admin output.
 _SELECT_USERS = """
 SELECT u.telegram_id, u.username, u.first_name, u.completed_deals, u.is_banned, u.is_admin,
-       u.admin_granted,
+       u.admin_granted, u.profile_first_name, u.profile_last_name, u.university,
+       u.enrollment_year,
        (SELECT COUNT(*) FROM reports WHERE reported_id = u.telegram_id AND resolved = 0)
            AS open_reports
 FROM users u
@@ -67,7 +77,7 @@ async def _users(conn: aiosqlite.Connection, ids: set[int]) -> dict[int, AdminUs
         _SELECT_USERS + f" WHERE u.telegram_id IN ({placeholders})", tuple(ids)
     ) as cursor:
         rows = await cursor.fetchall()
-    return {row["telegram_id"]: AdminUserOut.model_validate(dict(row)) for row in rows}
+    return {row["telegram_id"]: AdminUserOut.from_row(row) for row in rows}
 
 
 async def list_reports(db: Database, actor: User, *, resolved: bool) -> list[AdminReportOut]:
@@ -106,6 +116,7 @@ def _report_out(row: aiosqlite.Row, users: dict[int, AdminUserOut]) -> AdminRepo
             direction=row["direction"],
             amount=row["amount"],
             status=row["request_status"],
+            removed_by_admin=row["removed_by_admin"],
         ),
         deal=deal,
     )
@@ -149,9 +160,9 @@ async def ban_user(db: Database, actor: User, user_id: int) -> AdminUserOut:
             (now, user_id),
         )
         await conn.execute(
-            "UPDATE requests SET status = 'closed', updated_at = ? "
-            "WHERE user_id = ? AND status = 'open'",
-            (now, user_id),
+            "UPDATE requests SET status = 'closed', close_reason = 'ban', closed_by = ?, "
+            "updated_at = ? WHERE user_id = ? AND status = 'open'",
+            (actor.telegram_id, now, user_id),
         )
         await conn.execute(
             "UPDATE deals SET status = 'declined', updated_at = ? "
@@ -174,6 +185,79 @@ async def unban_user(db: Database, actor: User, user_id: int) -> AdminUserOut:
     if user_id not in users:
         raise NotFoundError("user_not_found")
     return users[user_id]
+
+
+# --- Board requests ---
+
+_SELECT_BOARD_REQUESTS = """
+SELECT r.id, r.user_id, r.direction, r.amount, r.rate_value, r.created_at, r.expires_at,
+       :ref * (1 + r.rate_value / 100.0) AS effective_rate,
+       (SELECT COUNT(*) FROM reports rp WHERE rp.request_id = r.id AND rp.resolved = 0)
+           AS open_reports
+FROM requests r
+WHERE r.status = 'open' AND r.expires_at > :now
+ORDER BY r.id DESC
+LIMIT :limit
+"""
+
+
+async def list_board_requests(db: Database, actor: User) -> list[AdminBoardRequestOut]:
+    """Every request on the board now (both directions, anyone's), newest first, with its
+    author and the people waiting for the author's answer.
+    """
+    _require_admin(actor)
+    rate = await get_reference_rate(db)
+    params: dict[str, Any] = {
+        "ref": rate.rate if rate is not None else None,
+        "now": utc_iso(datetime.now(UTC)),
+        "limit": BOARD_REQUESTS_LIMIT,
+    }
+    async with db.conn.execute(_SELECT_BOARD_REQUESTS, params) as cursor:
+        rows = await cursor.fetchall()
+    responders: dict[int, list[int]] = {row["id"]: [] for row in rows}
+    if rows:
+        placeholders = ", ".join("?" * len(rows))
+        async with db.conn.execute(
+            "SELECT request_id, responder_id FROM deals WHERE status = 'pending' "
+            f"AND request_id IN ({placeholders}) ORDER BY created_at, id",
+            tuple(responders),
+        ) as cursor:
+            for deal in await cursor.fetchall():
+                responders[deal["request_id"]].append(deal["responder_id"])
+    user_ids = {row["user_id"] for row in rows}
+    user_ids |= {user_id for ids in responders.values() for user_id in ids}
+    users = await _users(db.conn, user_ids)
+    return [
+        AdminBoardRequestOut(
+            id=row["id"],
+            direction=row["direction"],
+            amount=row["amount"],
+            rate_value=row["rate_value"],
+            effective_rate=row["effective_rate"],
+            created_at=row["created_at"],
+            expires_at=row["expires_at"],
+            author=users[row["user_id"]],
+            responders=[users[user_id] for user_id in responders[row["id"]]],
+            open_reports=row["open_reports"],
+        )
+        for row in rows
+    ]
+
+
+async def remove_board_request(db: Database, actor: User, request_id: int) -> None:
+    """Take any request off the board, as its author's "Cancel request" would: its pending
+    responders are declined. No one is messaged; both sides see an admin removed it.
+    """
+    _require_admin(actor)
+    now = utc_now()
+    async with db.transaction() as conn:
+        if await close_open_request(
+            conn, request_id, now, closed_by=actor.telegram_id, reason="admin"
+        ):
+            return
+        async with conn.execute("SELECT 1 FROM requests WHERE id = ?", (request_id,)) as check:
+            exists = await check.fetchone() is not None
+    raise ConflictError("request_not_open") if exists else NotFoundError("request_not_found")
 
 
 # --- Owner: admins ---
@@ -199,7 +283,7 @@ async def list_admins(db: Database, actor: User, settings: Settings) -> list[Adm
     where = f" WHERE u.admin_granted = 1 OR u.telegram_id IN ({placeholders})"
     async with db.conn.execute(_SELECT_USERS + where, tuple(config_ids)) as cursor:
         rows = await cursor.fetchall()
-    admins = [_admin_out(settings, AdminUserOut.model_validate(dict(row))) for row in rows]
+    admins = [_admin_out(settings, AdminUserOut.from_row(row)) for row in rows]
     order: list[AdminSource] = ["owner", "config", "granted"]
     return sorted(admins, key=lambda a: (order.index(a.source), (a.username or "").lower()))
 
@@ -250,38 +334,36 @@ async def remove_admin(db: Database, actor: User, settings: Settings, user_id: i
     raise NotFoundError("admin_not_found")
 
 
-# --- Owner: deals ---
+# --- All deals and cancelled requests ---
 
-_SELECT_OWNER_DEALS = """
+_SELECT_ALL_DEALS = f"""
 SELECT d.id, d.status, d.author_confirmed, d.responder_confirmed, d.created_at, d.updated_at,
        d.author_id, d.responder_id, d.request_id,
-       r.direction, r.amount, r.status AS request_status
+       r.direction, r.amount, r.status AS request_status, {REMOVED_BY_ADMIN} AS removed_by_admin
 FROM deals d
 JOIN requests r ON r.id = d.request_id
-WHERE d.status IN ({statuses})
-ORDER BY d.updated_at {order}, d.id {order}
+WHERE d.status IN ({{statuses}})
+ORDER BY d.updated_at {{order}}, d.id {{order}}
 LIMIT ?
 """
 
 
-async def list_deals(
-    db: Database, actor: User, settings: Settings, *, active: bool
-) -> list[OwnerDealOut]:
+async def list_deals(db: Database, actor: User, *, active: bool) -> list[ListedDealOut]:
     """Active deals (pending or accepted), least recently changed first, so stale ones lead;
     or finished ones (completed or declined), most recent first.
     """
-    _require_owner(actor, settings)
-    sql = _SELECT_OWNER_DEALS.format(
+    _require_admin(actor)
+    sql = _SELECT_ALL_DEALS.format(
         statuses="'pending', 'accepted'" if active else "'completed', 'declined'",
         order="ASC" if active else "DESC",
     )
-    async with db.conn.execute(sql, (OWNER_DEALS_LIMIT,)) as cursor:
+    async with db.conn.execute(sql, (ALL_DEALS_LIMIT,)) as cursor:
         rows = await cursor.fetchall()
     users = await _users(
         db.conn, {row["author_id"] for row in rows} | {row["responder_id"] for row in rows}
     )
     return [
-        OwnerDealOut(
+        ListedDealOut(
             id=row["id"],
             status=row["status"],
             author_confirmed=row["author_confirmed"],
@@ -294,6 +376,7 @@ async def list_deals(
                 direction=row["direction"],
                 amount=row["amount"],
                 status=row["request_status"],
+                removed_by_admin=row["removed_by_admin"],
             ),
             author=users[row["author_id"]],
             responder=users[row["responder_id"]],
@@ -302,13 +385,69 @@ async def list_deals(
     ]
 
 
+_SELECT_CANCELLED = """
+SELECT r.id, r.user_id, r.direction, r.amount, r.rate_value, r.created_at,
+       r.updated_at AS closed_at, r.close_reason, r.closed_by,
+       (SELECT COUNT(*) FROM reports rp WHERE rp.request_id = r.id AND rp.resolved = 0)
+           AS open_reports
+FROM requests r
+WHERE r.status = 'closed'
+ORDER BY r.updated_at DESC, r.id DESC
+LIMIT ?
+"""
+
+
+async def list_cancelled_requests(db: Database, actor: User) -> list[CancelledRequestOut]:
+    """Requests taken off the board before they were done, most recently first: who did it
+    (the author, or which admin, and how), and who had taken each one. Those people's deals
+    were declined when it closed; a deal the owner deleted is gone, as are declined deals once
+    the cleanup job removes them (30 days).
+    """
+    _require_admin(actor)
+    async with db.conn.execute(_SELECT_CANCELLED, (ALL_DEALS_LIMIT,)) as cursor:
+        rows = await cursor.fetchall()
+    takers: dict[int, list[int]] = {row["id"]: [] for row in rows}
+    if rows:
+        placeholders = ", ".join("?" * len(rows))
+        async with db.conn.execute(
+            f"SELECT request_id, responder_id FROM deals WHERE request_id IN ({placeholders}) "
+            "ORDER BY created_at, id",
+            tuple(takers),
+        ) as cursor:
+            for deal in await cursor.fetchall():
+                takers[deal["request_id"]].append(deal["responder_id"])
+    user_ids = {row["user_id"] for row in rows}
+    user_ids |= {row["closed_by"] for row in rows if row["closed_by"] is not None}
+    user_ids |= {user_id for ids in takers.values() for user_id in ids}
+    users = await _users(db.conn, user_ids)
+    return [
+        CancelledRequestOut(
+            id=row["id"],
+            direction=row["direction"],
+            amount=row["amount"],
+            rate_value=row["rate_value"],
+            created_at=row["created_at"],
+            closed_at=row["closed_at"],
+            close_reason=row["close_reason"],
+            closed_by=users.get(row["closed_by"]) if row["closed_by"] is not None else None,
+            author=users[row["user_id"]],
+            takers=[users[user_id] for user_id in takers[row["id"]]],
+            open_reports=row["open_reports"],
+        )
+        for row in rows
+    ]
+
+
+# --- Owner: deals ---
+
+
 async def delete_deal(db: Database, actor: User, settings: Settings, deal_id: int) -> None:
     """Delete any deal, e.g. one left stuck when a side disappeared. Nobody is notified; the
     deal just disappears from both sides' My deals.
 
     Deleting an accepted deal closes its request (in progress until now), since nobody else can
-    take it. Completed-deal counts don't change. Reports on the deal stay, as reports on its
-    request.
+    take it; it's then listed as cancelled, by the owner. Completed-deal counts don't change.
+    Reports on the deal stay, as reports on its request.
     """
     _require_owner(actor, settings)
     now = utc_now()
@@ -323,7 +462,7 @@ async def delete_deal(db: Database, actor: User, settings: Settings, deal_id: in
         await conn.execute("DELETE FROM deals WHERE id = ?", (deal_id,))
         if deal["status"] == "accepted":
             await conn.execute(
-                "UPDATE requests SET status = 'closed', updated_at = ? "
-                "WHERE id = ? AND status = 'in_progress'",
-                (now, deal["request_id"]),
+                "UPDATE requests SET status = 'closed', close_reason = 'deal_deleted', "
+                "closed_by = ?, updated_at = ? WHERE id = ? AND status = 'in_progress'",
+                (actor.telegram_id, now, deal["request_id"]),
             )

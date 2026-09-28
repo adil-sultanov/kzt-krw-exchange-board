@@ -15,8 +15,9 @@ export type Route =
   | { name: "report"; target: ReportTarget }
   | { name: "about" }
   | { name: "admin" }
+  | { name: "boardRequests" }
   | { name: "admins" }
-  | { name: "ownerDeals" };
+  | { name: "allDeals" };
 
 export interface Nav {
   push(route: Route): void;

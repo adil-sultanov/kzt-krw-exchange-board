@@ -1,6 +1,6 @@
 """User-facing bot message strings."""
 
-from app.models import Currency, DealOut
+from app.models import Currency, DealOut, Profile
 
 AUTHOR = "@moonpie24"
 TERMS_URL = "https://github.com/adil-sultanov/kzt-krw-exchange-board/blob/main/TERMS.md"
@@ -33,12 +33,23 @@ def _deals(count: int) -> str:
     return "1 completed deal" if count == 1 else f"{count} completed deals"
 
 
+def _profile(profile: Profile | None) -> str | None:
+    """ "Adil Sultanov, UNIST, 2022", as the app shows it (whatever parts are filled in)."""
+    if profile is None:
+        return None
+    name = " ".join(part for part in (profile.first_name, profile.last_name) if part)
+    year = str(profile.enrollment_year) if profile.enrollment_year else None
+    return ", ".join(part for part in (name, profile.university, year) if part) or None
+
+
 def deal_requested(deal: DealOut) -> str:
+    """To the author. `deal` is as they see it, so `other_*` is the person who took it."""
     request = deal.request
     gives: Currency = "KZT" if request.direction == "KZT_KRW" else "KRW"
     buys: Currency = "KRW" if gives == "KZT" else "KZT"
+    who = _profile(deal.other_profile)
     return (
-        "🔔 Someone wants to take your request: "
+        f"🔔 {who or 'Someone'} wants to take your request: "
         f"buy {buys} {FLAG[buys]} for {_money(request.amount, gives)}.\n"
         f"They have {_deals(deal.other_completed_deals)}. "
         "Open the deal to accept or decline."

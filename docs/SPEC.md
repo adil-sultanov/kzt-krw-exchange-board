@@ -6,21 +6,29 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
 - Every screen speaks from the viewer's side: a request shows **You pay** / **You get** (for its
   author, or for whoever takes it), and its rate as better / worse than the market *for them*
   (or "Market rate"). The amount converted at the market rate is marked "≈".
+- Every request and deal shows the other side's **profile tag**: "Adil Sultanov, UNIST, 2022"
+  (see Profiles), next to their completed-deal count. Not on the viewer's own requests.
+- Someone else's request also shows its author's current Telegram username as a tappable
+  **@username** tag (Board cards, request detail, matches), opening their Telegram profile via
+  `openTelegramLink`, so people can check who they'd trade with. Tapping it doesn't open the
+  card. Hidden when the author has no username.
 - **Board** — open requests in two tabs by what the viewer would buy by taking one ("Buy KRW
   🇰🇷", the default, lists `KRW_KZT` requests; "Buy KZT 🇰🇿" lists `KZT_KRW`). **Filters**
   (highlighted while not the default) sorts by date, amount they'd get or rate for the viewer,
   descending (newest / largest / best first) or ascending via an arrow toggle.
-  Cards show pay / get, the rate compared to the market, the author's completed deals
-  and time left. Shows the reference rate both ways at the top (1 ₸ = X ₩ and 1 ₩ = Y ₸).
+  Cards show the author's profile tag and @username, pay / get, the rate compared to the market, the
+  author's completed deals and time left. Shows the reference rate both ways at the top (1 ₸ = X ₩ and 1 ₩ = Y ₸).
   Large **My deals** and **Profile** buttons with icons, and a **Refresh** button next to
   Filters. Hides the viewer's own requests and requests from banned users.
-- **Request detail** — what the viewer pays and gets, rate, author's completed-deals count,
-  time left. Buttons: **I'll take it** (creates a pending deal, see Deal flow), **Report this
+- **Request detail** — what the viewer pays and gets, rate, author's profile tag, @username
+  and completed-deals count, time left. Buttons: **I'll take it** (creates a pending deal, see Deal flow), **Report this
   request** (not on your own);
   on the author's own open request, **Edit**, **Extend** and **Cancel request** (and how many
   people are waiting for an answer, and the requests going the other way they could take,
   closest in size first); on their own expired request, **Post again**.
-  Usernames are never shown before the author accepts.
+  Without a full profile, taking is
+  replaced by a notice linking to Profile (as posting is on New request). A request an admin
+  removed reads "An admin took this request off the board" (status "Removed by an admin").
 - **New request** — form: what the author buys ("Buy KRW" posts `KZT_KRW`, "Buy KZT" posts
   `KRW_KZT`), the amount they pay or the amount they get (either can be typed; the other is
   converted at the request's rate, and the request stores what they pay, rounded), rate (Market (default) /
@@ -49,10 +57,12 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   Cards under *Completed* and *Declined* carry no status tag (the section says it).
   *Completed* folds and unfolds by tapping its title (which shows the count); the choice is
   remembered on the device. My deals and the deal screen have a **Refresh** button.
-- **Profile** — name, username and completed deals count, receiving details per
-  currency (KZT, KRW): bank and account holder, and account / card / phone number (max 100 chars
-  each), then links to **About & support** and (admins only) **Admin: reports**. The owner also
-  gets an *Owner* section with **Admins** and **All deals**.
+- **Profile** — name, username and completed deals count; *About you*: first and last name,
+  university and year of enrollment (see Profiles), with a preview of the tag; receiving
+  details per currency (KZT, KRW): bank and account holder, and account / card / phone number
+  (max 100 chars each). One MainButton **Save** for all of it. Then links to **About &
+  support** and (admins only) **Admin: reports**, **Admin: board requests** and **Admin: all
+  deals**. The owner also gets an *Owner* section with **Admins**.
 - **About & support** — what the app is and the disclaimer, "Made by Adil Sultanov (@moonpie24)",
   a link to the GitHub repo, Terms and Privacy. **Support the project**: the owner's note and up
   to 6 donate options (label + value; a `http(s)://` value opens as a link, anything else gets a
@@ -67,13 +77,26 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   (chat link, completed deals, open-report count, banned / admin tags, Telegram ID). Buttons:
   **Resolve**, and **Ban** / **Unban** for the reported user (with a confirm popup). On a deal
   report the owner also gets **Delete deal**.
+- **Admin: board requests** (admins only) — every request on the board now (open, not
+  expired; both directions, anyone's), newest first: what the author pays and gets, the rate,
+  when it was posted and leaves, its open-report count, the author and the people waiting for
+  their answer (as on reports, with profiles). **Remove from board** (with a confirm popup)
+  closes it as the author's **Cancel request** would, declining whoever was waiting. Nobody is
+  messaged; both sides see "Removed by an admin" on the request and deal. Requests in progress
+  aren't listed (their deal can only be deleted by the owner, in All deals). Removed requests
+  are listed under All deals → Cancelled.
 - **Admins** (owner only) — everyone with admin rights: the owner, `ADMIN_IDS`, and those added
   in the app (only these have **Remove admin**). Add one by Telegram username (with or without
   the @; MainButton **Add admin**): it must belong to someone who has used the app or the bot.
-- **All deals** (owner only) — Active (pending / accepted, least recently changed first, so
-  stale ones lead) / Finished (completed / declined, newest first) tabs, up to 100 each: the
-  deal and its request, who confirmed payment, both sides (as on reports), and **Delete deal**
-  (with a confirm popup).
+- **Admin: all deals** (admins only) — Active (pending / accepted, least recently changed
+  first, so stale ones lead) / Finished (completed / declined, newest first) / Cancelled tabs,
+  up to 100 each. Deals: the deal and its request, who confirmed payment, both sides (as on
+  reports), and (owner only) **Delete deal** (with a confirm popup). Cancelled: requests taken
+  off the board early (status `closed`), most recently closed first: who did it and how
+  (cancelled by its author; removed by an admin; closed by a ban; closed when the owner deleted
+  its accepted deal; or "not recorded" for ones closed before migration 010), when, what the
+  author paid, open reports, the author, the admin who closed it, and the people who had taken
+  it (their deals were declined; a deleted deal's taker isn't listed).
 - The Board's **My deals** link shows a badge with the number of things waiting on the viewer:
   a pending responder to answer, a payment to confirm once the other side has, or one of
   their requests leaving the board within 6 h (the in-app expiry notice).
@@ -95,8 +118,8 @@ The bot answers `/start` (in private chats only) with a button that opens the Mi
 without one for non-members of the group (see Group members only), sets the chat menu button, and
 sends exactly two notifications, each with an **Open deal** button (a `web_app` button whose URL
 carries `?startapp=deal_<id>`):
-- to the author, when someone takes their request (amount, direction, the responder's
-  completed-deal count);
+- to the author, when someone takes their request (the responder's profile tag, amount,
+  direction, the responder's completed-deal count);
 - to the responder, when the author accepts their deal.
 
 They're sent in the background after the deal's transaction commits. A failed send (the user
@@ -106,7 +129,7 @@ app, on the deal screen and in My deals, with the badge on the Board. Expiry not
 matches are in-app too.
 
 ## Deal flow
-1. B opens A's request and taps **I'll take it**. The backend creates a `pending` deal
+1. B (with a username and a full profile) opens A's request and taps **I'll take it**. The backend creates a `pending` deal
    with B's `telegram_id` taken from B's verified initData (never from the request body).
 2. A sees B in My deals with Accept / Decline. A can have several pending responders on one request.
 3. **Accept**: deal → `accepted`, request → `in_progress` (hidden from the Board);
@@ -152,6 +175,19 @@ so double taps and races between two open copies of the app are harmless.
 - A username is required to create or take a request (the Contact link needs it).
   Explain this in the UI to users without one. Do not rely on `tg://user?id=` links.
 
+## Profiles
+- Each user fills in a first name, last name, university and year of enrollment in Profile.
+  All four are needed to post or take a request (`profile_required`); browsing needs none.
+  They can be edited or cleared at any time (clearing doesn't touch existing requests or deals).
+- Shown to others as a tag, "First Last, University, Year" (whatever parts are filled in): to
+  every member on the author's requests, and to the other side on each deal. Admins see it
+  next to the Telegram details on reports, board requests and All deals.
+- Names: letters, spaces and `-'’.`, max 40 chars; the first letter of each word (and after a
+  hyphen) is capitalized on save. University: letters, digits, spaces and `-'’.&()`, max 60.
+  No commas (they separate the tag's parts), links or emoji. Year: 2000 to next year.
+- Unlike the Telegram `first_name` (a cache), the profile is typed by the user; it isn't
+  verified.
+
 ## Group members only
 - With `GROUP_ID` set, only members of that Telegram group chat can use the board: every API
   request checks membership (`getChatMember`) before anything else, and non-members get
@@ -174,21 +210,22 @@ so double taps and races between two open copies of the app are harmless.
   Admins can't be banned.
 - **Deleting a deal** (owner, any status; e.g. one stuck because a side disappeared), in one
   transaction: the deal is gone for both sides, with no message. An accepted deal's request is
-  closed (no one else can take it). Reports on it stay, as reports on the request. Completed-deal
+  closed (no one else can take it; recorded as closed by the owner). Reports on it stay, as reports on the request. Completed-deal
   counts don't change.
 - Reports are about someone else's request (reported user: its author) or the other side of
   the reporter's accepted deal. They're stored for admin review; the reported user isn't told.
   One unresolved report per reporter per request / deal (`already_reported`), and at most 5
   reports per user per 24 h (`too_many_reports`). No bot message: admins check the app.
 - A **ban** (one transaction): the user can't post or take requests, their open requests are
-  closed, and pending deals on either side are declined. Accepted deals carry on (they end
+  closed (shown as removed by an admin), and pending deals on either side are declined. Accepted deals carry on (they end
   when both confirm). **Unban** lifts it; closed requests stay closed.
 - Limits: at most 5 open requests per user and a small rate limit on creating requests, to
   keep the board clean
 
 ## API
 All routes require valid initData.
-- `GET  /api/me` · `PATCH /api/me` (receiving details: `receive_kzt_bank`, `receive_kzt_account`,
+- `GET  /api/me` · `PATCH /api/me` (profile: `profile_first_name`, `profile_last_name`,
+  `university`, `enrollment_year`; receiving details: `receive_kzt_bank`, `receive_kzt_account`,
   `receive_krw_bank`, `receive_krw_account`)
 - `GET  /api/rate`
 - `GET  /api/requests` (filters as query params)
@@ -212,10 +249,12 @@ All routes require valid initData.
 - `GET  /api/requests/{id}/matches` (author only; empty once the request is off the board)
 - `GET  /api/about` (the donate section)
 - Admin only: `GET /api/admin/reports?resolved=false|true`, `POST /api/admin/reports/{id}/resolve`,
-  `POST /api/admin/users/{id}/ban` | `/unban`
+  `POST /api/admin/users/{id}/ban` | `/unban`, `GET /api/admin/requests` (board requests),
+  `POST /api/admin/requests/{id}/remove`, `GET /api/admin/requests/cancelled`,
+  `GET /api/admin/deals?active=true|false`
 - Owner only: `PUT /api/admin/about` (`{donate_note, donate_options: [{label, value}]}`),
   `GET /api/admin/admins`, `POST /api/admin/admins` (`{username}`), `DELETE /api/admin/admins/{id}`,
-  `GET /api/admin/deals?active=true|false`, `DELETE /api/admin/deals/{id}`
+  `DELETE /api/admin/deals/{id}`
 
 Errors return `{"detail": "<machine_code>"}` with a proper HTTP status; the frontend maps
 codes to strings in `i18n.ts`.

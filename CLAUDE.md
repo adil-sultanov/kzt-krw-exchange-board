@@ -12,9 +12,12 @@ Schema source of truth: `backend/app/migrations/`.
 - The bot sends only two messages: "someone took your request" (to the author) and "your deal
   was accepted" (to the responder), plus its `/start` reply. Every other update is in-app only.
 - Users identified only by `telegram_id`. `username` is a nullable, non-unique cache refreshed
-  on every API request/bot update; never store usernames elsewhere. Username required to post/take.
+  on every API request/bot update; never store usernames elsewhere. Username and a full profile
+  (`users.profile_{first,last}_name`, `university`, `enrollment_year`) required to post/take.
 - Admins = `ADMIN_IDS` + `OWNER_ID` (`Settings.is_admin`) + those the owner adds in the app
-  (`users.admin_granted`). Only the owner edits the About page, manages admins and deletes deals.
+  (`users.admin_granted`). Any admin can take any request off the board (Board requests) and see
+  All deals (incl. cancelled requests); only the owner edits the About page, manages admins and
+  deletes deals.
 - Validate initData (`Authorization: tma <initData>`) on every API route; never trust client
   user IDs. Check authorization on every mutation and bot callback. Never log initData/tokens/user records.
 - Receiving details (`users.receive_{kzt,krw}_{bank,account}`) are sensitive: never log them; only the other side

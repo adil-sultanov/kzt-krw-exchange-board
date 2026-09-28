@@ -5,10 +5,12 @@ from app.models import (
     AboutOut,
     AboutUpdate,
     AdminAdd,
+    AdminBoardRequestOut,
     AdminOut,
     AdminReportOut,
     AdminUserOut,
-    OwnerDealOut,
+    CancelledRequestOut,
+    ListedDealOut,
 )
 from app.services import about, admin
 
@@ -38,6 +40,27 @@ async def unban_user(user: CurrentUser, db: DbDep, user_id: int) -> AdminUserOut
     return await admin.unban_user(db, user, user_id)
 
 
+@router.get("/requests")
+async def list_board_requests(user: CurrentUser, db: DbDep) -> list[AdminBoardRequestOut]:
+    return await admin.list_board_requests(db, user)
+
+
+@router.get("/requests/cancelled")
+async def list_cancelled_requests(user: CurrentUser, db: DbDep) -> list[CancelledRequestOut]:
+    return await admin.list_cancelled_requests(db, user)
+
+
+@router.get("/deals")
+async def list_deals(user: CurrentUser, db: DbDep, active: bool = True) -> list[ListedDealOut]:
+    return await admin.list_deals(db, user, active=active)
+
+
+@router.post("/requests/{request_id}/remove", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_board_request(user: CurrentUser, db: DbDep, request_id: int) -> Response:
+    await admin.remove_board_request(db, user, request_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 # --- Owner only ---
 
 
@@ -59,13 +82,6 @@ async def remove_admin(
 ) -> Response:
     await admin.remove_admin(db, user, settings, user_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.get("/deals")
-async def list_deals(
-    user: CurrentUser, db: DbDep, settings: SettingsDep, active: bool = True
-) -> list[OwnerDealOut]:
-    return await admin.list_deals(db, user, settings, active=active)
 
 
 @router.delete("/deals/{deal_id}", status_code=status.HTTP_204_NO_CONTENT)

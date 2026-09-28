@@ -48,6 +48,10 @@ def test_me_returns_caller_and_refreshes_username(client: TestClient) -> None:
         "receive_kzt_account": None,
         "receive_krw_bank": None,
         "receive_krw_account": None,
+        "profile_first_name": None,
+        "profile_last_name": None,
+        "university": None,
+        "enrollment_year": None,
     }
 
     renamed = {**USER, "username": "aida_new"}
@@ -108,3 +112,49 @@ def test_update_receiving_details_rejects_bad_input(
     response = client.patch("/api/me", json=body, headers=auth(make_init_data(USER)))
     assert response.status_code == 422
     assert response.json() == {"detail": "invalid_input"}
+
+
+def test_update_profile(client: TestClient) -> None:
+    headers = auth(make_init_data(USER))
+    body = {
+        "profile_first_name": "  adil ",
+        "profile_last_name": "sultanov-o\u2019neil",
+        "university": " Korea   University ",
+        "enrollment_year": 2022,
+    }
+    response = client.patch("/api/me", json=body, headers=headers)
+    assert response.status_code == 200
+    me = response.json()
+    # First letters capitalized, spaces tidied; the university stays as typed.
+    assert me["profile_first_name"] == "Adil"
+    assert me["profile_last_name"] == "Sultanov-O\u2019neil"
+    assert me["university"] == "Korea University"
+    assert me["enrollment_year"] == 2022
+
+    # Fields left out are unchanged; an empty value (or a null year) clears one.
+    client.patch("/api/me", json={"university": "", "enrollment_year": None}, headers=headers)
+    me = client.get("/api/me", headers=headers).json()
+    assert (me["profile_first_name"], me["university"], me["enrollment_year"]) == (
+        "Adil",
+        None,
+        None,
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"profile_first_name": "x" * 41},
+        {"profile_last_name": "Smith, Jr"},
+        {"profile_first_name": "Adil1"},
+        {"profile_first_name": "Adil 😀"},
+        {"university": "https://t.me/x"},
+        {"university": "U" * 61},
+        {"enrollment_year": 1999},
+        {"enrollment_year": 3000},
+        {"enrollment_year": "2022"},
+    ],
+)
+def test_update_profile_rejects_bad_input(client: TestClient, body: dict[str, object]) -> None:
+    response = client.patch("/api/me", json=body, headers=auth(make_init_data(USER)))
+    assert (response.status_code, response.json()) == (422, {"detail": "invalid_input"})

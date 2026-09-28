@@ -1,5 +1,5 @@
 import { t } from "./i18n";
-import type { Currency, Side } from "./types";
+import type { Currency, Profile, RequestStatus, Side } from "./types";
 
 export const SYMBOL: Record<Currency, string> = { KZT: "₸", KRW: "₩" };
 
@@ -36,6 +36,19 @@ export function formatSide(side: Side): string {
   if (side.amount === null) return t.side.unknown(SYMBOL[side.currency]);
   const money = formatMoney(side.amount, side.currency);
   return side.approx ? t.side.approx(money) : money;
+}
+
+/** A request's status, telling an admin's removal apart from its author cancelling it. */
+export function requestStatus(request: { status: RequestStatus; removed_by_admin: boolean }): string {
+  return request.status === "closed" && request.removed_by_admin ? t.removedStatus : t.status[request.status];
+}
+
+/** "Adil Sultanov, UNIST, 2022", or whatever part of it is filled in (null if none). */
+export function formatProfile(profile: Profile | null): string | null {
+  if (!profile) return null;
+  const name = [profile.first_name, profile.last_name].filter(Boolean).join(" ");
+  const parts = [name, profile.university, profile.enrollment_year?.toString()].filter(Boolean);
+  return parts.length > 0 ? parts.join(", ") : null;
 }
 
 export function formatRate(rate: number): string {

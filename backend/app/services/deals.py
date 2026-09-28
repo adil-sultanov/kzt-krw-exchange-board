@@ -21,7 +21,16 @@ from typing import Any, Literal
 import aiosqlite
 
 from app.db import Database, utc_iso, utc_now
-from app.models import ContactOut, Currency, DealOut, DealRole, Direction, RequestOut, User
+from app.models import (
+    ContactOut,
+    Currency,
+    DealOut,
+    DealRole,
+    Direction,
+    Profile,
+    RequestOut,
+    User,
+)
 from app.services.errors import ConflictError, NotFoundError, PermissionDeniedError
 from app.services.notifications import Notifier
 from app.services.requests import get_requests_by_ids
@@ -53,7 +62,8 @@ SELECT d.id, d.status, d.request_id, d.created_at, d.updated_at,
             ELSE d.author_confirmed END AS other_confirmed,
        EXISTS (SELECT 1 FROM reports rp WHERE rp.deal_id = d.id AND rp.reporter_id = :viewer
                AND rp.resolved = 0) AS my_report_open,
-       o.completed_deals AS other_completed_deals
+       o.completed_deals AS other_completed_deals,
+       o.profile_first_name, o.profile_last_name, o.university, o.enrollment_year
 FROM deals d
 JOIN users o ON o.telegram_id =
     CASE WHEN d.author_id = :viewer THEN d.responder_id ELSE d.author_id END
@@ -131,7 +141,7 @@ async def _deals_for(
 
 
 def _to_out(row: aiosqlite.Row, request: RequestOut) -> DealOut:
-    data = {**dict(row), "request": request}
+    data = {**dict(row), "request": request, "other_profile": Profile.from_row(row)}
     # Expiring a request declines its pending deals; until the expiry job has run, a pending
     # deal on a past-due request (which can no longer be accepted) is already declined.
     if data["status"] == "pending" and request.status == "expired":
@@ -182,6 +192,8 @@ async def take_request(db: Database, user: User, request_id: int, notifier: Noti
         raise PermissionDeniedError("user_banned")
     if not user.username:
         raise PermissionDeniedError("username_required")
+    if not user.has_profile:
+        raise PermissionDeniedError("profile_required")
 
     now = utc_now()
     async with db.transaction() as conn:
