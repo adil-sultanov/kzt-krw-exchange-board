@@ -18,6 +18,9 @@
   --warning: #e8870e;
   --radius: 14px;
   --radius-small: 10px;
+  /* Motion: settles quickly without a hard stop; the spring overshoots a little. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
   color-scheme: light dark;
 }
 
@@ -144,11 +147,47 @@ p {
   font-weight: 600;
 }
 
+/* Tapped: dims (and buttons shrink a touch) at once, then eases back on release. */
+.nav-button,
+.card,
+.chip-button,
+.icon-button,
+.secondary-button,
+.card-action,
+.menu-row,
+.choice,
+.copy-button,
+.link-button,
+.sort-order-button,
+.username-tag {
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s var(--ease-out),
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
 .nav-button:active,
 .card:active,
-.chip-button:active,
-.icon-button:active {
+.chip-button:active:not(:disabled),
+.icon-button:active:not(:disabled),
+.secondary-button:active:not(:disabled),
+.card-action:active:not(:disabled),
+.menu-row:active,
+.choice:active,
+.copy-button:active,
+.link-button:active {
   opacity: 0.6;
+  transition-duration: 0s;
+}
+
+.nav-button:active,
+.chip-button:active:not(:disabled),
+.icon-button:active:not(:disabled),
+.secondary-button:active:not(:disabled),
+.copy-button:active {
+  transform: scale(0.97);
+  transition-duration: 0s, 0.1s;
 }
 
 /* Tapping the @username inside a card dims just the tag. On its own: a browser without :has
@@ -283,7 +322,7 @@ p {
   border-radius: 9px;
   background: var(--button);
   transform: translateX(calc(var(--index) * (100% + 3px)));
-  transition: transform 0.25s cubic-bezier(0.3, 0.7, 0.4, 1);
+  transition: transform 0.35s var(--ease-out);
 }
 
 .section-body .segmented,
@@ -470,7 +509,7 @@ p {
 }
 
 .icon.sort-order {
-  transition: transform 0.25s cubic-bezier(0.3, 0.7, 0.4, 1);
+  transition: transform 0.35s var(--ease-out);
 }
 
 .icon.sort-order.up {
@@ -495,6 +534,7 @@ p {
   border: 1px solid var(--separator);
   border-radius: var(--radius-small);
   background: var(--bg);
+  transition: border-color 0.2s ease;
 }
 
 .input {
@@ -603,28 +643,20 @@ p {
   gap: 8px;
 }
 
-/* Board (and admin) results: they fade in once, when first loaded. For a new tab or filters the old ones
-   stay up and are swapped in place; they're dimmed only if loading takes a moment (the
-   delay), so a fast load doesn't blink. */
+/* Board (and admin) results: they fade in once, when first loaded (as `.screen > *`). For a
+   new tab or filters the old ones stay up until the new ones are in (see `.tab-content`);
+   they're dimmed only if loading takes a moment (the delay), so a fast load doesn't blink. */
 .results {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  animation: fade-in 0.2s ease-out;
-  transition: opacity 0.15s;
+  transition: opacity 0.2s ease;
 }
 
 .results.stale {
   opacity: 0.45;
   pointer-events: none;
   transition-delay: 0.2s;
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
 }
 
 .card {
@@ -765,6 +797,7 @@ p {
   background: var(--section-bg);
   border-radius: var(--radius);
   padding: 14px 16px;
+  transition: box-shadow 0.2s ease;
 }
 
 .exchange-row {
@@ -924,6 +957,9 @@ p {
   border-radius: 50%;
   box-shadow: inset 0 0 0 1.5px var(--separator);
   color: #ffffff;
+  transition:
+    background-color 0.25s ease,
+    box-shadow 0.25s ease;
 }
 
 .check-row.done .check-mark {
@@ -1264,15 +1300,6 @@ p {
   font-size: 12px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .segmented-thumb,
-  .segmented button,
-  .results {
-    transition: none;
-    animation: none;
-  }
-}
-
 /* --- Profile menu --- */
 
 .menu {
@@ -1329,7 +1356,7 @@ p {
 .icon.chevron {
   width: 16px;
   height: 16px;
-  transition: transform 0.15s ease;
+  transition: transform 0.3s var(--ease-out);
 }
 
 .icon.chevron.open {
@@ -1393,12 +1420,6 @@ p {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .support-icon .icon {
-    animation: none;
-  }
-}
-
 /* --- Report --- */
 
 /* "Report a problem" on a deal: easy to find, clearly not a routine action. */
@@ -1451,6 +1472,9 @@ p {
   height: 20px;
   border: 2px solid var(--hint);
   border-radius: 50%;
+  transition:
+    border-width 0.25s var(--ease-out),
+    border-color 0.2s ease;
 }
 
 .choice.selected .choice-mark {
@@ -1499,4 +1523,208 @@ p {
   align-items: center;
   gap: 8px;
   font-weight: 600;
+}
+
+/* --- Motion --- */
+
+/* The screen stack (see Navigator): the top screen slides in, from the right when opened and
+   from the left when gone back to. The ones underneath stay mounted but out of the layout;
+   not `display: none`, which would replay the animations inside them on the way back. */
+.screens {
+  position: relative;
+  overflow-x: clip; /* no sideways scroll while a screen slides in */
+}
+
+.screen-view.inactive {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.screen-view.forward {
+  animation: slide-from-right 0.4s var(--ease-out) backwards;
+}
+
+.screen-view.back {
+  animation: slide-from-left 0.4s var(--ease-out) backwards;
+}
+
+@keyframes slide-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+}
+
+@keyframes slide-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-32px);
+  }
+}
+
+/* What shows up on a screen (content once loaded, a notice, an error) fades in. */
+.screen > *,
+.empty,
+.field-error,
+.saved {
+  animation: appear 0.25s ease-out backwards;
+}
+
+/* A spinner only for loads that take a moment. */
+.loading {
+  animation: appear 0.3s ease-out 0.25s backwards;
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Cards rise in one after another; later ones (e.g. from "Load more") come in together. */
+.list > * {
+  animation: rise-in 0.4s var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 35ms);
+}
+
+.list > :nth-child(2) { --i: 1; }
+.list > :nth-child(3) { --i: 2; }
+.list > :nth-child(4) { --i: 3; }
+.list > :nth-child(5) { --i: 4; }
+.list > :nth-child(6) { --i: 5; }
+.list > :nth-child(7) { --i: 6; }
+.list > :nth-child(8) { --i: 7; }
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* A tab's results (see useTabEnter): in from the side of the tab picked, or a fade. */
+.tab-content.from-right {
+  animation: slide-from-right 0.35s var(--ease-out) backwards;
+}
+
+.tab-content.from-left {
+  animation: slide-from-left 0.35s var(--ease-out) backwards;
+}
+
+.tab-content.fade {
+  animation: appear 0.25s ease-out backwards;
+}
+
+/* Folding content (see Collapse): height and fade together. Folded, it gives back the gap
+   its parent puts around it (--collapse-gap). */
+.collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: calc(-1 * var(--collapse-gap, 12px));
+  opacity: 0;
+  transition:
+    grid-template-rows 0.35s var(--ease-out),
+    margin-top 0.35s var(--ease-out),
+    opacity 0.2s ease;
+}
+
+.collapse.open {
+  grid-template-rows: 1fr;
+  margin-top: 0;
+  opacity: 1;
+  transition:
+    grid-template-rows 0.35s var(--ease-out),
+    margin-top 0.35s var(--ease-out),
+    opacity 0.3s ease 0.05s;
+}
+
+.collapse-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.section > .collapse {
+  --collapse-gap: 6px;
+}
+
+.filters > .collapse {
+  --collapse-gap: 14px;
+}
+
+/* Small things that pop in: badges, the "new" dot, checkmarks, success icons. */
+.count-badge,
+.new-dot,
+.check-mark .icon,
+.saved .icon {
+  animation: pop-in 0.4s var(--ease-spring) backwards;
+}
+
+.success-icon {
+  animation: pop-in 0.55s var(--ease-spring) 0.1s backwards;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+/* The bell rings when alerts are switched on. */
+.icon.bell path {
+  transition: fill 0.2s ease;
+}
+
+.icon.bell.on {
+  transform-origin: 50% 15%;
+  animation: ring 0.7s ease-in-out;
+}
+
+@keyframes ring {
+  15% {
+    transform: rotate(16deg);
+  }
+  35% {
+    transform: rotate(-12deg);
+  }
+  55% {
+    transform: rotate(7deg);
+  }
+  75% {
+    transform: rotate(-3deg);
+  }
+}
+
+/* Only what conveys state stays: spinners (a refresh counts full turns) and skeletons. */
+@media (prefers-reduced-motion: reduce) {
+  .screen-view,
+  .screen > *,
+  .empty,
+  .field-error,
+  .saved,
+  .loading,
+  .list > *,
+  .tab-content,
+  .count-badge,
+  .new-dot,
+  .check-mark .icon,
+  .saved .icon,
+  .success-icon,
+  .icon.bell,
+  .support-icon .icon {
+    animation: none;
+  }
+
+  .segmented-thumb,
+  .segmented button,
+  .results,
+  .collapse,
+  .icon.chevron,
+  .icon.sort-order {
+    transition: none;
+  }
 }

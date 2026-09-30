@@ -91,25 +91,42 @@ function SignedIn() {
   );
 }
 
-/** Keeps every screen in the stack mounted (so the Board keeps its filters) but shows only the top. */
+/** How the screen coming to the top slides in: from the right when opened, from the left when gone back to. */
+type Motion = "forward" | "back";
+
+/**
+ * Keeps every screen in the stack mounted (so the Board keeps its filters) but shows only the
+ * top. The ones underneath are hidden without `display: none`, which would replay every
+ * animation inside them when they're back on top.
+ */
 function Navigator() {
-  const [stack, setStack] = useState<Route[]>(() => initialStack(startParam()));
+  const [state, setState] = useState<{ stack: Route[]; motion: Motion | null }>(() => ({
+    stack: initialStack(startParam()),
+    motion: null,
+  }));
+  const { stack, motion } = state;
   const scrollPositions = useRef<number[]>([]);
   const pendingScroll = useRef<number | null>(null);
 
   const nav = useMemo<Nav>(() => {
-    const go = (next: (stack: Route[]) => Route[], scrollTo: (stack: Route[]) => number) => {
-      setStack((current) => {
-        scrollPositions.current[current.length - 1] = window.scrollY;
-        pendingScroll.current = scrollTo(current);
-        return next(current);
+    const go = (next: (stack: Route[]) => Route[], scrollTo: (stack: Route[]) => number, motion: Motion) => {
+      setState((current) => {
+        const stack = next(current.stack);
+        // Nothing to go to (e.g. home from the Board): no replayed slide.
+        if (stack.length === current.stack.length && stack.every((route, i) => route === current.stack[i])) {
+          return current;
+        }
+        scrollPositions.current[current.stack.length - 1] = window.scrollY;
+        pendingScroll.current = scrollTo(current.stack);
+        return { stack, motion };
       });
     };
     return {
-      push: (route) => go((s) => [...s, route], () => 0),
-      replace: (route) => go((s) => [...s.slice(0, -1), route], () => 0),
-      pop: () => go((s) => (s.length > 1 ? s.slice(0, -1) : s), (s) => scrollPositions.current[s.length - 2] ?? 0),
-      home: () => go((s) => s.slice(0, 1), () => scrollPositions.current[0] ?? 0),
+      push: (route) => go((s) => [...s, route], () => 0, "forward"),
+      replace: (route) => go((s) => [...s.slice(0, -1), route], () => 0, "forward"),
+      pop: () =>
+        go((s) => (s.length > 1 ? s.slice(0, -1) : s), (s) => scrollPositions.current[s.length - 2] ?? 0, "back"),
+      home: () => go((s) => s.slice(0, 1), () => scrollPositions.current[0] ?? 0, "back"),
     };
   }, []);
 
@@ -124,14 +141,21 @@ function Navigator() {
 
   return (
     <NavContext.Provider value={nav}>
-      {stack.map((route, index) => {
-        const active = index === stack.length - 1;
-        return (
-          <div key={`${index}-${route.name}`} hidden={!active}>
-            <Screen route={route} active={active} />
-          </div>
-        );
-      })}
+      <div className="screens">
+        {stack.map((route, index) => {
+          const active = index === stack.length - 1;
+          return (
+            <div
+              key={`${index}-${route.name}`}
+              className={active ? `screen-view ${motion ?? ""}` : "screen-view inactive"}
+              aria-hidden={!active || undefined}
+              inert={!active}
+            >
+              <Screen route={route} active={active} />
+            </div>
+          );
+        })}
+      </div>
       <Footer />
     </NavContext.Provider>
   );

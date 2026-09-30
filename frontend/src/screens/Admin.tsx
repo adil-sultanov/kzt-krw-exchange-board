@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, errorCode } from "../api";
 import { displayName, Person } from "../components/AdminPerson";
-import { Empty, ErrorBox, Segmented, SkeletonList, TitleWithRefresh } from "../components/ui";
+import { Empty, ErrorBox, Segmented, SkeletonList, TitleWithRefresh, useTabEnter } from "../components/ui";
 import { formatKst, formatMoney, requestStatus } from "../format";
 import { t } from "../i18n";
 import { useMe } from "../me";
@@ -96,6 +96,7 @@ export function Admin(props: { active: boolean }) {
   const [tab, setTab] = useState<Tab>("open");
   const list = useTabList(tab, (tab) => api.adminReports(tab === "resolved"), props.active);
   const { items: reports, load } = list;
+  const tabEnter = useTabEnter(list.shownTab, list.shownTab === "resolved" ? 1 : 0);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -130,12 +131,12 @@ export function Admin(props: { active: boolean }) {
       {list.error && <ErrorBox code={list.error} onRetry={() => void load()} />}
       {list.loading && <SkeletonList />}
       {reports && (
-        // Updates in place (see useTabList): remounting it would replay its fade-in.
+        // Stays up for a new tab (see useTabList); what's inside is keyed by its tab and slides in.
         <div className={list.stale ? "results stale" : "results"} aria-busy={list.stale}>
           {reports.length === 0 ? (
-            <Empty title={tab === "open" ? t.admin.empty : t.admin.emptyResolved} />
+            <Empty key={list.shownTab} title={tab === "open" ? t.admin.empty : t.admin.emptyResolved} />
           ) : (
-            <div className="list">
+            <div key={list.shownTab} className={`list tab-content ${tabEnter}`}>
               {reports.map((report) => (
                 <ReportCard key={report.id} report={report} busy={busy} onAction={(action) => void act(action)} />
               ))}

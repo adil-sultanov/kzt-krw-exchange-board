@@ -41,6 +41,39 @@ export function Segmented<T extends string | number>(props: {
   );
 }
 
+/**
+ * Content that folds away smoothly (height and fade) rather than popping in and out. It stays
+ * mounted while folded, out of reach of taps and focus.
+ */
+export function Collapse(props: { open: boolean; children: ReactNode }) {
+  return (
+    <div className={props.open ? "collapse open" : "collapse"} aria-hidden={!props.open || undefined} inert={!props.open}>
+      <div className="collapse-inner">{props.children}</div>
+    </div>
+  );
+}
+
+/**
+ * The class for a tab's content, keyed by `tab` so it remounts on a new one: it slides in from
+ * the side of the tab picked (by `index`, its place among the tabs), or fades in when the tab
+ * is the same (e.g. a new sort). `null` while nothing is shown; the first tab shown plays nothing.
+ */
+export function useTabEnter(tab: string | null, index: number): string {
+  const [state, setState] = useState<{ tab: string | null; index: number; enter: string }>({ tab, index, enter: "" });
+  if (state.tab !== tab) {
+    const enter =
+      state.tab === null || tab === null
+        ? ""
+        : index > state.index
+          ? "from-right"
+          : index < state.index
+            ? "from-left"
+            : "fade";
+    setState({ tab, index, enter });
+  }
+  return state.tab === tab ? state.enter : "";
+}
+
 export function Section(props: { title?: string; children: ReactNode }) {
   return (
     <section className="section">

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, errorCode } from "../api";
 import { AmountInput, ExchangeBox, ExchangeRow } from "../components/Exchange";
 import { ProfileRequired } from "../components/ProfileHint";
-import { ErrorBox, Notice, Section, Segmented } from "../components/ui";
+import { Collapse, ErrorBox, Notice, Section, Segmented } from "../components/ui";
 import {
   formatAmountInput,
   formatDecimalInput,
@@ -240,7 +240,7 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
           value={rateChoice}
           onChange={setRateChoice}
         />
-        {rateChoice !== "market" && (
+        <Collapse open={rateChoice !== "market"}>
           <label className="inline-field">
             <span>{t.form.percentLabel}</span>
             <span className={shown.rate ? "input-wrap compact invalid" : "input-wrap compact"}>
@@ -255,7 +255,7 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
               <span className="input-suffix">%</span>
             </span>
           </label>
-        )}
+        </Collapse>
         {shown.rate && <p className="field-error">{shown.rate}</p>}
         <p className="hint small">
           {t.form.rateHint[rateChoice]}{" "}

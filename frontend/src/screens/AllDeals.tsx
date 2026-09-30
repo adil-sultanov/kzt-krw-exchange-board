@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, errorCode } from "../api";
 import { displayName, Person } from "../components/AdminPerson";
-import { Empty, ErrorBox, Segmented, SkeletonList, TitleWithRefresh } from "../components/ui";
+import { Empty, ErrorBox, Segmented, SkeletonList, TitleWithRefresh, useTabEnter } from "../components/ui";
 import { formatKst, formatMoney, requestStatus } from "../format";
 import { t } from "../i18n";
 import { useMe } from "../me";
@@ -102,6 +102,8 @@ const HINTS: Record<Tab, string> = {
   cancelled: t.allDeals.cancelledHint,
 };
 
+const TABS: Tab[] = ["active", "finished", "cancelled"];
+
 function load(tab: Tab): Promise<(ListedDeal | CancelledRequest)[]> {
   return tab === "cancelled" ? api.cancelledRequests() : api.allDeals(tab === "active");
 }
@@ -112,6 +114,7 @@ export function AllDeals(props: { active: boolean }) {
   const [tab, setTab] = useState<Tab>("active");
   const list = useTabList(tab, load, props.active);
   const { items } = list;
+  const tabEnter = useTabEnter(list.shownTab, list.shownTab ? TABS.indexOf(list.shownTab) : 0);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -135,11 +138,7 @@ export function AllDeals(props: { active: boolean }) {
     <div className="screen">
       <TitleWithRefresh title={t.allDeals.title} onRefresh={list.load} />
       <Segmented
-        options={[
-          { value: "active", label: t.allDeals.active },
-          { value: "finished", label: t.allDeals.finished },
-          { value: "cancelled", label: t.allDeals.cancelled },
-        ]}
+        options={TABS.map((value) => ({ value, label: t.allDeals[value] }))}
         value={tab}
         onChange={setTab}
       />
@@ -148,12 +147,12 @@ export function AllDeals(props: { active: boolean }) {
       {list.error && <ErrorBox code={list.error} onRetry={() => void list.load()} />}
       {list.loading && <SkeletonList />}
       {items && (
-        // Updates in place (see useTabList): remounting it would replay its fade-in.
+        // Stays up for a new tab (see useTabList); what's inside is keyed by its tab and slides in.
         <div className={list.stale ? "results stale" : "results"} aria-busy={list.stale}>
           {items.length === 0 ? (
-            <Empty title={tab === "cancelled" ? t.allDeals.emptyCancelled : t.allDeals.empty} />
+            <Empty key={list.shownTab} title={tab === "cancelled" ? t.allDeals.emptyCancelled : t.allDeals.empty} />
           ) : (
-            <div className="list">
+            <div key={list.shownTab} className={`list tab-content ${tabEnter}`}>
               {items.map((item) =>
                 isCancelled(item) ? (
                   <CancelledCard key={`request-${item.id}`} request={item} />

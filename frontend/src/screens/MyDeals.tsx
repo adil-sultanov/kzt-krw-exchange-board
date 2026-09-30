@@ -2,7 +2,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { api, errorCode } from "../api";
 import { type CardStatus, RequestCard } from "../components/RequestCard";
 import { ChevronIcon } from "../components/icons";
-import { Empty, ErrorBox, SkeletonList, TitleWithRefresh } from "../components/ui";
+import { Collapse, Empty, ErrorBox, SkeletonList, TitleWithRefresh } from "../components/ui";
 import { askExtendDays } from "../extend";
 import { timeLeft } from "../format";
 import { t } from "../i18n";
@@ -104,7 +104,9 @@ function FoldableGroup(props: { title: string; count: number; storageKey: string
           <ChevronIcon open={!folded} />
         </span>
       </button>
-      {!folded && <div className="list">{props.children}</div>}
+      <Collapse open={!folded}>
+        <div className="list">{props.children}</div>
+      </Collapse>
     </section>
   );
 }

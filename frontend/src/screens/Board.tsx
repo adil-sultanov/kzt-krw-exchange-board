@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, BOARD_PAGE_SIZE, errorCode } from "../api";
 import { BellIcon, DealsIcon, FiltersIcon, ProfileIcon, SortOrderIcon } from "../components/icons";
 import { RequestCard } from "../components/RequestCard";
-import { Empty, ErrorBox, RefreshButton, Segmented, SkeletonList } from "../components/ui";
+import { Collapse, Empty, ErrorBox, RefreshButton, Segmented, SkeletonList, useTabEnter } from "../components/ui";
 import { formatKstShort, formatRate, formatRatePair, formatSide } from "../format";
 import { errorMessage, t } from "../i18n";
 import { useMe, useSetMe } from "../me";
@@ -311,6 +311,12 @@ export function Board(props: { active: boolean }) {
   // hidden rather than passed off as the new ones.
   const stale = shown !== null && shown.filters !== filters;
   const results = stale && error ? null : shown;
+  // New results for another tab slide in from its side; for a new sort, they fade in.
+  const resultsKey = results ? `${results.filters.direction}-${results.filters.sort}-${results.filters.order}` : null;
+  const tabEnter = useTabEnter(
+    resultsKey,
+    results ? CURRENCIES.indexOf(giveCurrency(results.filters.direction)) : 0,
+  );
 
   return (
     <div className="screen">
@@ -363,9 +369,11 @@ export function Board(props: { active: boolean }) {
         <RefreshButton onRefresh={refresh} />
       </div>
 
-      {panel === "alerts" && <AlertsPanel getting={getting} />}
+      <Collapse open={panel === "alerts"}>
+        <AlertsPanel getting={getting} />
+      </Collapse>
 
-      {panel === "filters" && (
+      <Collapse open={panel === "filters"}>
         <div className="filters">
           <div className="field">
             <div className="sort-head">
@@ -389,24 +397,24 @@ export function Board(props: { active: boolean }) {
               onChange={(sort) => setFilters((f) => ({ ...f, sort }))}
             />
           </div>
-          {sorted && (
+          <Collapse open={sorted}>
             <button type="button" className="link-button small" onClick={clearSort}>
               {t.board.clear}
             </button>
-          )}
+          </Collapse>
         </div>
-      )}
+      </Collapse>
 
       {error && <ErrorBox code={error} onRetry={() => void load(shownCount.current)} />}
       {!shown && !error && <SkeletonList />}
       {results && (
-        // One list that updates in place: remounting it for new filters would replay its
-        // fade-in, and the list would blink on every change.
+        // Stays up for new filters (dimmed while they load). What's inside is keyed by the
+        // filters it's for, so new results slide in while a reload of the same ones doesn't.
         <div className={stale ? "results stale" : "results"} aria-busy={stale}>
           {results.items.length === 0 ? (
-            <Empty title={t.board.empty} hint={t.board.emptyHint} />
+            <Empty key={resultsKey} title={t.board.empty} hint={t.board.emptyHint} />
           ) : (
-            <div className="list">
+            <div key={resultsKey} className={`list tab-content ${tabEnter}`}>
               {results.items.map((item) => (
                 <BoardCard
                   key={item.id}
