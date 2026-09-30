@@ -235,7 +235,9 @@ async def test_concurrent_accepts_pick_exactly_one(db: Database) -> None:
     author = with_profile(
         await upsert_user(db, TelegramUser(id=1, username="aida"), config_admin=False)
     )
-    request = await requests.create_request(db, author, RequestCreate.model_validate(VALID))
+    request = await requests.create_request(
+        db, author, RequestCreate.model_validate(VALID), NullNotifier()
+    )
     deal_ids = []
     for user_id, name in ((2, "bek"), (3, "dana")):
         responder = with_profile(
@@ -385,7 +387,9 @@ async def test_concurrent_final_confirmations_count_once(db: Database) -> None:
     responder = with_profile(
         await upsert_user(db, TelegramUser(id=2, username="bek"), config_admin=False)
     )
-    request = await requests.create_request(db, author, RequestCreate.model_validate(VALID))
+    request = await requests.create_request(
+        db, author, RequestCreate.model_validate(VALID), NullNotifier()
+    )
     deal_id = (await deals.take_request(db, responder, request.id, NullNotifier())).id
     await deals.accept_deal(db, 1, deal_id, NullNotifier())
     results = await asyncio.gather(

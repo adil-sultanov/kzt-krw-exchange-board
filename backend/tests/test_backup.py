@@ -11,6 +11,7 @@ from app.backup import run_backup
 from app.config import Settings
 from app.db import Database
 from app.jobs import build_scheduler
+from app.services.notifications import NullNotifier
 
 NOW = datetime(2026, 9, 27, 18, 0, 0, tzinfo=UTC)
 
@@ -94,7 +95,7 @@ async def test_failed_backup_leaves_no_file(
 
 
 def _job_ids(settings: Settings, db: Database) -> set[str]:
-    return {job.id for job in build_scheduler(db, settings).get_jobs()}
+    return {job.id for job in build_scheduler(db, settings, NullNotifier()).get_jobs()}
 
 
 async def test_backup_job_only_when_configured(

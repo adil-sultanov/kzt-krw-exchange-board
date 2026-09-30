@@ -281,7 +281,10 @@ async def test_concurrent_accepts_never_overdraw(db: Database) -> None:
         await upsert_user(db, TelegramUser(id=1, username="aida"), config_admin=False)
     )
     request = await requests.create_request(
-        db, author, RequestCreate.model_validate({**VALID, "min_counter_amount": 10_000})
+        db,
+        author,
+        RequestCreate.model_validate({**VALID, "min_counter_amount": 10_000}),
+        NullNotifier(),
     )
     deal_ids = []
     for user_id, name in ((2, "bek"), (3, "dana")):

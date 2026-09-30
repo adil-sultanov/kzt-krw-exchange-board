@@ -59,6 +59,13 @@ export const t = {
 
   board: {
     filters: "Filters",
+    alerts: "Alerts",
+    alertsNew: "New",
+    alertsFor: (tab: string) => `Alerts for ${tab}`,
+    alertsState: { off: "Off", on: "On" },
+    alertsHint:
+      "The bot messages you about each new request in this tab, and crosses the message out " +
+      "once the request is gone. Turn it off any time.",
     sort: {
       date: "Date",
       amount: "Amount",

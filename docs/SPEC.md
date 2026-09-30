@@ -18,8 +18,11 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   descending (newest / largest / best first) or ascending via an arrow toggle.
   Cards show the author's profile tag and @username, pay / get, the rate compared to the market, the
   author's completed deals and time left. Shows the reference rate both ways at the top (1 ₸ = X ₩ and 1 ₩ = Y ₸).
+  **Alerts** (next to Filters) opens a panel to turn alerts for the current tab on or off (see
+  Alerts); it's highlighted, with a filled bell, while that tab's alerts are on, and carries a
+  red "new" dot until the user first opens it.
   Large **My deals** and **Profile** buttons with icons, and a **Refresh** button next to
-  Filters. Hides the viewer's own requests and requests from banned users.
+  Filters and Alerts. Hides the viewer's own requests and requests from banned users.
   Under each card the viewer hasn't responded to: **Counter offer** (only if its author takes
   them, see Counter offers) and **Take request** (the same confirm popup as on the request,
   then the new deal opens; an error shows in a popup). Without a username or a full profile,
@@ -136,8 +139,8 @@ parameter (e.g. `req_123`, `deal_45`).
 ## Bot messages
 The bot answers `/start` (in private chats only) with a button that opens the Mini App, or
 without one for non-members of the group (see Group members only), sets the chat menu button, and
-sends exactly two notifications, each with an **Open deal** button (a `web_app` button whose URL
-carries `?startapp=deal_<id>`):
+sends alerts to those who turned them on (see Alerts), and exactly two notifications, each
+with an **Open deal** button (a `web_app` button whose URL carries `?startapp=deal_<id>`):
 - to the author, when someone takes their request or sends a counter offer on it (the
   responder's profile tag, amount, and for a counter offer the part of it they asked for,
   direction, the responder's completed-deal count);
@@ -148,6 +151,26 @@ never started or blocked the bot) is logged with the deal id and error type only
 fails or rolls back the action. Everything else (declines, confirmations) is shown only in the
 app, on the deal screen and in My deals, with the badge on the Board. Expiry notices and
 matches are in-app too.
+
+## Alerts
+- Per Board tab, off by default (`users.alerts_buy_krw` covers `KRW_KZT` requests,
+  `alerts_buy_kzt` covers `KZT_KRW`). Turned on and off in the Alerts panel, any time.
+  `users.alerts_seen` records that the panel was opened (the "new" dot).
+- Posting a request alerts everyone with that tab's alerts on, except its author and banned
+  users, and only members of the group (checked as for the API). The message reads from the
+  taker's side, with an **Open request** button (`?startapp=req_<id>`):
+  "Pay ≈ 1,850,000 ₸ → Get 500,000 ₩" and "Market rate" (or "1.5% better rate" / "worse").
+  Never the author's name or username.
+- Once the request leaves the board (accepted for all of what's left, cancelled, removed by an
+  admin, closed by a ban, or expired), every alert about it is edited: the text struck through,
+  "No longer available" below it, and the button removed. Amount changes while it stays on the
+  board (edits, accepted counter offers) leave alerts as they are; the button opens the current
+  request. `alert_messages` keeps each sent alert (message ID and text) until then.
+- One background task sends them in order, about 20 a second (under Telegram's limit of
+  about 30), waiting when Telegram asks it to. It stops alerting about a request as soon as it
+  leaves the board. If the bot can't message someone (blocked, never started), their alerts are
+  turned off. Failures are logged with the request id and error type only. The expiry job also
+  crosses out, every run, anything missed (e.g. across a restart).
 
 ## Deal flow
 1. B (with a username and a full profile) opens A's request and taps **I'll take it**. The backend creates a `pending` deal
@@ -278,6 +301,8 @@ All routes require valid initData.
 - `GET  /api/me` · `PATCH /api/me` (profile: `profile_first_name`, `profile_last_name`,
   `university`, `enrollment_year`; receiving details: `receive_kzt_bank`, `receive_kzt_account`,
   `receive_krw_bank`, `receive_krw_account`)
+- `PATCH /api/me/alerts` (`buy_krw` / `buy_kzt`: turn a tab's alerts on or off; any call,
+  even an empty one, marks the Alerts panel seen)
 - `GET  /api/rate`
 - `GET  /api/requests` (filters as query params)
 - `POST /api/requests` (`min_counter_amount` optional: null turns counter offers off)

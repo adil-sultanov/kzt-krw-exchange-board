@@ -28,6 +28,7 @@ async def test_migrations_are_applied_once(db: Database) -> None:
             10,
             11,
             12,
+            13,
         ]
 
 
@@ -195,7 +196,7 @@ async def test_migration_012_rebuilds_deals(tmp_path: Path) -> None:
             (now,),
         )
 
-        assert await database.migrate() == [12]
+        assert (await database.migrate())[0] == 12
         async with database.conn.execute(
             "SELECT id, status, amount, partial, request_amount FROM deals ORDER BY id"
         ) as cursor:

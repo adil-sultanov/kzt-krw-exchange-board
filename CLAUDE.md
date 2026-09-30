@@ -9,8 +9,9 @@ Schema source of truth: `backend/app/migrations/`.
   monetization (Korean FX law / visa risk). The only exception is voluntary donations on the
   About page, which never unlock features. No group-chat integration beyond the membership check
   (`GROUP_ID`): the bot never posts in, or stores anything from, the group.
-- The bot sends only two messages: "someone took your request" (to the author) and "your deal
-  was accepted" (to the responder), plus its `/start` reply. Every other update is in-app only.
+- The bot sends only: "someone took your request" (to the author), "your deal was accepted"
+  (to the responder), opt-in alerts about new requests (crossed out once the request leaves
+  the board), and its `/start` reply. Every other update is in-app only.
 - Users identified only by `telegram_id`. `username` is a nullable, non-unique cache refreshed
   on every API request/bot update; never store usernames elsewhere. Username and a full profile
   (`users.profile_{first,last}_name`, `university`, `enrollment_year`) required to post/take.
@@ -63,8 +64,8 @@ Docker + HTTPS for deploy; `cloudflared` tunnel for local dev.
 2. ✅ Board + New request + Request detail (frontend scaffold)
 3. ✅ Deal flow: take → accept/decline → contact (+ My deals; accepted deals can't be cancelled)
 4. ✅ My requests (edit/extend/cancel on My deals + request screen), expiry job, in-app expiry notices
-5. ✅ In-app matches (after posting, on own request). Alerts were dropped: posting a request
-   and waiting covers it (migration 006 drops the unused table)
+5. ✅ In-app matches (after posting, on own request). Alerts (saved searches) were dropped
+   (migration 006); opt-in per-tab alerts came later (migration 013)
 6. ✅ Reports (on requests and accepted deals; "disputes" are deal reports), in-app admin
    screen (resolve, ban/unban), owner-editable About & support page
 7. ✅ Docker + HTTPS deploy (Compose + Caddy), daily backups (SQLite backup API).

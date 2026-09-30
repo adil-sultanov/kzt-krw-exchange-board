@@ -52,6 +52,9 @@ def test_me_returns_caller_and_refreshes_username(client: TestClient) -> None:
         "profile_last_name": None,
         "university": None,
         "enrollment_year": None,
+        "alerts_buy_krw": False,
+        "alerts_buy_kzt": False,
+        "alerts_seen": False,
     }
 
     renamed = {**USER, "username": "aida_new"}

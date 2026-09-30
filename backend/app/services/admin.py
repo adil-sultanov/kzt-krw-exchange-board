@@ -26,6 +26,7 @@ from app.models import (
     User,
 )
 from app.services.errors import ConflictError, NotFoundError, PermissionDeniedError
+from app.services.notifications import Notifier
 from app.services.rates import get_reference_rate
 from app.services.requests import REMOVED_BY_ADMIN, close_open_request
 
@@ -140,7 +141,7 @@ async def resolve_report(db: Database, actor: User, report_id: int) -> None:
     raise ConflictError("report_already_resolved") if exists else NotFoundError("report_not_found")
 
 
-async def ban_user(db: Database, actor: User, user_id: int) -> AdminUserOut:
+async def ban_user(db: Database, actor: User, user_id: int, notifier: Notifier) -> AdminUserOut:
     """Ban a user: they can't post or take requests, their open requests close, and their
     pending deals (on either side) are declined. Accepted deals are left alone: they still
     end only when both sides confirm, and the other side can report them.
@@ -171,7 +172,9 @@ async def ban_user(db: Database, actor: User, user_id: int) -> AdminUserOut:
             "WHERE status = 'pending' AND (author_id = ? OR responder_id = ?)",
             (now, user_id, user_id),
         )
-        return (await _users(conn, {user_id}))[user_id]
+        banned = (await _users(conn, {user_id}))[user_id]
+    notifier.requests_left_board()
+    return banned
 
 
 async def unban_user(db: Database, actor: User, user_id: int) -> AdminUserOut:
@@ -246,19 +249,25 @@ async def list_board_requests(db: Database, actor: User) -> list[AdminBoardReque
     ]
 
 
-async def remove_board_request(db: Database, actor: User, request_id: int) -> None:
+async def remove_board_request(
+    db: Database, actor: User, request_id: int, notifier: Notifier
+) -> None:
     """Take any request off the board, as its author's "Cancel request" would: its pending
-    responders are declined. No one is messaged; both sides see an admin removed it.
+    responders are declined. No one is messaged about it (alerts about it are crossed out);
+    both sides see an admin removed it.
     """
     _require_admin(actor)
     now = utc_now()
     async with db.transaction() as conn:
-        if await close_open_request(
+        removed = await close_open_request(
             conn, request_id, now, closed_by=actor.telegram_id, reason="admin"
-        ):
-            return
-        async with conn.execute("SELECT 1 FROM requests WHERE id = ?", (request_id,)) as check:
-            exists = await check.fetchone() is not None
+        )
+        if not removed:
+            async with conn.execute("SELECT 1 FROM requests WHERE id = ?", (request_id,)) as check:
+                exists = await check.fetchone() is not None
+    if removed:
+        notifier.requests_left_board()
+        return
     raise ConflictError("request_not_open") if exists else NotFoundError("request_not_found")
 
 

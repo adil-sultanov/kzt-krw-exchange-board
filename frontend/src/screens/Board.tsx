@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, BOARD_PAGE_SIZE, errorCode } from "../api";
-import { DealsIcon, FiltersIcon, ProfileIcon, SortOrderIcon } from "../components/icons";
+import { BellIcon, DealsIcon, FiltersIcon, ProfileIcon, SortOrderIcon } from "../components/icons";
 import { RequestCard } from "../components/RequestCard";
 import { Empty, ErrorBox, RefreshButton, Segmented, SkeletonList } from "../components/ui";
 import { formatKstShort, formatRate, formatRatePair, formatSide } from "../format";
 import { errorMessage, t } from "../i18n";
-import { useMe } from "../me";
+import { useMe, useSetMe } from "../me";
 import { loadMyLists } from "../myLists";
 import { useNav, useReactivated } from "../nav";
 import { SLOW_POLL_MS, usePolling } from "../polling";
 import { alert, confirm, haptic, openLink, useMainButton } from "../telegram";
 import {
+  alertsOn,
   BOARD_SORTS,
   type BoardFilters,
   boardDirection,
@@ -81,6 +82,44 @@ function RateCard(props: { rate: Rate | null }) {
   );
 }
 
+/** Which panel is open under the toolbar. */
+type Panel = "filters" | "alerts";
+
+/**
+ * Turns alerts about new requests in the current tab on or off. The switch flips at once; if
+ * saving fails, it flips back.
+ */
+function AlertsPanel(props: { getting: Currency }) {
+  const me = useMe();
+  const setMe = useSetMe();
+  const on = alertsOn(me, props.getting);
+  const change = async (value: "on" | "off") => {
+    const field = props.getting === "KRW" ? "buy_krw" : "buy_kzt";
+    setMe({ ...me, [`alerts_${field}`]: value === "on" });
+    try {
+      setMe(await api.updateAlerts({ [field]: value === "on" }));
+    } catch (e) {
+      setMe(me);
+      haptic("error");
+      await alert(errorMessage(errorCode(e)));
+    }
+  };
+  return (
+    <div className="filters">
+      <div className="field">
+        <span className="field-label">{t.board.alertsFor(t.buy[props.getting])}</span>
+        <Segmented
+          label={t.board.alertsFor(t.buy[props.getting])}
+          options={(["off", "on"] as const).map((value) => ({ value, label: t.board.alertsState[value] }))}
+          value={on ? "on" : "off"}
+          onChange={(value) => void change(value)}
+        />
+      </div>
+      <p className="hint small">{t.board.alertsHint}</p>
+    </div>
+  );
+}
+
 /**
  * A request on the board, with Counter offer (if its author takes them) and Take request under it
  * while the viewer can respond. Without a username or profile, both open the request, which says
@@ -136,6 +175,8 @@ function BoardCard(props: {
 
 export function Board(props: { active: boolean }) {
   const nav = useNav();
+  const me = useMe();
+  const setMe = useSetMe();
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [shown, setShown] = useState<Results | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -145,7 +186,7 @@ export function Board(props: { active: boolean }) {
   // Deals waiting on the viewer (the bot messages only about new and accepted deals), and
   // their requests about to leave the board.
   const [actionCount, setActionCount] = useState(0);
-  const [showFilters, setShowFilters] = useState(false);
+  const [panel, setPanel] = useState<Panel | null>(null);
   // The request being taken from its card.
   const [taking, setTaking] = useState<number | null>(null);
 
@@ -252,7 +293,19 @@ export function Board(props: { active: boolean }) {
     props.active ? { text: t.board.newRequest, onClick: () => nav.push({ name: "new" }) } : null,
   );
 
+  const togglePanel = (next: Panel) => setPanel(panel === next ? null : next);
+
+  const toggleAlerts = () => {
+    togglePanel("alerts");
+    // The first look at the panel clears the "new" dot, for good (kept on the server).
+    if (!me.alerts_seen) {
+      setMe({ ...me, alerts_seen: true });
+      api.updateAlerts({}).then(setMe, () => undefined); // the dot comes back next launch
+    }
+  };
+
   const getting = giveCurrency(filters.direction);
+  const alerting = alertsOn(me, getting);
   const sorted = filters.sort !== DEFAULT_FILTERS.sort || filters.order !== DEFAULT_FILTERS.order;
   // Results for the previous tab or filters, while the new ones load. If that fails, they're
   // hidden rather than passed off as the new ones.
@@ -286,19 +339,33 @@ export function Board(props: { active: boolean }) {
       />
 
       <div className="toolbar">
-        <button
-          type="button"
-          className={showFilters || sorted ? "chip-button on" : "chip-button"}
-          aria-expanded={showFilters}
-          onClick={() => setShowFilters(!showFilters)}
-        >
-          <FiltersIcon />
-          {t.board.filters}
-        </button>
+        <div className="toolbar-group">
+          <button
+            type="button"
+            className={panel === "filters" || sorted ? "chip-button on" : "chip-button"}
+            aria-expanded={panel === "filters"}
+            onClick={() => togglePanel("filters")}
+          >
+            <FiltersIcon />
+            {t.board.filters}
+          </button>
+          <button
+            type="button"
+            className={panel === "alerts" || alerting ? "chip-button on" : "chip-button"}
+            aria-expanded={panel === "alerts"}
+            onClick={toggleAlerts}
+          >
+            <BellIcon on={alerting} />
+            {t.board.alerts}
+            {!me.alerts_seen && <span className="new-dot" aria-label={t.board.alertsNew} />}
+          </button>
+        </div>
         <RefreshButton onRefresh={refresh} />
       </div>
 
-      {showFilters && (
+      {panel === "alerts" && <AlertsPanel getting={getting} />}
+
+      {panel === "filters" && (
         <div className="filters">
           <div className="field">
             <div className="sort-head">

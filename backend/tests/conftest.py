@@ -40,16 +40,25 @@ async def db(tmp_path: Path) -> AsyncIterator[Database]:
 
 
 class FakeNotifier:
-    """Records notifications as (event, chat_id, deal as that user sees it)."""
+    """Records deal notifications as (event, chat_id, deal as that user sees it), requests to
+    alert about, and how often alerts were to be crossed out."""
 
     def __init__(self) -> None:
         self.sent: list[tuple[str, int, DealOut]] = []
+        self.posted: list[int] = []
+        self.left_board = 0
 
     def deal_requested(self, author_id: int, deal: DealOut) -> None:
         self.sent.append(("requested", author_id, deal))
 
     def deal_accepted(self, responder_id: int, deal: DealOut) -> None:
         self.sent.append(("accepted", responder_id, deal))
+
+    def request_posted(self, request_id: int) -> None:
+        self.posted.append(request_id)
+
+    def requests_left_board(self) -> None:
+        self.left_board += 1
 
 
 @pytest.fixture

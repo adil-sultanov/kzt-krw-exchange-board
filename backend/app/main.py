@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
+from app.bot.alerts import AlertSender
 from app.bot.membership import telegram_member_lookup
 from app.bot.notifier import BotNotifier
 from app.bot.runner import BotRunner
@@ -43,9 +44,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.group_id, telegram_member_lookup(bot) if bot is not None else None
         )
         app.state.membership = membership
-        notifier = BotNotifier(bot, settings.webapp_url) if bot and settings.run_bot else None
+        notifier = None
+        if bot is not None and settings.run_bot:
+            alerts = AlertSender(bot, settings.webapp_url, db, membership, settings.is_admin)
+            notifier = BotNotifier(bot, settings.webapp_url, alerts)
         app.state.notifier = notifier or NullNotifier()
-        scheduler = build_scheduler(db, settings) if settings.run_jobs else None
+        scheduler = build_scheduler(db, settings, app.state.notifier) if settings.run_jobs else None
         bot_runner = BotRunner(settings, db, bot, membership) if bot and settings.run_bot else None
         try:
             if scheduler is not None:

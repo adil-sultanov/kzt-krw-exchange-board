@@ -8,6 +8,7 @@ from app.backup import run_backup
 from app.config import Settings
 from app.db import Database
 from app.services.deals import delete_old_deals
+from app.services.notifications import Notifier
 from app.services.rates import refresh_reference_rate
 from app.services.requests import expire_due
 
@@ -17,7 +18,7 @@ CLEANUP_HOURS = 24
 BACKUP_HOUR_UTC = 18  # 03:00 KST, when the board is quietest
 
 
-def build_scheduler(db: Database, settings: Settings) -> AsyncIOScheduler:
+def build_scheduler(db: Database, settings: Settings, notifier: Notifier) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=UTC)
     scheduler.add_job(
         refresh_reference_rate,
@@ -33,7 +34,7 @@ def build_scheduler(db: Database, settings: Settings) -> AsyncIOScheduler:
         expire_due,
         "interval",
         minutes=EXPIRY_MINUTES,
-        args=[db],
+        args=[db, notifier],
         id="expire_due",
         next_run_time=datetime.now(UTC),
         max_instances=1,

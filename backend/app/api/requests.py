@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, status
 
-from app.api.deps import CurrentUser, DbDep
+from app.api.deps import CurrentUser, DbDep, NotifierDep
 from app.models import (
     BoardFilters,
     CreatedRequestOut,
@@ -25,8 +25,10 @@ async def list_board(
 
 
 @router.post("/requests", status_code=status.HTTP_201_CREATED)
-async def create_request(user: CurrentUser, db: DbDep, body: RequestCreate) -> CreatedRequestOut:
-    created = await requests.create_request(db, user, body)
+async def create_request(
+    user: CurrentUser, db: DbDep, notifier: NotifierDep, body: RequestCreate
+) -> CreatedRequestOut:
+    created = await requests.create_request(db, user, body, notifier)
     matches = await requests.find_matches(db, user.telegram_id, created)
     return CreatedRequestOut(request=created, matches=matches)
 
@@ -49,8 +51,10 @@ async def list_matches(user: CurrentUser, db: DbDep, request_id: int) -> list[Re
 
 
 @router.post("/requests/{request_id}/close")
-async def close_request(user: CurrentUser, db: DbDep, request_id: int) -> RequestOut:
-    return await requests.close_request(db, user.telegram_id, request_id)
+async def close_request(
+    user: CurrentUser, db: DbDep, notifier: NotifierDep, request_id: int
+) -> RequestOut:
+    return await requests.close_request(db, user.telegram_id, request_id, notifier)
 
 
 @router.get("/my/requests")

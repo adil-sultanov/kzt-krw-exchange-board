@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Response, status
 
-from app.api.deps import CurrentUser, DbDep, SettingsDep
+from app.api.deps import CurrentUser, DbDep, NotifierDep, SettingsDep
 from app.models import (
     AboutOut,
     AboutUpdate,
@@ -31,8 +31,10 @@ async def resolve_report(user: CurrentUser, db: DbDep, report_id: int) -> Respon
 
 
 @router.post("/users/{user_id}/ban")
-async def ban_user(user: CurrentUser, db: DbDep, user_id: int) -> AdminUserOut:
-    return await admin.ban_user(db, user, user_id)
+async def ban_user(
+    user: CurrentUser, db: DbDep, notifier: NotifierDep, user_id: int
+) -> AdminUserOut:
+    return await admin.ban_user(db, user, user_id, notifier)
 
 
 @router.post("/users/{user_id}/unban")
@@ -56,8 +58,10 @@ async def list_deals(user: CurrentUser, db: DbDep, active: bool = True) -> list[
 
 
 @router.post("/requests/{request_id}/remove", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_board_request(user: CurrentUser, db: DbDep, request_id: int) -> Response:
-    await admin.remove_board_request(db, user, request_id)
+async def remove_board_request(
+    user: CurrentUser, db: DbDep, notifier: NotifierDep, request_id: int
+) -> Response:
+    await admin.remove_board_request(db, user, request_id, notifier)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

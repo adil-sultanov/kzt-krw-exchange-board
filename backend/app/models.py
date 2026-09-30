@@ -62,6 +62,10 @@ class User(BaseModel):
     profile_last_name: str | None
     university: str | None
     enrollment_year: int | None
+    # Alerts about new requests in each Board tab (see AlertsUpdate).
+    alerts_buy_krw: bool
+    alerts_buy_kzt: bool
+    alerts_seen: bool
     created_at: str
     updated_at: str
 
@@ -106,6 +110,11 @@ class MeOut(BaseModel):
     profile_last_name: str | None
     university: str | None
     enrollment_year: int | None
+    # Whether the bot messages them about new requests in each Board tab, and whether they've
+    # opened the Alerts panel (which clears its "new" dot).
+    alerts_buy_krw: bool
+    alerts_buy_kzt: bool
+    alerts_seen: bool
 
 
 class MeUpdate(BaseModel):
@@ -173,6 +182,16 @@ def _clean_profile_text(
     if not all(ch.isalpha() or (digits and ch.isdigit()) or ch in punctuation for ch in value):
         raise ValueError("unexpected characters")
     return value
+
+
+class AlertsUpdate(BaseModel):
+    """Turn alerts for a Board tab on or off (a field left out is unchanged). Any call also
+    marks the Alerts panel seen, so opening it sends an empty one."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    buy_krw: Annotated[bool, Field(strict=True)] | None = None
+    buy_kzt: Annotated[bool, Field(strict=True)] | None = None
 
 
 # --- Exchange requests ---

@@ -22,8 +22,11 @@ reposting, and there was no way to tell who had reliably completed exchanges bef
 - **Profiles**: name, university and year of enrollment, shown as a tag on every request and
   deal ("Adil Sultanov, UNIST, 2022"); needed to post or take a request
 - **Saved receiving details** (bank, account), shown only to the other side of an accepted deal
-- **Bot notifications** only when someone takes your request (or sends a counter offer) and
+- **Bot notifications** when someone takes your request (or sends a counter offer) and
   when your deal is accepted
+- **Alerts** (opt-in, per Board tab): a one-line bot message for each new request ("Pay ≈
+  1,850,000 ₸ → Get 500,000 ₩") with a button to open it, crossed out once it's gone; sent at a
+  steady pace under Telegram's rate limit
 - **Matches** going the other way, shown after posting
 - **Trust**: completed-deal counts, reports, admin review and bans; admins see every request
   on the board and can take any of them off it

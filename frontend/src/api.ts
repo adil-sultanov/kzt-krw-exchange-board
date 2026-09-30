@@ -6,6 +6,7 @@ import type {
   AdminEntry,
   AdminReport,
   AdminUser,
+  AlertsUpdate,
   BoardFilters,
   CancelledRequest,
   Contact,
@@ -71,6 +72,7 @@ export function boardQuery(filters: BoardFilters, offset: number, limit: number)
 export const api = {
   me: () => call<Me>("GET", "/me"),
   updateMe: (body: MeUpdate) => call<Me>("PATCH", "/me", body),
+  updateAlerts: (body: AlertsUpdate) => call<Me>("PATCH", "/me/alerts", body),
   rate: () => call<Rate>("GET", "/rate"),
   board: (filters: BoardFilters, offset = 0, limit = BOARD_PAGE_SIZE) =>
     call<ExchangeRequest[]>("GET", `/requests?${boardQuery(filters, offset, limit)}`),

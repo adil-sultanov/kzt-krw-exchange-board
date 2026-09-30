@@ -9,6 +9,7 @@ from app.db import Database, utc_iso
 from app.models import TelegramUser
 from app.services import requests
 from app.services.users import upsert_user
+from tests.conftest import FakeNotifier
 from tests.helpers import (
     AIDA,
     BEK,
@@ -450,8 +451,11 @@ async def test_expire_due(db: Database) -> None:
                 (request_id, "accepted" if status == "in_progress" else "pending", stamp, stamp),
             )
 
-    assert await requests.expire_due(db) == 1
-    assert await requests.expire_due(db) == 0
+    notifier = FakeNotifier()
+    assert await requests.expire_due(db, notifier) == 1
+    assert await requests.expire_due(db, notifier) == 0
+    # Crossing out alerts runs every time, so it also catches any missed before a restart.
+    assert notifier.left_board == 2
     async with db.conn.execute(
         "SELECT r.status, d.status FROM requests r JOIN deals d ON d.request_id = r.id "
         "ORDER BY r.id"

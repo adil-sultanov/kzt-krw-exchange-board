@@ -15,6 +15,10 @@ This policy explains what the KZT ↔ KRW Exchange Board Telegram bot and Mini A
   the part a counter offer asks for), rates, statuses, and times.
 - **Receiving details** you choose to add in your profile: a bank and account holder name, and
   an account, card or phone number (for example, a Kaspi number or a Korean bank account).
+- **Alert settings**: whether you turned alerts on for each Board tab, and whether you've
+  opened the Alerts panel. While a request is on the board, the Service also keeps which alert
+  messages it sent you about it (the message's ID and text), so it can cross them out once the
+  request is gone; it deletes that record then.
 - **Reports** you submit: the request or deal, the user it's about, the reason you picked,
   your optional note, and when an admin resolved it. Also your completed-deal count, and
   whether your account is banned.
@@ -48,9 +52,11 @@ This policy explains what the KZT ↔ KRW Exchange Board Telegram bot and Mini A
 - The operator can access the database to run the Service and to handle reports.
 
 Your data is never sold or shared with third parties for advertising. There is no analytics
-or tracking. The bot messages you only when someone takes your request or sends a counter offer on it (the
+or tracking. The bot messages you when someone takes your request or sends a counter offer on it (the
 message shows their profile: name, university and year of enrollment) and when your deal is
-accepted. These
+accepted. If you turn alerts on for a Board tab (they're off unless you do), it also messages
+you about each new request there: only its amounts and rate, never who posted it. If the bot
+can't reach you (for example, you blocked it), your alerts are turned off. These
 messages never contain anyone's username. The Service runs inside Telegram, and
 [Telegram's privacy policy](https://telegram.org/privacy) applies to Telegram itself.
 

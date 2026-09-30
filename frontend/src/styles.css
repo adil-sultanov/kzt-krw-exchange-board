@@ -326,6 +326,7 @@ p {
 }
 
 .chip-button {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -337,6 +338,24 @@ p {
   padding: 0 14px 0 12px;
   font-size: 15px;
   font-weight: 500;
+}
+
+.toolbar-group {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* On a chip for something the viewer hasn't opened yet (Alerts). */
+.new-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--destructive);
+  border: 2px solid var(--secondary-bg);
 }
 
 .chip-button .icon {

@@ -321,6 +321,8 @@ async def accept_deal(db: Database, actor_id: int, deal_id: int, notifier: Notif
         responder_id = deal["responder_id"]
 
     notifier.deal_accepted(responder_id, await get_deal(db, responder_id, deal_id))
+    if not partial:
+        notifier.requests_left_board()
     return await get_deal(db, actor_id, deal_id)
 
 

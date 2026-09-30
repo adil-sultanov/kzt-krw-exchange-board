@@ -16,6 +16,7 @@ from app.services.errors import (
     PermissionDeniedError,
     RateLimitedError,
 )
+from app.services.notifications import Notifier
 from app.services.rates import get_reference_rate
 
 MAX_OPEN_REQUESTS = 5
@@ -101,7 +102,9 @@ async def _count(conn: aiosqlite.Connection, sql: str, params: tuple[Any, ...]) 
     return int(row[0])
 
 
-async def create_request(db: Database, user: User, data: RequestCreate) -> RequestOut:
+async def create_request(
+    db: Database, user: User, data: RequestCreate, notifier: Notifier
+) -> RequestOut:
     if user.is_banned:
         raise PermissionDeniedError("user_banned")
     if not user.username:
@@ -148,6 +151,7 @@ async def create_request(db: Database, user: User, data: RequestCreate) -> Reque
         )
         request_id = cursor.lastrowid
     assert request_id is not None
+    notifier.request_posted(request_id)
     return await get_request(db, user.telegram_id, request_id)
 
 
@@ -183,7 +187,9 @@ async def list_my_requests(db: Database, viewer_id: int) -> list[RequestOut]:
     return [_to_out(row, now) for row in rows]
 
 
-async def close_request(db: Database, actor_id: int, request_id: int) -> RequestOut:
+async def close_request(
+    db: Database, actor_id: int, request_id: int, notifier: Notifier
+) -> RequestOut:
     """The author takes their open request off the Board ("Cancel request" in the app).
     Its pending responders are declined.
 
@@ -203,6 +209,7 @@ async def close_request(db: Database, actor_id: int, request_id: int) -> Request
             raise PermissionDeniedError("not_request_author")
         if not await close_open_request(conn, request_id, now, closed_by=actor_id, reason="author"):
             raise ConflictError("request_not_open")
+    notifier.requests_left_board()
     return await get_request(db, actor_id, request_id)
 
 
@@ -300,8 +307,9 @@ async def update_request(
     return await get_request(db, user.telegram_id, request_id)
 
 
-async def expire_due(db: Database) -> int:
-    """Marks past-due open requests expired and declines their pending deals (the job).
+async def expire_due(db: Database, notifier: Notifier) -> int:
+    """Marks past-due open requests expired and declines their pending deals (the job), and
+    has alerts about any request that left the board crossed out.
 
     Requests in progress don't expire. Returns how many requests expired.
     """
@@ -320,6 +328,9 @@ async def expire_due(db: Database) -> int:
         expired = cursor.rowcount
     if expired:
         logger.info("Expired %d requests", expired)
+    # Every run, not only when some expired: this also catches alerts that weren't crossed
+    # out before a restart.
+    notifier.requests_left_board()
     return expired
 
 

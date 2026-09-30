@@ -47,6 +47,22 @@ export interface Me {
   profile_last_name: string | null;
   university: string | null;
   enrollment_year: number | null;
+  /** Whether the bot messages them about each new request in a Board tab (off by default). */
+  alerts_buy_krw: boolean;
+  alerts_buy_kzt: boolean;
+  /** They've opened the Alerts panel, which clears its "new" dot. */
+  alerts_seen: boolean;
+}
+
+/** Turns a Board tab's alerts on or off; any update (even an empty one) marks the panel seen. */
+export interface AlertsUpdate {
+  buy_krw?: boolean;
+  buy_kzt?: boolean;
+}
+
+/** Whether `me` gets alerts about new requests in the Board tab for buying `currency`. */
+export function alertsOn(me: Me, currency: Currency): boolean {
+  return currency === "KRW" ? me.alerts_buy_krw : me.alerts_buy_kzt;
 }
 
 /** Profile and receiving details to save. A field left out is unchanged; "" or null clears it. */

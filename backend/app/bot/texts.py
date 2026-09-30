@@ -1,6 +1,9 @@
 """User-facing bot message strings."""
 
+import html
+
 from app.models import Currency, DealOut, Profile
+from app.services.alerts import Alert
 
 AUTHOR = "@moonpie24"
 TERMS_URL = "https://github.com/adil-sultanov/kzt-krw-exchange-board/blob/main/TERMS.md"
@@ -18,6 +21,8 @@ NOT_MEMBER = (
 )
 OPEN_APP_BUTTON = "Open exchange board"
 OPEN_DEAL_BUTTON = "Open deal"
+OPEN_REQUEST_BUTTON = "Open request"
+ALERT_GONE = "No longer available"
 MENU_BUTTON = "Board"
 START_COMMAND_DESCRIPTION = "Open the exchange board"
 
@@ -71,3 +76,28 @@ def deal_accepted(deal: DealOut) -> str:
         f"you get {_money(deal.amount, gets)} {FLAG[gets]} and pay in {pays} {FLAG[pays]}.\n"
         "Open the deal to message them and see where to pay."
     )
+
+
+def request_alert(alert: Alert) -> str:
+    """A new request, from the side of whoever takes it, e.g.
+    "Pay ≈ 1,850,000 ₸ → Get 500,000 ₩" and "1.5% better rate"."""
+    # The author gives the request's currency, so whoever takes it gets that.
+    gets: Currency = "KZT" if alert.direction == "KZT_KRW" else "KRW"
+    pays: Currency = "KRW" if gets == "KZT" else "KZT"
+    get = _money(alert.amount, gets)
+    rate = alert.effective_rate
+    if rate:
+        paid = alert.amount * rate if gets == "KZT" else alert.amount / rate
+        line = f"Pay ≈ {_money(round(paid), pays)} → Get {get}"
+    else:
+        line = f"Get {get}, pay in {pays} {SYMBOL[pays]}"
+    # A higher rate (more KRW per KZT) is better for whoever pays KZT.
+    gain = alert.rate_value if pays == "KZT" else -alert.rate_value
+    if gain == 0:
+        return f"{line}\nMarket rate"
+    return f"{line}\n{abs(gain):g}% {'better' if gain > 0 else 'worse'} rate"
+
+
+def alert_gone(text: str) -> str:
+    """An alert crossed out once its request left the board (HTML)."""
+    return f"<s>{html.escape(text)}</s>\n{ALERT_GONE}"
