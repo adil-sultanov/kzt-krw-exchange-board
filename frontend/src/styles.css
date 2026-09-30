@@ -1113,7 +1113,7 @@ p {
   flex: 1;
 }
 
-.card-actions > .card-action:first-child {
+.card-actions > .card-action:first-child:not(:last-child) {
   border-bottom-right-radius: 0;
 }
 

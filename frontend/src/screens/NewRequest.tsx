@@ -90,7 +90,7 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
   const [percentText, setPercentText] = useState(initial?.percentText ?? "");
   // Empty: counter offers are off.
   const [minCounterText, setMinCounterText] = useState(initial?.minCounterText ?? "");
-  const [duration, setDuration] = useState<DurationDays>(3);
+  const [duration, setDuration] = useState<DurationDays>(1);
   const [referenceRate, setReferenceRate] = useState<number | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
