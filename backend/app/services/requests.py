@@ -36,14 +36,22 @@ REMOVED_BY_ADMIN = "COALESCE(r.close_reason, 'author') != 'author'"
 # anyone else. Unqualified columns of `deals`.
 COUNTS_AS_RESPONSE = "NOT (partial = 1 AND status IN ('accepted', 'completed'))"
 
+# How many offers (takes or counter offers) one person may send on a request, counting those
+# they cancelled. Only cancelling frees them to send another; see deals.take_request.
+MAX_OFFERS_PER_REQUEST = 3
+
 # Columns for RequestOut. :ref is the reference rate (NULL if unknown), :viewer the caller.
 _SELECT = f"""
-SELECT r.id, r.direction, r.amount, r.rate_value, r.min_counter_amount,
+SELECT r.id, r.direction, r.amount, r.rate_value, r.min_counter_amount, r.kzt_bank,
        r.status, {REMOVED_BY_ADMIN} AS removed_by_admin, r.created_at, r.expires_at,
        u.completed_deals AS author_completed_deals, u.username AS author_username,
        u.profile_first_name, u.profile_last_name, u.university, u.enrollment_year,
        r.user_id = :viewer AS is_own,
        d.id AS my_deal_id, d.status AS my_deal_status,
+       CASE WHEN r.user_id != :viewer THEN MAX(0, {MAX_OFFERS_PER_REQUEST} - (
+           SELECT COUNT(*) FROM deals o WHERE o.request_id = r.id AND o.responder_id = :viewer
+           AND NOT (o.partial = 1 AND o.status IN ('accepted', 'completed'))
+       )) END AS offers_left,
        CASE WHEN r.user_id = :viewer THEN
            (SELECT COUNT(*) FROM deals p WHERE p.request_id = r.id AND p.status = 'pending')
        END AS pending_count,
@@ -135,8 +143,9 @@ async def create_request(
         cursor = await conn.execute(
             """
             INSERT INTO requests (user_id, direction, amount, rate_type, rate_value,
-                                  min_counter_amount, created_at, updated_at, expires_at)
-            VALUES (?, ?, ?, 'market', ?, ?, ?, ?, ?)
+                                  min_counter_amount, kzt_bank, created_at, updated_at,
+                                  expires_at)
+            VALUES (?, ?, ?, 'market', ?, ?, ?, ?, ?, ?)
             """,
             (
                 user.telegram_id,
@@ -144,12 +153,20 @@ async def create_request(
                 data.amount,
                 data.rate_value,
                 data.min_counter_amount,
+                data.kzt_bank,
                 now,
                 now,
                 expires_at,
             ),
         )
         request_id = cursor.lastrowid
+        if data.remember_kzt_bank is not None:
+            saved = data.kzt_bank if data.remember_kzt_bank else None
+            await conn.execute(
+                "UPDATE users SET saved_kzt_bank = ?, updated_at = ? "
+                "WHERE telegram_id = ? AND saved_kzt_bank IS NOT ?",
+                (saved, now, user.telegram_id, saved),
+            )
     assert request_id is not None
     notifier.request_posted(request_id)
     return await get_request(db, user.telegram_id, request_id)
@@ -243,8 +260,8 @@ async def close_open_request(
 async def update_request(
     db: Database, user: User, request_id: int, data: RequestUpdate
 ) -> RequestOut:
-    """The author edits the amount, rate or smallest counter offer of their open request, or
-    extends it.
+    """The author edits the amount, rate, smallest counter offer or preferred KZT bank of their
+    open request, or extends it.
 
     Changing the terms is refused while anyone is waiting for an answer: they took the
     request as it was. Extending doesn't change the terms, so it's always allowed.
@@ -255,8 +272,8 @@ async def update_request(
     now = utc_iso(now_dt)
     async with db.transaction() as conn:
         async with conn.execute(
-            "SELECT user_id, status, expires_at, amount, rate_value, min_counter_amount "
-            "FROM requests WHERE id = ?",
+            "SELECT user_id, status, expires_at, amount, rate_value, min_counter_amount, "
+            "kzt_bank FROM requests WHERE id = ?",
             (request_id,),
         ) as cursor:
             request = await cursor.fetchone()
@@ -277,6 +294,8 @@ async def update_request(
             and data.min_counter_amount != request["min_counter_amount"]
         ):
             changes["min_counter_amount"] = data.min_counter_amount
+        if "kzt_bank" in data.model_fields_set and data.kzt_bank != request["kzt_bank"]:
+            changes["kzt_bank"] = data.kzt_bank
         minimum = changes.get("min_counter_amount", request["min_counter_amount"])
         if minimum is not None and minimum > changes.get("amount", request["amount"]):
             raise InvalidInputError("counter_minimum_too_large")

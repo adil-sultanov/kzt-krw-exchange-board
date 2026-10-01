@@ -6,7 +6,8 @@ export type BoardSort = "date" | "rate" | "amount";
 /** "desc" is newest, best rate for the viewer, or largest first. */
 export type SortOrder = "desc" | "asc";
 export type Currency = "KZT" | "KRW";
-export type DealStatus = "pending" | "accepted" | "declined" | "completed";
+/** `cancelled`: its responder cancelled their offer before the author answered. */
+export type DealStatus = "pending" | "accepted" | "declined" | "cancelled" | "completed";
 export type DealRole = "author" | "responder";
 
 export const CURRENCIES: Currency[] = ["KRW", "KZT"];
@@ -21,6 +22,7 @@ export const MAX_BANK_LENGTH = 100;
 export const MAX_ACCOUNT_LENGTH = 100;
 export const MAX_NAME_LENGTH = 40;
 export const MAX_UNIVERSITY_LENGTH = 60;
+export const MAX_KZT_BANK_LENGTH = 40;
 export const MIN_ENROLLMENT_YEAR = 2000;
 export const MAX_REPORT_NOTE_LENGTH = 500;
 export const MAX_DONATE_OPTIONS = 6;
@@ -52,6 +54,8 @@ export interface Me {
   alerts_buy_kzt: boolean;
   /** They've opened the Alerts panel, which clears its "new" dot. */
   alerts_seen: boolean;
+  /** Filled in as the preferred KZT bank on their next request (New request remembers it). */
+  saved_kzt_bank: string | null;
 }
 
 /** Turns a Board tab's alerts on or off; any update (even an empty one) marks the panel seen. */
@@ -109,6 +113,8 @@ export interface ExchangeRequest {
   effective_rate: number | null;
   /** The smallest counter offer the author accepts, in `amount`'s currency (null: they don't). */
   min_counter_amount: number | null;
+  /** The bank the author would rather use for the KZT side, e.g. "Kaspi" (null: no preference). */
+  kzt_bank: string | null;
   status: RequestStatus;
   /** An admin took it off the board (status `closed`), or its author's ban did. */
   removed_by_admin: boolean;
@@ -117,9 +123,11 @@ export interface ExchangeRequest {
   /** The author's current Telegram username (null if they have none). */
   author_username: string | null;
   is_own: boolean;
-  /** The viewer's own response to this request, if they took it. */
+  /** The viewer's latest response to this request, if they took it or sent a counter offer. */
   my_deal_id: number | null;
   my_deal_status: DealStatus | null;
+  /** How many more offers the viewer may send on it once their latest is cancelled (null on their own). */
+  offers_left: number | null;
   /** For the author only: how many responders are waiting for an answer. */
   pending_count: number | null;
   created_at: string;
@@ -297,21 +305,38 @@ export interface RequestCreate {
   duration_days: DurationDays;
   /** The smallest counter offer to accept (at most `amount`); null turns counter offers off. */
   min_counter_amount: number | null;
+  /** The preferred KZT bank; null for none. */
+  kzt_bank: string | null;
+  /** Remember `kzt_bank` for the next request (false forgets the one remembered). */
+  remember_kzt_bank: boolean;
 }
 
 /**
  * The author's changes to their open request. `extend_days` moves the expiry to that many days
- * from now; `min_counter_amount: null` turns counter offers off.
+ * from now; `min_counter_amount: null` turns counter offers off, `kzt_bank: null` removes the bank.
  */
 export interface RequestUpdate {
   amount?: number;
   rate_value?: number;
   min_counter_amount?: number | null;
+  kzt_bank?: string | null;
   extend_days?: DurationDays;
 }
 
 /** A request's terms, e.g. to post an expired one again. */
-export type RequestTerms = Pick<ExchangeRequest, "direction" | "amount" | "rate_value" | "min_counter_amount">;
+export type RequestTerms = Pick<
+  ExchangeRequest,
+  "direction" | "amount" | "rate_value" | "min_counter_amount" | "kzt_bank"
+>;
+
+/**
+ * A preferred KZT bank as the backend stores it: inner spaces collapsed, empty for none. It's
+ * shown to everyone, so only letters, digits, spaces and a little punctuation ("Kaspi, Halyk").
+ */
+export function cleanKztBank(text: string): { value: string | null; valid: boolean } {
+  const value = text.split(/\s+/).filter(Boolean).join(" ");
+  return { value: value || null, valid: /^[\p{L}\p{N} \-'\u2019.&()/,+]*$/u.test(value) };
+}
 
 export interface CreatedRequest {
   request: ExchangeRequest;
@@ -380,9 +405,13 @@ export function viewerRateGain(request: Pick<ExchangeRequest, "direction" | "rat
   return request.is_own ? authorGain : -authorGain;
 }
 
-/** Whether someone else can respond to the request: it's open and the viewer hasn't yet. */
+/**
+ * Whether someone else can respond to the request: it's open, and the viewer hasn't yet, or
+ * cancelled their last offer and has offers left (at most 3 on a request, one at a time).
+ */
 export function canRespond(request: ExchangeRequest): boolean {
-  return !request.is_own && request.status === "open" && request.my_deal_id === null;
+  const free = request.my_deal_id === null || request.my_deal_status === "cancelled";
+  return !request.is_own && request.status === "open" && free && (request.offers_left ?? 0) > 0;
 }
 
 /** Whether the viewer can respond to requests at all: posting and taking need a username and a profile. */
@@ -408,6 +437,11 @@ export function dealWhole(deal: Deal): ExchangeRequest | null {
 /** Whether the viewer has saved where they receive a currency. */
 export function hasReceiveDetails(me: Me, currency: Currency): boolean {
   return Boolean(currency === "KZT" ? me.receive_kzt_account : me.receive_krw_account);
+}
+
+/** Whether the viewer can cancel their offer: they sent it, and the author hasn't answered yet. */
+export function canCancelOffer(deal: Deal): boolean {
+  return deal.role === "responder" && deal.status === "pending";
 }
 
 /** Deals still going: waiting for the author's answer, or accepted and not yet completed. */

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, errorCode } from "../api";
 import { AmountInput, ExchangeBox, ExchangeRow } from "../components/Exchange";
 import { ProfileRequired } from "../components/ProfileHint";
-import { Collapse, ErrorBox, Notice, Section, Segmented } from "../components/ui";
+import { Checkbox, Collapse, ErrorBox, Notice, Section, Segmented } from "../components/ui";
 import {
   formatAmountInput,
   formatDecimalInput,
@@ -13,10 +13,11 @@ import {
   SYMBOL,
 } from "../format";
 import { t } from "../i18n";
-import { useMe } from "../me";
+import { useMe, useSetMe } from "../me";
 import { useNav } from "../nav";
 import { haptic, useMainButton } from "../telegram";
 import {
+  cleanKztBank,
   convert,
   type Currency,
   CURRENCIES,
@@ -27,6 +28,7 @@ import {
   giveCurrency,
   hasProfile,
   MAX_AMOUNT,
+  MAX_KZT_BANK_LENGTH,
   MAX_MARKET_OFFSET,
   postDirection,
   type RequestCreate,
@@ -48,6 +50,7 @@ interface FormErrors {
   amount?: string;
   rate?: string;
   minCounter?: string;
+  kztBank?: string;
 }
 
 interface FormValues {
@@ -56,6 +59,7 @@ interface FormValues {
   rateChoice: RateChoice;
   percentText: string;
   minCounterText: string;
+  kztBankText: string;
 }
 
 /** The form showing an existing request's terms, from its author's side. */
@@ -67,16 +71,19 @@ function formValues(terms: RequestTerms): FormValues {
     rateChoice: gain > 0 ? "ask" : gain < 0 ? "offer" : "market",
     percentText: gain === 0 ? "" : formatDecimalInput(String(Math.abs(gain)), 2),
     minCounterText: formatAmountInput(String(terms.min_counter_amount ?? "")),
+    kztBankText: terms.kzt_bank ?? "",
   };
 }
 
 /**
- * Posts a new request, optionally prefilled (`prefill`, "Post again"), or edits the amount, rate
- * and smallest counter offer of the viewer's open request (`edit`; its direction and expiry stay
- * as they are).
+ * Posts a new request, optionally prefilled (`prefill`, "Post again"), or edits the amount, rate,
+ * smallest counter offer and preferred KZT bank of the viewer's open request (`edit`; its
+ * direction and expiry stay as they are). A new request without a prefill starts with the bank
+ * the viewer asked to remember.
  */
 export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edit?: ExchangeRequest }) {
   const me = useMe();
+  const setMe = useSetMe();
   const nav = useNav();
   const { edit } = props;
   const [initial] = useState(() => {
@@ -90,6 +97,8 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
   const [percentText, setPercentText] = useState(initial?.percentText ?? "");
   // Empty: counter offers are off.
   const [minCounterText, setMinCounterText] = useState(initial?.minCounterText ?? "");
+  const [kztBankText, setKztBankText] = useState(initial?.kztBankText ?? me.saved_kzt_bank ?? "");
+  const [rememberKztBank, setRememberKztBank] = useState(me.saved_kzt_bank !== null);
   const [duration, setDuration] = useState<DurationDays>(1);
   const [referenceRate, setReferenceRate] = useState<number | null>(null);
   const [showErrors, setShowErrors] = useState(false);
@@ -115,6 +124,7 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
   const gets = typed === "get" ? typedAmount : converted(amount, pay);
   // In what the author pays, like the amount. formatAmountInput keeps it a positive integer.
   const minCounter = parseAmount(minCounterText);
+  const kztBank = cleanKztBank(kztBankText);
 
   const errors: FormErrors = {};
   if (amount === null || amount <= 0) errors.amount = t.form.errors.amount;
@@ -126,6 +136,7 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
   if (minCounter !== null && amount !== null && minCounter > amount) {
     errors.minCounter = t.form.errors.counterAboveAmount;
   }
+  if (!kztBank.valid) errors.kztBank = t.form.errors.kztBank;
   const valid = Object.keys(errors).length === 0;
 
   const submit = async () => {
@@ -138,7 +149,12 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
     setError(null);
     try {
       if (edit) {
-        await api.updateRequest(edit.id, { amount, rate_value: offset, min_counter_amount: minCounter });
+        await api.updateRequest(edit.id, {
+          amount,
+          rate_value: offset,
+          min_counter_amount: minCounter,
+          kzt_bank: kztBank.value,
+        });
         haptic("success");
         nav.pop();
         return;
@@ -149,9 +165,12 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
         rate_value: offset,
         duration_days: duration,
         min_counter_amount: minCounter,
+        kzt_bank: kztBank.value,
+        remember_kzt_bank: rememberKztBank,
       };
       const result = await api.createRequest(body);
       haptic("success");
+      setMe({ ...me, saved_kzt_bank: rememberKztBank ? kztBank.value : null });
       nav.replace({ name: "created", result });
     } catch (e) {
       haptic("error");
@@ -263,6 +282,26 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
             ? t.rate.unavailable
             : !errors.rate && <span className="nowrap">{t.form.rateNow(formatRatePair(effectiveRate))}</span>}
         </p>
+      </Section>
+
+      <Section title={t.form.kztBank}>
+        <input
+          className={shown.kztBank ? "input invalid" : "input"}
+          maxLength={MAX_KZT_BANK_LENGTH}
+          autoComplete="off"
+          aria-label={t.form.kztBank}
+          aria-invalid={Boolean(shown.kztBank)}
+          placeholder={t.form.kztBankPlaceholder}
+          value={kztBankText}
+          onChange={(event) => setKztBankText(event.target.value)}
+        />
+        {shown.kztBank && <p className="field-error">{shown.kztBank}</p>}
+        <p className="hint small">{t.form.kztBankHint}</p>
+        {!edit && (
+          <Checkbox checked={rememberKztBank} onChange={setRememberKztBank}>
+            {t.form.kztBankRemember}
+          </Checkbox>
+        )}
       </Section>
 
       <section className="section">

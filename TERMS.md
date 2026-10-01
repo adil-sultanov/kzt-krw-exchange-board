@@ -1,6 +1,6 @@
 # Terms of Use
 
-_Last updated: 2026-09-28_
+_Last updated: 2026-10-01_
 
 These terms apply to the KZT ↔ KRW Exchange Board Telegram bot and Mini App (the
 "Service"), operated by Adil Sultanov ([@moonpie24](https://t.me/moonpie24)). By using the
@@ -27,8 +27,9 @@ Service you agree to them. If you don't agree, don't use it.
   Kazakhstan.
 - Only send money once you trust the other person. Only confirm a deal as received once the
   money is actually in your account.
-- An accepted deal can't be cancelled in the app: it ends when both sides confirm they
-  received the money. If something goes wrong, use **Report a problem** on the deal.
+- You can cancel your offer on someone's request until its author answers it, and send a new
+  one, up to 3 offers per request. An accepted
+  deal can't be cancelled in the app: it ends when both sides confirm they received the money. If something goes wrong, use **Report a problem** on the deal.
   Reports are reviewed by the operator and admins, who can ban users but **cannot move,
   recover, or refund money**.
 

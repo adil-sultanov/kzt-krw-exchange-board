@@ -17,7 +17,8 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   (highlighted while not the default) sorts by date, amount they'd get or rate for the viewer,
   descending (newest / largest / best first) or ascending via an arrow toggle.
   Cards show the author's profile tag and @username, pay / get, the rate compared to the market, the
-  author's completed deals and time left. Shows the reference rate both ways at the top (1 ₸ = X ₩ and 1 ₩ = Y ₸).
+  author's completed deals and time left, and under the rate their preferred KZT bank, if any
+  ("Preferred KZT bank: Kaspi"; on every request card, in My deals and matches too). Shows the reference rate both ways at the top (1 ₸ = X ₩ and 1 ₩ = Y ₸).
   **Alerts** (next to Filters) opens a panel to turn alerts for the current tab on or off (see
   Alerts); it's highlighted, with a filled bell, while that tab's alerts are on, and carries a
   red "new" dot until the user first opens it.
@@ -27,8 +28,8 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   them, see Counter offers) and **Take request** (the same confirm popup as on the request,
   then the new deal opens; an error shows in a popup). Without a username or a full profile,
   both open the request, which says what's missing.
-- **Request detail** — what the viewer pays and gets, rate, author's profile tag, @username
-  and completed-deals count, counter offers ("From 20,000 ₸", or "Whole amount only"), time
+- **Request detail** — what the viewer pays and gets, rate, preferred KZT bank (if any),
+  author's profile tag, @username and completed-deals count, counter offers ("From 20,000 ₸", or "Whole amount only"), time
   left. Buttons: **Take request** (creates a pending deal, see Deal flow), **Counter offer**
   (if the author takes them), **Report this request** (not on your own);
   on the author's own open request, **Edit**, **Extend** and **Cancel request** (and how many
@@ -45,13 +46,18 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   **Counter offers** (optional, in a tinted, outlined box so it gets noticed): the smallest part
   of the amount they pay that they'd accept from a counter offer, a positive whole number up to
   that amount; left empty, counter offers are off.
+  **Preferred KZT bank** (optional free text, max 40 chars: letters, digits, spaces and
+  `-'’.&()/,+`, e.g. "Kaspi, Halyk"; shown on the request) with a **Remember for my next
+  requests** checkbox: New request (not Post again or Edit) starts with the remembered bank
+  (`users.saved_kzt_bank`), ticked if there is one. Posting with it ticked remembers this
+  request's bank (empty forgets it); unticked forgets it.
   Duration (1 / 3 days), with a note that the request leaves the board once the author accepts
   someone for all of it or cancels it, or when the time runs out. No free-text note, no payment methods
   (where to pay comes from the receiving details once a deal is accepted).
   Show matching opposite requests right after creation.
 - **My requests** (no separate screen: they're on My deals and the request screen):
-  - **Edit** changes the amount, rate or smallest counter offer (the direction and expiry
-    stay; the minimum can't end up above the amount: `counter_minimum_too_large`). It's refused
+  - **Edit** changes the amount, rate, smallest counter offer or preferred KZT bank (the
+    direction and expiry stay; the minimum can't end up above the amount: `counter_minimum_too_large`). It's refused
     (`request_has_responders`) while anyone's deal on it is pending, since they took the old
     terms; they're answered in My deals.
   - **Extend** keeps it on the board 1 or 3 days from now (a Telegram popup), only if that's
@@ -65,8 +71,9 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   range is refused before sending (and by the backend: `counter_below_minimum`,
   `counter_above_amount`, or `counter_offers_off`). MainButton **Send counter offer** creates a
   pending deal and opens it.
-- **My deals** — sections *Active*, *Completed*, *Declined*, then *Expired in the last day*
-  (with **Post again**). *Active* holds the user's `pending` / `accepted` deals and their
+- **My deals** — sections *Active*, *Completed*, *Declined & cancelled*, then *Expired in the
+  last day* (with **Post again**). The viewer's own offers waiting for an answer (taking a
+  request, or a counter offer) have **Cancel offer** under their card (see Deal flow). *Active* holds the user's `pending` / `accepted` deals and their
   requests on the board (open, not expired), each request once, with **Extend** and **Cancel
   request**: a pending deal on it isn't listed apart. When someone took it, the card reads
   "Waiting for your answer" and opens that deal (the first taker's; after answering, the next
@@ -77,8 +84,8 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   screen) likewise shows the deal's amounts over the dimmed whole request, and active ones
   read "Counter offer · <status>". Order: deals in progress
   (outlined), then what's waiting on the viewer, then the rest, their idle requests last.
-  Cards under *Completed* and *Declined* carry no status tag (the section says it).
-  *Completed* and *Declined* each fold and unfold by tapping their title (which shows the
+  Cards under *Completed* and *Declined & cancelled* carry no status tag (the section says it),
+  except cancelled offers ("Offer cancelled"). *Completed* and *Declined & cancelled* each fold and unfold by tapping their title (which shows the
   count); each choice is remembered on the device. My deals and the deal screen have a **Refresh** button.
 - **Profile** — name, username and completed deals count; *About you*: first and last name,
   university and year of enrollment (see Profiles), with a preview of the tag; receiving
@@ -112,7 +119,7 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   in the app (only these have **Remove admin**). Add one by Telegram username (with or without
   the @; MainButton **Add admin**): it must belong to someone who has used the app or the bot.
 - **Admin: all deals** (admins only) — Active (pending / accepted, least recently changed
-  first, so stale ones lead) / Finished (completed / declined, newest first) / Cancelled tabs,
+  first, so stale ones lead) / Finished (completed / declined / cancelled offers, newest first) / Cancelled tabs,
   up to 100 each. Deals: the deal and its request (with the deal's amount; counter offers are
   tagged), who confirmed payment, both sides (as on reports), and (owner only) **Delete deal** (with a confirm popup). Cancelled: requests taken
   off the board early (status `closed`), most recently closed first: who did it and how
@@ -186,7 +193,13 @@ matches are in-app too.
    Each side also sees where to pay: the other side's receiving details for the currency
    they give (the author gives the request's currency; the responder gives the other one),
    with a copy button for the account number.
-4. **Decline**: deal → `declined`.
+4. **Decline**: deal → `declined`. Or, before the author answers, B taps **Cancel offer**
+   (on the deal screen or under its card in My deals, with a confirm popup): deal →
+   `cancelled`, nobody is messaged, and the request stays as it is (the author's deal screen
+   reads "Offer withdrawn"). B may then send a new one (rule 7), from the request or **Send a
+   new offer** on the cancelled deal; the request shows how many offers they have left. Refused
+   (`deal_not_pending`) once the author answered or the request left the board; only the
+   responder may cancel (`not_deal_responder`).
 5. Each side taps **I received the money** once the other's payment is in their account
    (sets `author_confirmed` / `responder_confirmed`; repeating it is a no-op). Once both have
    confirmed, the deal and request become `completed` (a counter offer completes alone; its
@@ -196,11 +209,16 @@ matches are in-app too.
 6. An accepted deal **can't be cancelled**: once contacts are exchanged, money may already
    have moved, and a cancel would let someone back out after being paid. It ends only when
    both sides confirm; if the other side disappears, **Report a problem** brings in an admin. Deals
-   cancelled before this rule were deleted (migration 005); the status is no longer used.
+   cancelled before this rule were deleted (migration 005); the status now only means a
+   responder cancelled their pending offer (step 4).
 7. A user cannot take their own request, and has at most one response to it at a time
-   (checked in `take_request`): after a decline they can't take the same request again. The
-   exception is an accepted counter offer: that part is their deal, and the rest of the
-   request is open to them like to anyone else (see Counter offers).
+   (checked in `take_request`). They may send at most **3 offers** on a request (takes and
+   counter offers, cancelled ones included; `too_many_offers`), each only once the previous
+   one was cancelled, so taking and cancelling over and over can't flood the author with bot
+   messages. After a decline they can't respond to the same request again: that was the
+   author's answer. Accepted counter offers don't count toward any of this: that part is
+   their deal, and the rest of the request is open to them like to anyone else (see Counter
+   offers).
 8. Closing (the author's **Cancel request**, only while `open`) or expiring a request declines
    all its pending deals. A background job marks past-due open requests `expired` every
    5 minutes; until it runs, a past-due request already shows as expired and a pending deal on
@@ -298,17 +316,20 @@ so double taps and races between two open copies of the app are harmless.
 
 ## API
 All routes require valid initData.
-- `GET  /api/me` · `PATCH /api/me` (profile: `profile_first_name`, `profile_last_name`,
+- `GET  /api/me` (also `saved_kzt_bank`, the remembered preferred KZT bank) · `PATCH /api/me` (profile: `profile_first_name`, `profile_last_name`,
   `university`, `enrollment_year`; receiving details: `receive_kzt_bank`, `receive_kzt_account`,
   `receive_krw_bank`, `receive_krw_account`)
 - `PATCH /api/me/alerts` (`buy_krw` / `buy_kzt`: turn a tab's alerts on or off; any call,
   even an empty one, marks the Alerts panel seen)
 - `GET  /api/rate`
 - `GET  /api/requests` (filters as query params)
-- `POST /api/requests` (`min_counter_amount` optional: null turns counter offers off)
-- `GET  /api/requests/{id}`
+- `POST /api/requests` (`min_counter_amount` optional: null turns counter offers off;
+  `kzt_bank` optional; `remember_kzt_bank`: true remembers `kzt_bank` for the next request,
+  false forgets the remembered one, left out leaves it)
+- `GET  /api/requests/{id}` (with the viewer's latest response, `my_deal_id` /
+  `my_deal_status`, and `offers_left`: how many more they may send; null on their own)
 - `PATCH /api/requests/{id}` (author only, `open` only: `amount` / `rate_value` /
-  `min_counter_amount` (null turns them off) to edit, `extend_days` (1 or 3) to extend)
+  `min_counter_amount` (null turns them off) / `kzt_bank` (null or empty removes it) to edit, `extend_days` (1 or 3) to extend)
 - `POST /api/requests/{id}/close` ("Cancel request"; author only, `open` requests only)
 - `GET  /api/my/requests` (the caller's requests on the board, then those expired in the last
   24 h; each with `pending_count`, which only the author sees)
@@ -318,6 +339,7 @@ All routes require valid initData.
 - `GET  /api/my/deals`
 - `GET  /api/deals/{id}` (participants only; used by the `deal_45` deep link)
 - `POST /api/deals/{id}/accept` | `/decline` (request author only)
+- `POST /api/deals/{id}/cancel` ("Cancel offer"; the responder only, `pending` deals only)
 - `POST /api/deals/{id}/confirm` ("I received the money"; deal participants only)
 - `POST /api/deals/{id}/report` ("Report a problem"; participants, `accepted` deals only)
 - `GET  /api/deals/{id}/contact` (returns the other side's current `t.me` link and their

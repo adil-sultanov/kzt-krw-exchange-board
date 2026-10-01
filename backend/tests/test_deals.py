@@ -409,7 +409,95 @@ async def test_concurrent_final_confirmations_count_once(db: Database) -> None:
     assert (await deals.get_deal(db, 1, deal_id)).status == "completed"
 
 
-# --- No cancelling ---
+# --- Cancelling an offer ---
+
+
+def test_responder_cancels_a_pending_offer(client: TestClient) -> None:
+    request_id = create(client, AIDA)["id"]
+    deal_id = taken(client, BEK, request_id)["id"]
+    other_id = taken(client, DANA, request_id)["id"]
+
+    response = act(client, BEK, deal_id, "cancel")
+    assert response.status_code == 200
+    assert (response.json()["status"], response.json()["role"]) == ("cancelled", "responder")
+    assert get(client, AIDA, f"deals/{deal_id}").json()["status"] == "cancelled"
+    assert act(client, AIDA, deal_id, "accept").json() == {"detail": "deal_not_pending"}
+    assert act(client, BEK, deal_id, "cancel").json() == {"detail": "deal_not_pending"}
+
+    # The request stays on the board, with one fewer waiting; the others' offers stand.
+    request = get(client, AIDA, f"requests/{request_id}").json()
+    assert (request["status"], request["pending_count"]) == ("open", 1)
+    assert get(client, DANA, f"deals/{other_id}").json()["status"] == "pending"
+    mine = get(client, BEK, f"requests/{request_id}").json()
+    assert (mine["my_deal_id"], mine["my_deal_status"], mine["offers_left"]) == (
+        deal_id,
+        "cancelled",
+        2,
+    )
+
+
+def test_up_to_three_offers_each_after_cancelling_the_last(client: TestClient) -> None:
+    request_id = create(client, AIDA)["id"]
+    assert get(client, BEK, f"requests/{request_id}").json()["offers_left"] == 3
+    assert get(client, AIDA, f"requests/{request_id}").json()["offers_left"] is None
+    for left in (2, 1, 0):
+        deal_id = taken(client, BEK, request_id)["id"]
+        # One at a time.
+        assert take(client, BEK, request_id).json() == {"detail": "already_responded"}
+        assert act(client, BEK, deal_id, "cancel").status_code == 200
+        mine = get(client, BEK, f"requests/{request_id}").json()
+        assert (mine["my_deal_id"], mine["offers_left"]) == (deal_id, left)
+    response = take(client, BEK, request_id)
+    assert (response.status_code, response.json()) == (409, {"detail": "too_many_offers"})
+    # Others' count is their own.
+    assert taken(client, DANA, request_id)["request"]["offers_left"] == 2
+
+
+def test_no_new_offer_after_a_decline(client: TestClient) -> None:
+    request_id = create(client, AIDA)["id"]
+    act(client, BEK, taken(client, BEK, request_id)["id"], "cancel")
+    act(client, AIDA, taken(client, BEK, request_id)["id"], "decline")
+    assert take(client, BEK, request_id).json() == {"detail": "already_responded"}
+
+
+def test_only_the_responder_can_cancel(client: TestClient) -> None:
+    request_id = create(client, AIDA)["id"]
+    deal_id = taken(client, BEK, request_id)["id"]
+    response = act(client, AIDA, deal_id, "cancel")
+    assert (response.status_code, response.json()) == (403, {"detail": "not_deal_responder"})
+    response = act(client, DANA, deal_id, "cancel")
+    assert (response.status_code, response.json()) == (404, {"detail": "deal_not_found"})
+    assert get(client, BEK, f"deals/{deal_id}").json()["status"] == "pending"
+
+
+def test_cannot_cancel_once_answered_or_expired(client: TestClient, settings: Settings) -> None:
+    request_id = create(client, AIDA)["id"]
+    declined = taken(client, BEK, request_id)["id"]
+    act(client, AIDA, declined, "decline")
+    assert act(client, BEK, declined, "cancel").json() == {"detail": "deal_not_pending"}
+
+    pending = taken(client, DANA, request_id)["id"]
+    sql(settings, "UPDATE requests SET expires_at = ?", (PAST,))
+    assert act(client, DANA, pending, "cancel").json() == {"detail": "deal_not_pending"}
+    assert get(client, DANA, f"deals/{pending}").json()["status"] == "declined"
+
+
+def test_cancelling_lets_the_author_edit_again(client: TestClient) -> None:
+    request_id = create(client, AIDA)["id"]
+    deal_id = taken(client, BEK, request_id)["id"]
+    edit = {"amount": 50_000}
+    path = f"/api/requests/{request_id}"
+    response = client.patch(path, json=edit, headers=auth_as(AIDA))
+    assert response.json() == {"detail": "request_has_responders"}
+    act(client, BEK, deal_id, "cancel")
+    assert client.patch(path, json=edit, headers=auth_as(AIDA)).status_code == 200
+
+
+def test_cancelling_sends_nothing(client: TestClient, notifier: FakeNotifier) -> None:
+    request_id = create(client, AIDA)["id"]
+    deal_id = taken(client, BEK, request_id)["id"]
+    act(client, BEK, deal_id, "cancel")
+    assert [event for event, _, _ in notifier.sent] == ["requested"]
 
 
 @pytest.mark.parametrize("user", [AIDA, BEK])
@@ -417,7 +505,7 @@ def test_accepted_deal_cannot_be_cancelled(client: TestClient, user: dict[str, A
     # Once contacts are exchanged, money may have moved: no side can back out.
     _, deal_id = accepted_deal(client)
     act(client, AIDA, deal_id, "confirm")
-    assert act(client, user, deal_id, "cancel").status_code in (404, 405)
+    assert act(client, user, deal_id, "cancel").status_code in (403, 409)
     deal = get(client, user, f"deals/{deal_id}").json()
     assert deal["status"] == "accepted"
     assert deal["request"]["status"] == "in_progress"

@@ -35,6 +35,7 @@ export interface CardStatus {
  * profile tag ("Adil Sultanov, UNIST, 2022") and completed-deal count (by default the author's,
  * hidden on the viewer's own requests). `time` shows the time left while the request is on the
  * board. `whole` is the whole request under a counter offer's amounts (shown dimmed below them).
+ * The author's preferred KZT bank, if any, goes under the rate.
  */
 export function RequestCard(props: {
   request: ExchangeRequest;
@@ -50,7 +51,7 @@ export function RequestCard(props: {
   const fallback: CardStatus | null = request.my_deal_status
     ? {
         text: t.dealStatus[request.my_deal_status],
-        tone: request.my_deal_status === "declined" ? "muted" : "active",
+        tone: request.my_deal_status === "declined" || request.my_deal_status === "cancelled" ? "muted" : "active",
       }
     : null;
   const status = props.status !== undefined ? props.status : fallback;
@@ -98,6 +99,11 @@ export function RequestCard(props: {
         {deals !== null && <span>{t.card.deals(deals)}</span>}
         {left && <span className="card-time">{t.card.timeLeft(left)}</span>}
       </span>
+      {request.kzt_bank && (
+        <span className="card-bank">
+          {t.card.kztBank} <span className="card-bank-name">{request.kzt_bank}</span>
+        </span>
+      )}
     </div>
   );
 }

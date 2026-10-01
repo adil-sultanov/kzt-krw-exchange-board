@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-09-28_
+_Last updated: 2026-10-01_
 
 This policy explains what the KZT ↔ KRW Exchange Board Telegram bot and Mini App (the
 "Service") stores and why. The Service is operated by Adil Sultanov
@@ -12,7 +12,9 @@ This policy explains what the KZT ↔ KRW Exchange Board Telegram bot and Mini A
 - **Your profile**: the first and last name, university and year of enrollment you enter
   in the app. They're needed to post or take a request.
 - **Your requests and deals**: amounts (including the smallest counter offer you accept, and
-  the part a counter offer asks for), rates, statuses, and times.
+  the part a counter offer asks for), rates, the bank you'd rather use for KZT if you name
+  one, statuses, and times. If you ask the app to remember that bank for your next request,
+  it's stored with your account until you post a request without asking it to.
 - **Receiving details** you choose to add in your profile: a bank and account holder name, and
   an account, card or phone number (for example, a Kaspi number or a Korean bank account).
 - **Alert settings**: whether you turned alerts on for each Board tab, and whether you've
@@ -34,7 +36,7 @@ This policy explains what the KZT ↔ KRW Exchange Board Telegram bot and Mini A
 ## Who can see what
 - Your **profile** (name, university, year of enrollment), **Telegram username** and
   completed-deal count are shown to every member on your requests on the board, so they can
-  check who they'd trade with. Your profile is also shown to the other person in each of
+  check who they'd trade with. So is the bank you'd rather use for KZT, if you name one. Your profile is also shown to the other person in each of
   your deals. Your Telegram ID is not shown.
 - Your **receiving details** are shown only to the other person in a deal, and only after
   the request's author accepts it. That's also when someone who took your request (or sent a

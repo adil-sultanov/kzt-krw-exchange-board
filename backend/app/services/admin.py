@@ -361,11 +361,11 @@ LIMIT ?
 
 async def list_deals(db: Database, actor: User, *, active: bool) -> list[ListedDealOut]:
     """Active deals (pending or accepted), least recently changed first, so stale ones lead;
-    or finished ones (completed or declined), most recent first.
+    or finished ones (completed, declined or cancelled by their responder), most recent first.
     """
     _require_admin(actor)
     sql = _SELECT_ALL_DEALS.format(
-        statuses="'pending', 'accepted'" if active else "'completed', 'declined'",
+        statuses="'pending', 'accepted'" if active else "'completed', 'declined', 'cancelled'",
         order="ASC" if active else "DESC",
     )
     async with db.conn.execute(sql, (ALL_DEALS_LIMIT,)) as cursor:

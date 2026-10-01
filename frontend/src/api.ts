@@ -54,7 +54,8 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return data as T;
 }
 
-export type DealAction = "accept" | "decline" | "confirm";
+/** `cancel` is the responder's, while the author hasn't answered; the others are the author's. */
+export type DealAction = "accept" | "decline" | "cancel" | "confirm";
 
 export const BOARD_PAGE_SIZE = 30;
 

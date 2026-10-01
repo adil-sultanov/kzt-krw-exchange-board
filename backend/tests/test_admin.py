@@ -296,6 +296,11 @@ def test_admins_list_deals(client: TestClient) -> None:
     # Any admin sees the same list; only the owner deletes deals.
     assert all_deals(client, user=ADMIN) == listed
 
+    client.post(f"/api/deals/{pending_id}/cancel", headers=auth_as(AIDA))
+    assert [(d["id"], d["status"]) for d in all_deals(client, active=False)] == [
+        (pending_id, "cancelled")
+    ]
+
 
 def test_owner_deletes_an_accepted_deal(client: TestClient, settings: Settings) -> None:
     request_id, deal_id = accepted_deal(client)

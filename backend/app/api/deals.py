@@ -41,6 +41,11 @@ async def decline_deal(user: CurrentUser, db: DbDep, deal_id: int) -> DealOut:
     return await deals.decline_deal(db, user.telegram_id, deal_id)
 
 
+@router.post("/deals/{deal_id}/cancel")
+async def cancel_offer(user: CurrentUser, db: DbDep, deal_id: int) -> DealOut:
+    return await deals.cancel_offer(db, user.telegram_id, deal_id)
+
+
 @router.post("/deals/{deal_id}/confirm")
 async def confirm_received(user: CurrentUser, db: DbDep, deal_id: int) -> DealOut:
     return await deals.confirm_received(db, user.telegram_id, deal_id)

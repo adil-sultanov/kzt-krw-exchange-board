@@ -137,6 +137,11 @@ def test_banned_user_cannot_post(client: TestClient, settings: Settings) -> None
         {"duration_days": 7},
         {"note": "hi"},
         {"user_id": 99},
+        {"kzt_bank": "x" * 41},
+        {"kzt_bank": "https://kaspi.kz"},
+        {"kzt_bank": "Kaspi 💸"},
+        {"kzt_bank": 5},
+        {"remember_kzt_bank": "yes"},
     ],
 )
 def test_create_rejects_invalid_input(client: TestClient, overrides: dict[str, Any]) -> None:
@@ -148,6 +153,33 @@ def test_create_rejects_invalid_input(client: TestClient, overrides: dict[str, A
 def test_create_normalizes_input(client: TestClient) -> None:
     request = create(client, AIDA, rate_value=-2.345)
     assert request["rate_value"] == -2.35
+
+
+def me(client: TestClient, user: dict[str, Any]) -> dict[str, Any]:
+    return client.get("/api/me", headers=auth_as(user)).json()
+
+
+def test_preferred_kzt_bank_is_optional_and_shown(client: TestClient) -> None:
+    assert create(client, AIDA)["kzt_bank"] is None
+    assert create(client, AIDA, kzt_bank="   ")["kzt_bank"] is None
+    request = create(client, AIDA, kzt_bank="  Kaspi,  Halyk ")
+    assert request["kzt_bank"] == "Kaspi, Halyk"
+    shown = client.get(f"/api/requests/{request['id']}", headers=auth_as(BEK)).json()
+    assert shown["kzt_bank"] == "Kaspi, Halyk"
+    assert [item["kzt_bank"] for item in board(client, BEK)] == ["Kaspi, Halyk", None, None]
+
+
+def test_preferred_kzt_bank_is_remembered_on_request(client: TestClient) -> None:
+    create(client, AIDA, kzt_bank="Kaspi")
+    assert me(client, AIDA)["saved_kzt_bank"] is None
+    create(client, AIDA, kzt_bank="Halyk", remember_kzt_bank=True)
+    assert me(client, AIDA)["saved_kzt_bank"] == "Halyk"
+    # Left out, it stays; false forgets it, whatever this request's bank.
+    create(client, AIDA, kzt_bank="Jusan")
+    assert me(client, AIDA)["saved_kzt_bank"] == "Halyk"
+    create(client, AIDA, kzt_bank="Jusan", remember_kzt_bank=False)
+    assert me(client, AIDA)["saved_kzt_bank"] is None
+    assert me(client, BEK)["saved_kzt_bank"] is None
 
 
 def test_create_defaults_to_market_rate(client: TestClient, settings: Settings) -> None:
@@ -371,6 +403,20 @@ def test_edit_amount_and_rate(client: TestClient) -> None:
     assert client.get(f"/api/requests/{request_id}", headers=auth_as(BEK)).json()["amount"] == (
         250_000
     )
+
+
+def test_edit_preferred_kzt_bank(client: TestClient) -> None:
+    request_id = create(client, AIDA, kzt_bank="Kaspi")["id"]
+    response = edit(client, AIDA, request_id, kzt_bank="Halyk")
+    assert (response.status_code, response.json()["kzt_bank"]) == (200, "Halyk")
+    assert edit(client, AIDA, request_id, kzt_bank=None).json()["kzt_bank"] is None
+    assert edit(client, AIDA, request_id, kzt_bank="Jusan").json()["kzt_bank"] == "Jusan"
+    assert edit(client, AIDA, request_id, kzt_bank="").json()["kzt_bank"] is None
+    assert edit(client, AIDA, request_id, kzt_bank="www.x.kz/?a").status_code == 422
+    # It's one of the terms people take a request on.
+    take(client, BEK, request_id)
+    response = edit(client, AIDA, request_id, kzt_bank="Kaspi")
+    assert response.json() == {"detail": "request_has_responders"}
 
 
 def test_pending_count_is_for_the_author_only(client: TestClient) -> None:

@@ -15,8 +15,10 @@ reposting, and there was no way to tell who had reliably completed exchanges bef
 
 - **Board** of open requests ("Buy KRW" / "Buy KZT"), sortable by date, amount or rate
 - **Live market rate**: requests follow the reference rate, ± a few % if you like
-- **Post a request** by typing what you pay *or* what you get; it expires after 1 or 3 days
-- **Deals**: take a request → the author accepts → both see each other's contact
+- **Post a request** by typing what you pay *or* what you get; it expires after 1 or 3 days.
+  Optionally name the bank you'd rather use for KZT ("Kaspi"), remembered for next time
+- **Deals**: take a request → the author accepts → both see each other's contact. Until the
+  author answers, you can cancel your offer
 - **Counter offers**: ask for part of a request (at least the author's optional minimum); once
   accepted, the rest stays on the board with its amount reduced
 - **Profiles**: name, university and year of enrollment, shown as a tag on every request and
@@ -61,6 +63,10 @@ cloudflared tunnel --url http://localhost:5173
 
 Restart the backend after changing `.env`, then send `/start` to the bot. Alternatively, run
 `npm run build`: the backend serves `frontend/dist` itself, so you can tunnel port 8000 instead.
+
+If the app doesn't load, run `scripts/dev-check.sh`: it checks `.env`, the backend, the build,
+DNS and the tunnel, and points the bot's menu button at `WEBAPP_URL`. Then open the app from
+a fresh `/start` reply (buttons in older messages keep old tunnel URLs).
 
 Checks: `.venv/bin/pytest -q` · `.venv/bin/ruff check .` · `npm run typecheck`
 

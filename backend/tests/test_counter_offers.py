@@ -127,6 +127,24 @@ def test_counter_offer_for_the_whole_amount_is_a_take(client: TestClient) -> Non
     assert get(client, AIDA, f"requests/{request_id}")["status"] == "in_progress"
 
 
+def test_responder_cancels_a_counter_offer(client: TestClient) -> None:
+    request_id = with_counters(client)
+    deal_id = countered(client, BEK, request_id, 30_000)
+    deal = act(client, BEK, deal_id, "cancel").json()
+    assert (deal["status"], deal["amount"], deal["partial"]) == ("cancelled", 30_000, True)
+    request = get(client, AIDA, f"requests/{request_id}")
+    assert (request["amount"], request["pending_count"]) == (100_000, 0)
+    # They may send another, e.g. for a different amount.
+    assert counter(client, BEK, request_id, 20_000).status_code == 201
+
+
+def test_accepted_counter_offers_dont_count_toward_the_limit(client: TestClient) -> None:
+    request_id = with_counters(client)
+    act(client, BEK, countered(client, BEK, request_id, 20_000), "cancel")
+    act(client, AIDA, countered(client, BEK, request_id, 20_000), "accept")
+    assert get(client, BEK, f"requests/{request_id}")["offers_left"] == 2
+
+
 # --- Accepting ---
 
 

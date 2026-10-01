@@ -66,6 +66,8 @@ class User(BaseModel):
     alerts_buy_krw: bool
     alerts_buy_kzt: bool
     alerts_seen: bool
+    # The preferred KZT bank New request remembers for their next request (see RequestCreate).
+    saved_kzt_bank: str | None
     created_at: str
     updated_at: str
 
@@ -82,12 +84,15 @@ class User(BaseModel):
 MAX_BANK_LENGTH = 100
 MAX_ACCOUNT_LENGTH = 100
 MAX_NAME_LENGTH = 40
+MAX_KZT_BANK_LENGTH = 40
 MAX_UNIVERSITY_LENGTH = 60
 MIN_ENROLLMENT_YEAR = 2000
 # Besides letters (and digits, in a university's name). No commas: the tag separates with them.
 # U+2019 is the apostrophe phone keyboards type.
 _NAME_PUNCTUATION = frozenset(" -'\u2019.")
 _UNIVERSITY_PUNCTUATION = frozenset(" -'\u2019.&()")
+# A bank, or a few of them ("Kaspi, Halyk").
+_KZT_BANK_PUNCTUATION = frozenset(" -'\u2019.&()/,+")
 
 
 class MeOut(BaseModel):
@@ -115,6 +120,8 @@ class MeOut(BaseModel):
     alerts_buy_krw: bool
     alerts_buy_kzt: bool
     alerts_seen: bool
+    # Filled in as the preferred KZT bank on their next request.
+    saved_kzt_bank: str | None
 
 
 class MeUpdate(BaseModel):
@@ -184,6 +191,12 @@ def _clean_profile_text(
     return value
 
 
+def _clean_kzt_bank(value: str | None) -> str | None:
+    """A request's preferred KZT bank, shown to everyone on the board; empty is none."""
+    value = _clean_profile_text(value, MAX_KZT_BANK_LENGTH, _KZT_BANK_PUNCTUATION, digits=True)
+    return value or None
+
+
 class AlertsUpdate(BaseModel):
     """Turn alerts for a Board tab on or off (a field left out is unchanged). Any call also
     marks the Alerts panel seen, so opening it sends an empty one."""
@@ -202,7 +215,8 @@ RequestStatus = Literal["open", "in_progress", "completed", "closed", "expired"]
 BoardSort = Literal["date", "rate", "amount"]
 # "desc" is newest, best rate for the viewer, or largest first.
 SortOrder = Literal["desc", "asc"]
-DealStatus = Literal["pending", "accepted", "declined", "completed"]
+# `cancelled`: its responder cancelled it while it was pending.
+DealStatus = Literal["pending", "accepted", "declined", "cancelled", "completed"]
 DealRole = Literal["author", "responder"]
 
 MAX_AMOUNT = 100_000_000
@@ -233,6 +247,16 @@ class RequestCreate(BaseModel):
     # The smallest counter offer the author accepts, in the request's currency (at most the
     # amount). Null turns counter offers off.
     min_counter_amount: Amount | None = None
+    # The bank the author would rather use for the KZT side ("Kaspi"); null or empty: none.
+    kzt_bank: str | None = None
+    # Whether to remember `kzt_bank` for their next request (false forgets the one remembered);
+    # null leaves what's remembered as it is.
+    remember_kzt_bank: Annotated[bool, Field(strict=True)] | None = None
+
+    @field_validator("kzt_bank")
+    @classmethod
+    def _clean_bank(cls, value: str | None) -> str | None:
+        return _clean_kzt_bank(value)
 
     @model_validator(mode="after")
     def _check_rate(self) -> Self:
@@ -246,7 +270,8 @@ class RequestUpdate(BaseModel):
     """The author's changes to their open request. A field left out is unchanged.
 
     `extend_days` moves the expiry to that many days from now (it never shortens it).
-    `min_counter_amount` set to null turns counter offers off.
+    `min_counter_amount` set to null turns counter offers off; `kzt_bank` set to null or empty
+    removes the preferred bank.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -254,7 +279,13 @@ class RequestUpdate(BaseModel):
     amount: Amount | None = None
     rate_value: float | None = None
     min_counter_amount: Amount | None = None
+    kzt_bank: str | None = None
     extend_days: DurationDays | None = None
+
+    @field_validator("kzt_bank")
+    @classmethod
+    def _clean_bank(cls, value: str | None) -> str | None:
+        return _clean_kzt_bank(value)
 
     @model_validator(mode="after")
     def _check(self) -> Self:
@@ -265,6 +296,7 @@ class RequestUpdate(BaseModel):
             and self.rate_value is None
             and self.extend_days is None
             and "min_counter_amount" not in self.model_fields_set
+            and "kzt_bank" not in self.model_fields_set
         ):
             raise ValueError("nothing to change")
         return self
@@ -283,6 +315,8 @@ class RequestOut(BaseModel):
     effective_rate: float | None
     # The smallest counter offer the author accepts (null: counter offers are off).
     min_counter_amount: int | None
+    # The bank the author would rather use for the KZT side (null: no preference).
+    kzt_bank: str | None
     status: RequestStatus
     # An admin took it off the board (status `closed`), or it was closed by its author's ban.
     removed_by_admin: bool
@@ -291,9 +325,12 @@ class RequestOut(BaseModel):
     # Read from the users table at load time (never stored with the request); null if none.
     author_username: str | None
     is_own: bool
-    # The viewer's own response to this request, if they took it.
+    # The viewer's latest response to this request, if they took it or sent a counter offer.
     my_deal_id: int | None
     my_deal_status: DealStatus | None
+    # How many more offers the viewer may send on it, once their latest is cancelled (null on
+    # their own request).
+    offers_left: int | None
     # For the author only: how many responders are waiting for an answer (null for others).
     pending_count: int | None
     created_at: str

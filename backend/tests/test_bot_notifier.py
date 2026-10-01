@@ -28,6 +28,8 @@ def make_deal(
         rate_value=0,
         effective_rate=2.7,
         min_counter_amount=None,
+        kzt_bank=None,
+        offers_left=3,
         status="open",
         removed_by_admin=False,
         author_completed_deals=0,

@@ -1,14 +1,18 @@
 """Deals: taking a request (or part of it, as a counter offer), accepting / declining
-responders, confirming payment received, contact links.
+responders, responders cancelling their offer, confirming payment received, contact links.
 
 Every state change runs in one transaction with the expected status in the UPDATE's
 WHERE clause, so double taps and races between two open copies of the app are harmless.
 The bot messages the author when their request is taken and the responder when they're
 accepted, after the transaction commits; everything else is shown only in the app.
 
-An accepted deal can't be cancelled: once contacts are exchanged, money may already have
-moved, and cancelling would let one side back out after being paid. It ends only when
-both sides confirm they received the money.
+A responder may cancel their offer while the author hasn't answered it yet, and then send
+another, up to MAX_OFFERS_PER_REQUEST offers on a request in all (so taking and cancelling
+over and over can't flood the author with bot messages). One at a time, and none after the
+author declined one: that was their answer. An accepted deal
+can't be cancelled: once contacts are exchanged, money may already have moved, and
+cancelling would let one side back out after being paid. It ends only when both sides
+confirm they received the money.
 
 A counter offer asks for part of a request (at least the author's minimum). Accepting it
 keeps the request on the board with that part taken off its amount; pending offers for more
@@ -39,7 +43,11 @@ from app.models import (
 )
 from app.services.errors import ConflictError, NotFoundError, PermissionDeniedError
 from app.services.notifications import Notifier
-from app.services.requests import COUNTS_AS_RESPONSE, get_requests_by_ids
+from app.services.requests import (
+    COUNTS_AS_RESPONSE,
+    MAX_OFFERS_PER_REQUEST,
+    get_requests_by_ids,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +103,10 @@ async def _update_one(
 
 
 async def _load_for(
-    conn: aiosqlite.Connection, deal_id: int, actor_id: int, role: Literal["author", "any"]
+    conn: aiosqlite.Connection,
+    deal_id: int,
+    actor_id: int,
+    role: Literal["author", "responder", "any"],
 ) -> aiosqlite.Row:
     """The deal, if `actor_id` may act on it. Non-participants get not-found."""
     deal = await _fetchone(conn, _LOAD_DEAL, (deal_id,))
@@ -103,6 +114,8 @@ async def _load_for(
         raise NotFoundError("deal_not_found")
     if role == "author" and actor_id != deal["author_id"]:
         raise PermissionDeniedError("not_request_author")
+    if role == "responder" and actor_id != deal["responder_id"]:
+        raise PermissionDeniedError("not_deal_responder")
     return deal
 
 
@@ -202,6 +215,9 @@ async def take_request(
     """Create a pending deal on someone else's open request, with the caller as responder:
     for all of it, or for `amount` of it (a counter offer, in the request's currency), which
     must be at least the author's minimum and at most the request's amount.
+
+    The caller's earlier responses to it must all have been cancelled (none pending or
+    declined), and fewer than MAX_OFFERS_PER_REQUEST in all.
     """
     if user.is_banned:
         raise PermissionDeniedError("user_banned")
@@ -222,14 +238,17 @@ async def take_request(
             raise NotFoundError("request_not_found")
         if request["user_id"] == user.telegram_id:
             raise PermissionDeniedError("own_request")
-        existing = await _fetchone(
+        responses = await _fetchone(
             conn,
-            "SELECT 1 FROM deals WHERE request_id = ? AND responder_id = ? "
-            f"AND {COUNTS_AS_RESPONSE}",
+            "SELECT COUNT(*) AS sent, COALESCE(SUM(status != 'cancelled'), 0) AS standing "
+            f"FROM deals WHERE request_id = ? AND responder_id = ? AND {COUNTS_AS_RESPONSE}",
             (request_id, user.telegram_id),
         )
-        if existing is not None:
+        assert responses is not None
+        if responses["standing"]:
             raise ConflictError("already_responded")
+        if responses["sent"] >= MAX_OFFERS_PER_REQUEST:
+            raise ConflictError("too_many_offers")
         if request["status"] != "open" or request["expires_at"] <= now:
             raise ConflictError("request_not_open")
         if amount is None:
@@ -336,6 +355,25 @@ async def decline_deal(db: Database, actor_id: int, deal_id: int) -> DealOut:
         await _update_one(
             conn,
             "UPDATE deals SET status = 'declined', updated_at = ? "
+            "WHERE id = ? AND status = 'pending'",
+            (now, deal_id),
+        )
+
+    return await get_deal(db, actor_id, deal_id)
+
+
+async def cancel_offer(db: Database, actor_id: int, deal_id: int) -> DealOut:
+    """The responder cancels their pending offer (a take or a counter offer) before the author
+    answers. Nobody is messaged; the author sees it in the app."""
+    now = utc_now()
+    async with db.transaction() as conn:
+        deal = await _load_for(conn, deal_id, actor_id, "responder")
+        # Past its request's expiry a pending deal already reads as declined (see _to_out).
+        if deal["status"] != "pending" or deal["expires_at"] <= now:
+            raise ConflictError("deal_not_pending")
+        await _update_one(
+            conn,
+            "UPDATE deals SET status = 'cancelled', updated_at = ? "
             "WHERE id = ? AND status = 'pending'",
             (now, deal_id),
         )

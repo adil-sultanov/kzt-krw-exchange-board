@@ -159,16 +159,16 @@ export function RequestDetail(props: { id: number; active: boolean }) {
   const left = open ? timeLeft(request.expires_at) : null;
   const pending = request.pending_count ?? 0;
   const ownOpen = request.is_own && open;
+  const respondable = canRespond(request);
   // Why a request someone else posted can't be taken by this user.
-  const blocked =
-    request.is_own || !open || request.my_deal_id !== null
-      ? null
-      : me.is_banned
-        ? t.detail.banned
-        : !me.username
-          ? t.detail.usernameRequired
-          : null;
-  const needsProfile = !blocked && !request.is_own && open && request.my_deal_id === null && !hasProfile(me);
+  const blocked = !respondable
+    ? null
+    : me.is_banned
+      ? t.detail.banned
+      : !me.username
+        ? t.detail.usernameRequired
+        : null;
+  const needsProfile = !blocked && respondable && !hasProfile(me);
   const authorTag = formatProfile(request.author_profile);
   return (
     <div className="screen">
@@ -177,7 +177,11 @@ export function RequestDetail(props: { id: number; active: boolean }) {
         <h1 className="title">{t.buy[get.currency]}</h1>
       </div>
 
-      {request.my_deal_status ? (
+      {request.my_deal_status === "cancelled" && respondable ? (
+        <Notice>{t.detail.cancelledResend(request.offers_left ?? 0)}</Notice>
+      ) : request.my_deal_status === "cancelled" && open ? (
+        <Notice>{t.detail.offersUsedUp}</Notice>
+      ) : request.my_deal_status ? (
         <Notice>{t.detail.responded[request.my_deal_status]}</Notice>
       ) : !open ? (
         <Notice tone="warning">{request.removed_by_admin ? t.detail.removed : t.detail.notOpen}</Notice>
@@ -196,6 +200,7 @@ export function RequestDetail(props: { id: number; active: boolean }) {
           {request.effective_rate !== null && <span>{formatRatePair(request.effective_rate)}</span>}
           <span className={`rate-tag ${rateTone(gain)}`}>{describeRateGain(gain)}</span>
         </Row>
+        {request.kzt_bank && <Row label={t.detail.kztBank}>{request.kzt_bank}</Row>}
         {!request.is_own && (
           <Row label={t.detail.author}>
             {authorTag && <span>{authorTag}</span>}

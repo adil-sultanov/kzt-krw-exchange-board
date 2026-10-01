@@ -2,7 +2,7 @@ import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 
 import { errorMessage, t } from "../i18n";
 import { AUTHOR_URL, AUTHOR_USERNAME } from "../links";
 import { copyText, haptic, openTelegramLink } from "../telegram";
-import { RefreshIcon } from "./icons";
+import { CheckIcon, RefreshIcon } from "./icons";
 
 interface Option<T> {
   value: T;
@@ -38,6 +38,27 @@ export function Segmented<T extends string | number>(props: {
         </button>
       ))}
     </div>
+  );
+}
+
+/** A checkbox with its label; the box fills in and the check pops in when it's ticked. */
+export function Checkbox(props: { checked: boolean; onChange: (checked: boolean) => void; children: ReactNode }) {
+  return (
+    <label className={props.checked ? "checkbox checked" : "checkbox"}>
+      <input
+        type="checkbox"
+        className="checkbox-input"
+        checked={props.checked}
+        onChange={(event) => {
+          haptic("selection");
+          props.onChange(event.target.checked);
+        }}
+      />
+      <span className="checkbox-box" aria-hidden="true">
+        {props.checked && <CheckIcon />}
+      </span>
+      <span>{props.children}</span>
+    </label>
   );
 }
 

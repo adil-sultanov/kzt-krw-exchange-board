@@ -4,7 +4,7 @@ import { RequestExchange } from "../components/Exchange";
 import { CheckIcon, FlagIcon } from "../components/icons";
 import { ReceiveHint } from "../components/ReceiveHint";
 import { WholeRequest } from "../components/RequestCard";
-import { CopyButton, ErrorBox, Loading, Notice, Row, TitleWithRefresh } from "../components/ui";
+import { Collapse, CopyButton, ErrorBox, Loading, Notice, Row, TitleWithRefresh } from "../components/ui";
 import {
   describeRateGain,
   formatKst,
@@ -19,6 +19,8 @@ import { useNav, useReactivated } from "../nav";
 import { FAST_POLL_MS, usePolling } from "../polling";
 import { confirm, haptic, type MainButtonConfig, openTelegramLink, useMainButton } from "../telegram";
 import {
+  canCancelOffer,
+  canRespond,
   type Contact,
   type Deal,
   dealTerms,
@@ -58,6 +60,12 @@ function banner(deal: Deal): { text: { title: string; body: string }; tone: Bann
       }
       if (deal.request.status === "expired") return { text: b.expired, tone: "neutral" };
       return { text: author ? b.declinedAuthor : b.declinedResponder, tone: "neutral" };
+    }
+    case "cancelled": {
+      if (deal.role === "author") return { text: b.offerCancelledAuthor, tone: "neutral" };
+      const left = deal.request.status === "open" ? (deal.request.offers_left ?? 0) : 0;
+      const { title, body } = b.offerCancelledResponder;
+      return { text: { title, body: body(left) }, tone: "neutral" };
     }
     case "completed":
       return { text: b.completed, tone: "success" };
@@ -184,7 +192,8 @@ export function DealScreen(props: { id: number; active: boolean }) {
         onRefresh={load}
       />
 
-      <div className={`banner ${tone}`}>
+      {/* Keyed by status, so a new one fades in rather than swapping in place. */}
+      <div key={deal.status} className={`banner ${tone}`}>
         <p className="banner-title">{text.title}</p>
         <p className="banner-body">{text.body}</p>
       </div>
@@ -223,11 +232,33 @@ export function DealScreen(props: { id: number; active: boolean }) {
           {deal.request.effective_rate !== null && <span>{formatRatePair(deal.request.effective_rate)}</span>}
           <span className={`rate-tag ${rateTone(gain)}`}>{describeRateGain(gain)}</span>
         </Row>
+        {deal.request.kzt_bank && <Row label={t.detail.kztBank}>{deal.request.kzt_bank}</Row>}
         {otherTag && <Row label={t.deal.them}>{otherTag}</Row>}
         <Row label={t.deal.theirDeals}>{t.deals(deal.other_completed_deals)}</Row>
         <Row label={t.deal.started}>{formatKst(deal.created_at)}</Row>
       </div>
 
+      {/* Folds away once cancelled (or answered) instead of vanishing. */}
+      <Collapse open={canCancelOffer(deal)}>
+        <button
+          type="button"
+          className="secondary-button destructive"
+          disabled={busy !== null}
+          onClick={() => void act("cancel", t.deal.cancelOfferConfirm(deal.request.offers_left ?? 0))}
+        >
+          {busy === "cancel" ? t.loading : t.deal.cancelOffer}
+        </button>
+      </Collapse>
+      {/* After cancelling, while they may send another: back to the request to do it. */}
+      {deal.role === "responder" && deal.status === "cancelled" && canRespond(deal.request) && (
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => nav.push({ name: "request", id: deal.request.id })}
+        >
+          {t.deal.newOffer}
+        </button>
+      )}
       {authorPending && (
         <button
           type="button"

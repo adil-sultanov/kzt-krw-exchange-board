@@ -11,6 +11,11 @@ import type {
   SortOrder,
 } from "./types";
 
+/** "2 offers left". */
+function offersLeft(count: number): string {
+  return count === 1 ? "1 offer left" : `${count} offers left`;
+}
+
 export const t = {
   appTitle: "KZT ↔ KRW Exchange Board",
   loading: "Loading…",
@@ -97,11 +102,13 @@ export const t = {
     openProfile: (username: string) => `Open @${username}'s Telegram profile`,
     /** Under a counter offer's amounts: the request it's part of, from the viewer's side. */
     whole: (pay: string, get: string) => `Whole request: ${pay} → ${get}`,
+    kztBank: "Preferred KZT bank:",
   },
 
   detail: {
     yours: "Your request",
     rate: "Rate",
+    kztBank: "Preferred KZT bank",
     author: "Author",
     timeLeft: "Time left",
     until: (time: string) => `until ${time}`,
@@ -120,8 +127,13 @@ export const t = {
       pending: "You took this request. Waiting for the author to answer.",
       accepted: "You took this request, and the author accepted.",
       declined: "You took this request, but the author declined or chose someone else.",
+      cancelled: "You cancelled your offer on this request.",
       completed: "You completed this deal.",
     } satisfies Record<DealStatus, string>,
+    /** After cancelling their offer, with offers left to send. */
+    cancelledResend: (left: number) =>
+      `You cancelled your offer. You can send a new one: ${offersLeft(left)} on this request.`,
+    offersUsedUp: "You cancelled your offers on this request, and can't send another: 3 is the most.",
     notOpen: "This request is no longer on the board.",
     removed: "An admin took this request off the board.",
     take: "Take request",
@@ -146,6 +158,7 @@ export const t = {
     pending: "Waiting for the author",
     accepted: "In progress",
     declined: "Declined",
+    cancelled: "Offer cancelled",
     completed: "Completed",
   } satisfies Record<DealStatus, string>,
 
@@ -169,7 +182,7 @@ export const t = {
       },
       responderPending: {
         title: "Waiting for the author",
-        body: "The bot will message you when they accept.",
+        body: "The bot will message you when they accept. Until then, you can cancel your offer.",
       },
       accepted: {
         title: "Deal accepted",
@@ -189,6 +202,17 @@ export const t = {
       cancelledAuthor: { title: "Request cancelled", body: "You cancelled the request." },
       cancelledResponder: { title: "Request cancelled", body: "The author cancelled it." },
       expired: { title: "Request expired", body: "It expired before an answer." },
+      offerCancelledResponder: {
+        title: "Offer cancelled",
+        body: (left: number) =>
+          left > 0
+            ? `You cancelled it before the author answered. You can send a new one: ${offersLeft(left)}.`
+            : "You cancelled it before the author answered. You've used all 3 offers on this request.",
+      },
+      offerCancelledAuthor: {
+        title: "Offer withdrawn",
+        body: "They cancelled their offer before you answered. Your request stays on the board.",
+      },
       removed: { title: "Removed by an admin", body: "An admin took this request off the board." },
     },
     progress: {
@@ -205,6 +229,13 @@ export const t = {
       "Offers for more than that are declined. An accepted deal can't be cancelled.",
     decline: "Decline",
     declineConfirm: "Decline this person? They can't take this request again.",
+    cancelOffer: "Cancel offer",
+    cancelOfferConfirm: (left: number) =>
+      "Cancel your offer? The author can no longer accept it.\n\n" +
+      (left > 0
+        ? `You can send a new one afterwards: ${offersLeft(left)} on this request.`
+        : "This is your 3rd offer on this request, so you can't send another."),
+    newOffer: "Send a new offer",
     contact: "Message on Telegram",
     confirm: "I received the money",
     confirmQuestion:
@@ -361,7 +392,7 @@ export const t = {
     finished: "Finished",
     cancelled: "Cancelled",
     activeHint: "Pending and accepted, least recently changed first.",
-    finishedHint: "Completed and declined, newest first.",
+    finishedHint: "Completed, declined and cancelled by their sender, newest first.",
     cancelledHint:
       "Requests taken off the board by their author or an admin, most recent first. " +
       "Anyone who had taken one was declined.",
@@ -463,7 +494,7 @@ export const t = {
     active: "Active",
     noActive: "No active deals right now.",
     completed: "Completed",
-    declined: "Declined",
+    declined: "Declined & cancelled",
     counter: (status: string) => `Counter offer · ${status}`,
     show: "Show",
     hide: "Hide",
@@ -497,6 +528,10 @@ export const t = {
     counterLabel: "Smallest part",
     counterPlaceholder: "Optional",
     counterRange: (min: string, max: string) => `People can ask for ${min} up to ${max}.`,
+    kztBank: "Preferred KZT bank",
+    kztBankHint: "Optional. Shown on your request, so people can see which bank you'd rather use for KZT.",
+    kztBankPlaceholder: "e.g. Kaspi",
+    kztBankRemember: "Remember for my next requests",
     submit: "Post request",
     save: "Save changes",
     errors: {
@@ -505,6 +540,7 @@ export const t = {
       percent: "Enter a percentage.",
       percentRange: (max: number) => `At most ${max}%.`,
       counterAboveAmount: "At most the amount you pay.",
+      kztBank: "Use letters, digits and spaces only: no links or emoji.",
     },
     usernameRequired:
       "You need a Telegram username to post a request: it's how the other person contacts you. " +
@@ -546,7 +582,8 @@ const errorMessages: Record<string, string> = {
   rate_limited: "You're posting too often. Please try again in an hour.",
   request_not_found: "This request doesn't exist or was removed.",
   own_request: "This is your own request.",
-  already_responded: "You've already taken this request.",
+  already_responded: "You've already responded to this request.",
+  too_many_offers: "You've already sent 3 offers on this request, the most allowed.",
   request_not_open: "This request is no longer open.",
   request_has_responders:
     "Someone is waiting for your answer, so the terms can't change. Answer them first.",
@@ -557,7 +594,8 @@ const errorMessages: Record<string, string> = {
   already_extended: "It's already on the board for longer than that.",
   deal_not_found: "This deal doesn't exist.",
   not_request_author: "Only the request's author can do this.",
-  deal_not_pending: "This was already answered.",
+  not_deal_responder: "Only the person who sent this offer can cancel it.",
+  deal_not_pending: "This offer was already answered, or its request left the board.",
   deal_not_accepted: "This deal isn't active any more.",
   deal_state_changed: "This deal just changed. Please refresh.",
   contact_unavailable: "The contact is shown once the deal is accepted.",

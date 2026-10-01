@@ -11,6 +11,7 @@ import { useNav, useReactivated } from "../nav";
 import { FAST_POLL_MS, usePolling } from "../polling";
 import { confirm, haptic } from "../telegram";
 import {
+  canCancelOffer,
   type Deal,
   dealTerms,
   dealWhole,
@@ -27,12 +28,17 @@ function marked(deal: Deal, text: string): string {
   return deal.partial ? t.myDeals.counter(text) : text;
 }
 
-function dealStatus(deal: Deal): CardStatus {
+/**
+ * The status line on a deal's card. Completed and declined deals are grouped under their status,
+ * so it isn't repeated on each; cancelled ones share a group with declined ones, so they say so.
+ */
+function dealStatus(deal: Deal): CardStatus | null {
   if (needsMyAction(deal)) {
     const text = deal.status === "pending" ? t.deal.needsAnswer : t.deal.needsConfirm;
     return { text: marked(deal, text), tone: "action" };
   }
-  return { text: marked(deal, t.dealStatus[deal.status]), tone: "active" };
+  if (deal.status === "cancelled") return { text: t.dealStatus.cancelled, tone: "muted" };
+  return isActiveDeal(deal) ? { text: marked(deal, t.dealStatus[deal.status]), tone: "active" } : null;
 }
 
 /** On the author's own request: someone took it, or it's about to leave the board. */
@@ -115,7 +121,8 @@ function FoldableGroup(props: { title: string; count: number; storageKey: string
  * Every deal the viewer is part of, on either side, and their requests on the board. Active
  * first: deals in progress (highlighted), then what's waiting on the viewer, then the rest.
  * Each request on the board shows up once, with Extend and Cancel: the deals of people who
- * took it are answered from it rather than listed apart. Then completed and declined deals;
+ * took it are answered from it rather than listed apart; the viewer's own offers waiting for an
+ * answer can be cancelled from theirs. Then completed deals, then declined and cancelled ones;
  * last, their requests that expired in the last day (which they can post again).
  */
 export function MyDeals(props: { active: boolean }) {
@@ -125,8 +132,8 @@ export function MyDeals(props: { active: boolean }) {
   const [lists, setLists] = useState<MyLists | null>(lastMyLists);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  // The request an action (extend or cancel) is running on.
-  const [busy, setBusy] = useState<number | null>(null);
+  // What an action is running on: a request (extend or cancel) or an offer (cancel).
+  const [busy, setBusy] = useState<string | null>(null);
   // Responses to superseded loads are ignored.
   const loadSeq = useRef(0);
 
@@ -150,8 +157,8 @@ export function MyDeals(props: { active: boolean }) {
   useReactivated(props.active, load);
   usePolling(props.active, FAST_POLL_MS, () => fetchLists(true));
 
-  const runAction = async (id: number, action: () => Promise<unknown>) => {
-    setBusy(id);
+  const runAction = async (key: string, action: () => Promise<unknown>) => {
+    setBusy(key);
     setActionError(null);
     try {
       await action();
@@ -166,29 +173,51 @@ export function MyDeals(props: { active: boolean }) {
 
   const cancelRequest = async (id: number) => {
     if (busy !== null || !(await confirm(t.cancelRequest.confirm))) return;
-    await runAction(id, () => api.closeRequest(id));
+    await runAction(`request-${id}`, () => api.closeRequest(id));
+  };
+
+  const cancelOffer = async (deal: Deal) => {
+    if (busy !== null || !(await confirm(t.deal.cancelOfferConfirm(deal.request.offers_left ?? 0)))) return;
+    await runAction(`deal-${deal.id}`, () => api.dealAction(deal.id, "cancel"));
   };
 
   const extendRequest = async (request: ExchangeRequest) => {
     if (busy !== null) return;
     const days = await askExtendDays(request);
-    if (days !== null) await runAction(request.id, () => api.updateRequest(request.id, { extend_days: days }));
+    if (days !== null) {
+      await runAction(`request-${request.id}`, () => api.updateRequest(request.id, { extend_days: days }));
+    }
   };
 
-  // Completed and declined deals are grouped under their status, so it isn't repeated on each.
-  const dealCard = (deal: Deal) => (
-    <RequestCard
-      key={deal.id}
-      request={dealTerms(deal)}
-      whole={dealWhole(deal)}
-      status={isActiveDeal(deal) ? dealStatus(deal) : null}
-      highlight={deal.status === "accepted"}
-      profile={deal.other_profile}
-      deals={deal.other_completed_deals}
-      time={deal.status === "pending"}
-      onOpen={() => nav.push({ name: "deal", id: deal.id })}
-    />
-  );
+  const dealCard = (deal: Deal) => {
+    const card = (
+      <RequestCard
+        key={deal.id}
+        request={dealTerms(deal)}
+        whole={dealWhole(deal)}
+        status={dealStatus(deal)}
+        highlight={deal.status === "accepted"}
+        profile={deal.other_profile}
+        deals={deal.other_completed_deals}
+        time={deal.status === "pending"}
+        onOpen={() => nav.push({ name: "deal", id: deal.id })}
+      />
+    );
+    if (!canCancelOffer(deal)) return card;
+    return (
+      <div key={deal.id} className="card-stack">
+        {card}
+        <button
+          type="button"
+          className="card-action"
+          disabled={busy !== null}
+          onClick={() => void cancelOffer(deal)}
+        >
+          {busy === `deal-${deal.id}` ? t.loading : t.deal.cancelOffer}
+        </button>
+      </div>
+    );
+  };
 
   const requestCard = (request: ExchangeRequest, taker: Deal | undefined) => (
     <div key={`request-${request.id}`} className="card-stack">
@@ -202,7 +231,7 @@ export function MyDeals(props: { active: boolean }) {
         onOpen={() => nav.push(taker ? { name: "deal", id: taker.id } : { name: "request", id: request.id })}
       />
       <div className="card-actions">
-        {busy === request.id ? (
+        {busy === `request-${request.id}` ? (
           <button type="button" className="card-action" disabled>
             {t.loading}
           </button>
@@ -234,7 +263,7 @@ export function MyDeals(props: { active: boolean }) {
 
   const deals = lists ? sortDeals(lists.deals) : [];
   const completed = deals.filter((deal) => deal.status === "completed");
-  const declined = deals.filter((deal) => deal.status === "declined");
+  const declined = deals.filter((deal) => deal.status === "declined" || deal.status === "cancelled");
   const onBoard = lists?.requests.filter((request) => request.status === "open") ?? [];
   const expired = lists?.requests.filter((request) => request.status === "expired") ?? [];
   const onBoardIds = new Set(onBoard.map((request) => request.id));

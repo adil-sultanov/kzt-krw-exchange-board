@@ -29,6 +29,7 @@ async def test_migrations_are_applied_once(db: Database) -> None:
             11,
             12,
             13,
+            14,
         ]
 
 
