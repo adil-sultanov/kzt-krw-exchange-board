@@ -52,6 +52,13 @@ Docker + HTTPS for deploy; `cloudflared` tunnel for local dev.
 - Test/lint: `.venv/bin/pytest -q` · `.venv/bin/ruff check . && .venv/bin/ruff format .`
 - Setup: `python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"`
 
+## Dev bot (repo root)
+Recurring problem: after a restart or change the Mini App doesn't load (nothing reaches the
+server) because the quick tunnel's URL, `WEBAPP_URL`, the frontend build and the bot's menu
+button disagree. Before telling the user the dev bot is ready (and after every restart or
+rebuild), run `scripts/dev-check.sh` and fix any FAIL; then tell them to send `/start` and use
+the new reply's button. `getChatMenuButton` is cached for a while: don't trust its read-back.
+
 ## Commands (deploy, repo root; see README "Deploy")
 - `docker compose up -d --build` · backup now: `docker compose exec -u app app python -m app.backup`
 
