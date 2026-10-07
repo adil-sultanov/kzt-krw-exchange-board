@@ -191,6 +191,24 @@ def test_accept(client: TestClient) -> None:
     assert get(client, DANA, "requests").json() == []  # off the board
 
 
+def test_accept_locks_the_rate(client: TestClient, settings: Settings) -> None:
+    sql(settings, "INSERT INTO reference_rate VALUES (1, 2.7, 'test', '2026-01-01T00:00:00+00:00')")
+    request_id = create(client, AIDA)["id"]
+    # Posted before requests were always at the market rate: 1.5% above it.
+    sql(settings, "UPDATE requests SET rate_value = 1.5 WHERE id = ?", (request_id,))
+    deal_id = taken(client, BEK, request_id)["id"]
+    # Pending, the request's current rate applies.
+    assert get(client, BEK, f"deals/{deal_id}").json()["rate"] is None
+
+    deal = act(client, AIDA, deal_id, "accept").json()
+    assert deal["rate"] == pytest.approx(2.7 * 1.015)
+    # The market moves; the deal doesn't.
+    sql(settings, "UPDATE reference_rate SET rate = 3.0")
+    deal = get(client, BEK, f"deals/{deal_id}").json()
+    assert deal["rate"] == pytest.approx(2.7 * 1.015)
+    assert deal["request"]["effective_rate"] == pytest.approx(3.0 * 1.015)
+
+
 def test_only_the_author_can_accept_or_decline(client: TestClient) -> None:
     request_id = create(client, AIDA)["id"]
     deal_id = taken(client, BEK, request_id)["id"]
@@ -644,6 +662,90 @@ async def test_delete_old_deals(db: Database) -> None:
         assert [row["id"] for row in await cursor.fetchall()] == [4, 5, 6, 7]
     async with db.conn.execute("SELECT completed_deals FROM users") as cursor:
         assert [row["completed_deals"] for row in await cursor.fetchall()] == [3, 3]
+
+
+# --- Payment reminders ---
+
+
+async def db_accepted_deal(db: Database) -> int:
+    """AIDA (1)'s request, taken by BEK (2) and accepted. Returns the deal id."""
+    author = with_profile(
+        await upsert_user(db, TelegramUser(id=1, username="aida"), config_admin=False)
+    )
+    responder = with_profile(
+        await upsert_user(db, TelegramUser(id=2, username="bek"), config_admin=False)
+    )
+    request = await requests.create_request(
+        db, author, RequestCreate.model_validate(VALID), NullNotifier()
+    )
+    deal_id = (await deals.take_request(db, responder, request.id, NullNotifier())).id
+    accepted = await deals.accept_deal(db, 1, deal_id, NullNotifier())
+    assert accepted.accepted_at is not None
+    return deal_id
+
+
+def reminded(notifier: FakeNotifier) -> list[tuple[int, int, bool]]:
+    """(user, deal, whether the other side had confirmed) for each reminder sent."""
+    return [
+        (chat_id, deal.id, deal.other_confirmed)
+        for event, chat_id, deal in notifier.sent
+        if event == "reminder"
+    ]
+
+
+LATER = datetime.now(UTC) + deals.CONFIRM_REMINDER_DELAY + timedelta(minutes=1)
+
+
+async def test_reminds_both_sides_once_after_the_delay(db: Database) -> None:
+    deal_id = await db_accepted_deal(db)
+    notifier = FakeNotifier()
+    assert await deals.remind_unconfirmed(db, notifier) == 0
+    assert await deals.remind_unconfirmed(db, notifier, now=LATER) == 2
+    assert sorted(reminded(notifier)) == [(1, deal_id, False), (2, deal_id, False)]
+    # Once only.
+    assert await deals.remind_unconfirmed(db, notifier, now=LATER + timedelta(days=1)) == 0
+    # It doesn't count as a change (My deals order, cleanup).
+    deal = await deals.get_deal(db, 1, deal_id)
+    assert deal.updated_at == deal.accepted_at
+
+
+async def test_reminds_only_the_side_that_hasnt_confirmed(db: Database) -> None:
+    deal_id = await db_accepted_deal(db)
+    await deals.confirm_received(db, 2, deal_id)
+    notifier = FakeNotifier()
+    assert await deals.remind_unconfirmed(db, notifier, now=LATER) == 1
+    assert reminded(notifier) == [(1, deal_id, True)]
+
+
+async def test_no_reminders_for_completed_deals(db: Database) -> None:
+    deal_id = await db_accepted_deal(db)
+    await deals.confirm_received(db, 1, deal_id)
+    await deals.confirm_received(db, 2, deal_id)
+    assert await deals.remind_unconfirmed(db, FakeNotifier(), now=LATER) == 0
+
+
+async def test_no_reminders_while_reported(db: Database) -> None:
+    deal_id = await db_accepted_deal(db)
+    async with db.transaction() as conn:
+        await conn.execute(
+            "INSERT INTO reports (reporter_id, reported_id, request_id, deal_id, reason, "
+            "created_at) VALUES (2, 1, (SELECT request_id FROM deals WHERE id = ?), ?, '', ?)",
+            (deal_id, deal_id, PAST),
+        )
+    notifier = FakeNotifier()
+    assert await deals.remind_unconfirmed(db, notifier, now=LATER) == 0
+    async with db.transaction() as conn:
+        await conn.execute("UPDATE reports SET resolved = 1")
+    assert await deals.remind_unconfirmed(db, notifier, now=LATER) == 2
+
+
+async def test_no_reminders_to_banned_users(db: Database) -> None:
+    deal_id = await db_accepted_deal(db)
+    async with db.transaction() as conn:
+        await conn.execute("UPDATE users SET is_banned = 1 WHERE telegram_id = 2")
+    notifier = FakeNotifier()
+    assert await deals.remind_unconfirmed(db, notifier, now=LATER) == 1
+    assert reminded(notifier) == [(1, deal_id, False)]
 
 
 def test_deals_under_way_carry_on_without_a_profile(client: TestClient) -> None:

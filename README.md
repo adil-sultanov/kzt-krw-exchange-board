@@ -13,21 +13,23 @@ reposting, and there was no way to tell who had reliably completed exchanges bef
 
 ## Features
 
-- **Board** of open requests ("Buy KRW" / "Buy KZT"), sortable by date, amount or rate
-- **Live market rate**: requests follow the reference rate, ± a few % if you like
+- **Board** of open requests ("Buy KRW" / "Buy KZT"), sortable by date or amount
+- **Live market rate**: every request is at the reference rate; the amount you buy is fixed,
+  what you pay moves with the rate until you accept someone, which locks it
 - **Post a request** by typing what you pay *or* what you get; it expires after 1 or 3 days.
   Optionally name the bank you'd rather use for KZT ("Kaspi"), remembered for next time
-- **Deals**: take a request → the author accepts → both see each other's contact. Until the
-  author answers, you can cancel your offer
+- **Deals**: take a request → the author accepts (right from My deals, or on the deal) → both
+  see each other's contact. Until the author answers, you can cancel your offer
 - **Counter offers**: ask for part of a request (at least the author's optional minimum); once
   accepted, the rest stays on the board with its amount reduced
 - **Profiles**: name, university and year of enrollment, shown as a tag on every request and
   deal ("Adil Sultanov, UNIST, 2022"); needed to post or take a request
 - **Saved receiving details** (bank, account), shown only to the other side of an accepted deal
-- **Bot notifications** when someone takes your request (or sends a counter offer) and
-  when your deal is accepted
-- **Alerts** (opt-in, per Board tab): a one-line bot message for each new request ("Pay ≈
-  1,850,000 ₸ → Get 500,000 ₩") with a button to open it, crossed out once it's gone; sent at a
+- **Bot notifications** when someone takes your request (or sends a counter offer), when
+  your deal is accepted, and one reminder to confirm receiving the money if you haven't 3 h
+  after acceptance (plus a red badge and notice on the Board)
+- **Alerts** (opt-in, per Board tab): a one-line bot message for each new request ("Pay
+  500,000 ₸ → Get ≈ 1,850,000 ₩") with a button to open it, crossed out once it's gone; sent at a
   steady pace under Telegram's rate limit
 - **Matches** going the other way, shown after posting
 - **Trust**: completed-deal counts, reports, admin review and bans; admins see every request

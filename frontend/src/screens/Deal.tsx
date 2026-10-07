@@ -1,37 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, type DealAction, errorCode } from "../api";
 import { RequestExchange } from "../components/Exchange";
-import { CheckIcon, FlagIcon } from "../components/icons";
+import { ChatIcon, CheckIcon, ChevronIcon, FlagIcon } from "../components/icons";
 import { ReceiveHint } from "../components/ReceiveHint";
 import { WholeRequest } from "../components/RequestCard";
 import { Collapse, CopyButton, ErrorBox, Loading, Notice, Row, TitleWithRefresh } from "../components/ui";
 import {
-  describeRateGain,
   formatKst,
   formatMoney,
   formatProfile,
   formatRatePair,
   formatSide,
-  rateTone,
 } from "../format";
 import { t } from "../i18n";
 import { useNav, useReactivated } from "../nav";
 import { FAST_POLL_MS, usePolling } from "../polling";
 import { confirm, haptic, type MainButtonConfig, openTelegramLink, useMainButton } from "../telegram";
 import {
+  amountCurrency,
   canCancelOffer,
   canRespond,
   type Contact,
   type Deal,
   dealTerms,
   dealWhole,
-  giveCurrency,
   isActiveDeal,
-  viewerRateGain,
   viewerSides,
 } from "../types";
 
 type Busy = DealAction | "contact" | null;
+
+/** What the author is asked before accepting a deal (a counter offer leaves the rest up). */
+export function acceptQuestion(deal: Deal): string {
+  if (!deal.partial) return t.deal.acceptConfirm;
+  const left = deal.request.amount - deal.amount;
+  return t.deal.acceptCounterConfirm(formatMoney(left, amountCurrency(deal.request.direction)));
+}
 /** `action` asks something of the viewer, `neutral` is waiting or over. */
 type BannerTone = "action" | "neutral" | "success";
 
@@ -43,7 +48,7 @@ function banner(deal: Deal): { text: { title: string; body: string }; tone: Bann
       if (deal.role !== "author") return { text: b.responderPending, tone: "neutral" };
       if (!deal.partial) return { text: b.authorPending, tone: "action" };
       // The request's amount is what's still on the board, all of which the author pays.
-      const currency = giveCurrency(deal.request.direction);
+      const currency = amountCurrency(deal.request.direction);
       const body = b.authorCounter.body(formatMoney(deal.amount, currency), formatMoney(deal.request.amount, currency));
       return { text: { title: b.authorCounter.title, body }, tone: "action" };
     }
@@ -78,6 +83,152 @@ function Check(props: { done: boolean; children: string }) {
       <span className="check-mark">{props.done && <CheckIcon />}</span>
       <span>{props.children}</span>
     </div>
+  );
+}
+
+/** The status, with (on an accepted deal) who has confirmed receiving the money. */
+function StatusCard(props: { deal: Deal }) {
+  const { deal } = props;
+  const { text, tone } = banner(deal);
+  const { pay, get } = viewerSides(dealTerms(deal));
+  return (
+    // Keyed by status, so a new one fades in rather than swapping in place.
+    <div key={deal.status} className={`banner ${tone}`}>
+      <p className="banner-title">{text.title}</p>
+      <p className="banner-body">{text.body}</p>
+      {deal.status === "accepted" && (
+        <div className="banner-checks">
+          <Check done={deal.other_confirmed}>{t.deal.progress.theyReceived(pay.currency)}</Check>
+          <Check done={deal.my_confirmed}>{t.deal.progress.youReceived(get.currency)}</Check>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Who the deal is with and their record; once accepted, a button to message them and where to
+ * send them the money.
+ */
+function PersonCard(props: {
+  deal: Deal;
+  contact: Contact | null;
+  messaging: boolean;
+  onMessage: (() => void) | null;
+}) {
+  const { deal, contact } = props;
+  const { pay } = viewerSides(dealTerms(deal));
+  const accepted = deal.status === "accepted";
+  return (
+    <div className="person-card">
+      <div className="person-head">
+        <div className="person-text">
+          <span className="pay-to-label">{t.deal.them}</span>
+          <span className="person-name">{formatProfile(deal.other_profile) ?? t.deal.noProfile}</span>
+          <span className="hint small">{t.deals(deal.other_completed_deals)}</span>
+        </div>
+        {props.onMessage && (
+          <button type="button" className="pill-button" disabled={props.messaging} onClick={props.onMessage}>
+            <ChatIcon />
+            {props.messaging ? t.loading : t.deal.message}
+          </button>
+        )}
+      </div>
+      {accepted && contact && (
+        <div className="person-pay">
+          <span className="pay-to-label">{t.deal.payTo(formatSide(pay))}</span>
+          {contact.pay_account ? (
+            <>
+              {contact.pay_bank && <span className="pay-to-bank">{contact.pay_bank}</span>}
+              <div className="pay-to-row">
+                <span className="pay-to-value">{contact.pay_account}</span>
+                <CopyButton text={contact.pay_account} />
+              </div>
+            </>
+          ) : (
+            <p className="small hint">{t.deal.payToMissing(contact.pay_currency)}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The rest of the deal's terms and dates, folded away until asked for. */
+function DetailsFold(props: { deal: Deal }) {
+  const { deal } = props;
+  const [open, setOpen] = useState(false);
+  const whole = dealWhole(deal);
+  const terms = dealTerms(deal);
+  return (
+    <div className="detail fold">
+      <button type="button" className="fold-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span>{t.deal.details}</span>
+        <ChevronIcon open={open} />
+      </button>
+      <Collapse open={open}>
+        <div className="fold-body">
+          <Row label={t.detail.rate}>
+            {terms.effective_rate !== null && <span>{formatRatePair(terms.effective_rate)}</span>}
+              {terms.rate_locked && <span className="hint small">{t.deal.rateLocked}</span>}
+          </Row>
+          {deal.request.kzt_bank && <Row label={t.detail.kztBank}>{deal.request.kzt_bank}</Row>}
+          {whole && (
+            <Row label={t.deal.wholeRequest}>
+              <WholeRequest request={whole} />
+            </Row>
+          )}
+          <Row label={t.deal.started}>{formatKst(deal.created_at)}</Row>
+          {deal.accepted_at && <Row label={t.deal.acceptedAt}>{formatKst(deal.accepted_at)}</Row>}
+          {deal.status === "accepted" && <p className="hint small fold-note">{t.deal.noCancel}</p>}
+        </div>
+      </Collapse>
+    </div>
+  );
+}
+
+/**
+ * The accepted deal's two actions, pinned to the bottom of the screen: report a problem, and
+ * confirm receiving the money. Rendered into <body> (a fixed bar inside a sliding screen would
+ * slide with it), only while the deal screen is on top; the page leaves room for it below.
+ */
+function DealDock(props: {
+  deal: Deal;
+  confirming: boolean;
+  disabled: boolean;
+  onConfirm: () => void;
+  onReport: () => void;
+}) {
+  const { deal } = props;
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.add("has-dock");
+    return () => root.classList.remove("has-dock");
+  }, []);
+  return createPortal(
+    <div className="dock">
+      <div className="dock-inner">
+        <button
+          type="button"
+          className="dock-button report"
+          disabled={deal.my_report_open}
+          onClick={props.onReport}
+        >
+          <FlagIcon />
+          {deal.my_report_open ? t.deal.reportedShort : t.deal.reportShort}
+        </button>
+        <button
+          type="button"
+          className="dock-button confirm"
+          disabled={deal.my_confirmed || props.disabled}
+          onClick={props.onConfirm}
+        >
+          <CheckIcon />
+          {props.confirming ? t.loading : deal.my_confirmed ? t.deal.confirmed : t.deal.confirm}
+        </button>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -161,17 +312,11 @@ export function DealScreen(props: { id: number; active: boolean }) {
   const accepted = deal?.status === "accepted";
   let mainButton: MainButtonConfig | null = null;
   if (authorPending) {
-    const left = deal.request.amount - deal.amount;
-    const question = deal.partial
-      ? t.deal.acceptCounterConfirm(formatMoney(left, giveCurrency(deal.request.direction)))
-      : t.deal.acceptConfirm;
     mainButton = {
       text: t.deal.accept,
-      onClick: () => void act("accept", question),
+      onClick: () => void act("accept", acceptQuestion(deal)),
       loading: busy === "accept",
     };
-  } else if (accepted) {
-    mainButton = { text: t.deal.contact, onClick: openContact, loading: busy === "contact" };
   }
   useMainButton(props.active ? mainButton : null);
 
@@ -179,11 +324,7 @@ export function DealScreen(props: { id: number; active: boolean }) {
   if (!deal) return <div className="screen"><Loading /></div>;
 
   const terms = dealTerms(deal);
-  const whole = dealWhole(deal);
-  const { pay, get } = viewerSides(terms);
-  const gain = viewerRateGain(terms);
-  const { text, tone } = banner(deal);
-  const otherTag = formatProfile(deal.other_profile);
+  const { get } = viewerSides(terms);
   return (
     <div className="screen">
       <TitleWithRefresh
@@ -192,51 +333,19 @@ export function DealScreen(props: { id: number; active: boolean }) {
         onRefresh={load}
       />
 
-      {/* Keyed by status, so a new one fades in rather than swapping in place. */}
-      <div key={deal.status} className={`banner ${tone}`}>
-        <p className="banner-title">{text.title}</p>
-        <p className="banner-body">{text.body}</p>
-      </div>
+      <StatusCard deal={deal} />
       {actionError && <ErrorBox code={actionError} />}
-      {isActiveDeal(deal) && <ReceiveHint currency={get.currency} />}
+      {accepted && deal.my_report_open && <Notice>{t.deal.reported}</Notice>}
 
       <RequestExchange request={terms} />
-      {whole && <WholeRequest request={whole} className="center" />}
-
-      {accepted && contact && (
-        <div className="pay-to">
-          <span className="pay-to-label">{t.deal.payTo(formatSide(pay))}</span>
-          {contact.pay_account ? (
-            <>
-              {contact.pay_bank && <span className="pay-to-bank">{contact.pay_bank}</span>}
-              <div className="pay-to-row">
-                <span className="pay-to-value">{contact.pay_account}</span>
-                <CopyButton text={contact.pay_account} />
-              </div>
-            </>
-          ) : (
-            <p className="small">{t.deal.payToMissing(contact.pay_currency)}</p>
-          )}
-        </div>
-      )}
-
-      {accepted && (
-        <div className="detail">
-          <Check done={deal.other_confirmed}>{t.deal.progress.theyReceived(pay.currency)}</Check>
-          <Check done={deal.my_confirmed}>{t.deal.progress.youReceived(get.currency)}</Check>
-        </div>
-      )}
-
-      <div className="detail">
-        <Row label={t.detail.rate}>
-          {deal.request.effective_rate !== null && <span>{formatRatePair(deal.request.effective_rate)}</span>}
-          <span className={`rate-tag ${rateTone(gain)}`}>{describeRateGain(gain)}</span>
-        </Row>
-        {deal.request.kzt_bank && <Row label={t.detail.kztBank}>{deal.request.kzt_bank}</Row>}
-        {otherTag && <Row label={t.deal.them}>{otherTag}</Row>}
-        <Row label={t.deal.theirDeals}>{t.deals(deal.other_completed_deals)}</Row>
-        <Row label={t.deal.started}>{formatKst(deal.created_at)}</Row>
-      </div>
+      <PersonCard
+        deal={deal}
+        contact={contact}
+        messaging={busy === "contact"}
+        onMessage={accepted ? () => void openContact() : null}
+      />
+      {isActiveDeal(deal) && <ReceiveHint currency={get.currency} />}
+      <DetailsFold deal={deal} />
 
       {/* Folds away once cancelled (or answered) instead of vanishing. */}
       <Collapse open={canCancelOffer(deal)}>
@@ -269,31 +378,16 @@ export function DealScreen(props: { id: number; active: boolean }) {
           {t.deal.decline}
         </button>
       )}
-      {accepted && !deal.my_confirmed && (
-        <button
-          type="button"
-          className="secondary-button strong"
+
+      {accepted && props.active && (
+        <DealDock
+          deal={deal}
+          confirming={busy === "confirm"}
           disabled={busy !== null}
-          onClick={() => void act("confirm", t.deal.confirmQuestion)}
-        >
-          <CheckIcon />
-          {t.deal.confirm}
-        </button>
+          onConfirm={() => void act("confirm", t.deal.confirmQuestion)}
+          onReport={() => nav.push({ name: "report", target: { kind: "deal", id: deal.id } })}
+        />
       )}
-      {accepted && <p className="hint small center">{t.deal.noCancel}</p>}
-      {accepted &&
-        (deal.my_report_open ? (
-          <Notice>{t.deal.reported}</Notice>
-        ) : (
-          <button
-            type="button"
-            className="secondary-button danger"
-            onClick={() => nav.push({ name: "report", target: { kind: "deal", id: deal.id } })}
-          >
-            <FlagIcon />
-            {t.deal.report}
-          </button>
-        ))}
     </div>
   );
 }

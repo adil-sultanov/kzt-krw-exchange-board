@@ -2,7 +2,7 @@
 
 import html
 
-from app.models import Currency, DealOut, Profile
+from app.models import Currency, DealOut, Direction, Profile
 from app.services.alerts import Alert
 
 AUTHOR = "@moonpie24"
@@ -22,6 +22,8 @@ NOT_MEMBER = (
 OPEN_APP_BUTTON = "Open exchange board"
 OPEN_DEAL_BUTTON = "Open deal"
 OPEN_REQUEST_BUTTON = "Open request"
+# The deal screen's button, as frontend/src/i18n.ts names it.
+CONFIRM_BUTTON = "Received payment"
 ALERT_GONE = "No longer available"
 MENU_BUTTON = "Board"
 START_COMMAND_DESCRIPTION = "Open the exchange board"
@@ -47,17 +49,41 @@ def _profile(profile: Profile | None) -> str | None:
     return ", ".join(part for part in (name, profile.university, year) if part) or None
 
 
+def _author_currencies(direction: Direction) -> tuple[Currency, Currency]:
+    """(gives, buys) for the author of a request; its amount is in what they buy."""
+    return ("KZT", "KRW") if direction == "KZT_KRW" else ("KRW", "KZT")
+
+
+def _convert(amount: int, from_currency: Currency, rate: float) -> int:
+    """An amount in the other currency at `rate` (KRW per 1 KZT)."""
+    return round(amount * rate if from_currency == "KZT" else amount / rate)
+
+
+def _deal_terms(deal: DealOut) -> str:
+    """ "you get 500,000 ₩ 🇰🇷 and pay 169,568 ₸ 🇰🇿", from the viewer's side. The deal's amount
+    is fixed; the other side's is exact once the rate is locked (accepted), ≈ before that."""
+    gives, buys = _author_currencies(deal.request.direction)
+    fixed = f"{_money(deal.amount, buys)} {FLAG[buys]}"
+    rate = deal.rate or deal.request.effective_rate
+    if rate:
+        approx = "" if deal.rate else "≈ "
+        other = f"{approx}{_money(_convert(deal.amount, buys, rate), gives)} {FLAG[gives]}"
+    else:
+        other = None
+    if deal.role == "author":
+        return f"you get {fixed} and pay {other or f'in {gives} {FLAG[gives]}'}"
+    return f"you get {other or f'{gives} {FLAG[gives]}'} and pay {fixed}"
+
+
 def deal_requested(deal: DealOut) -> str:
     """To the author. `deal` is as they see it, so `other_*` is the person who took it."""
-    request = deal.request
-    gives: Currency = "KZT" if request.direction == "KZT_KRW" else "KRW"
-    buys: Currency = "KRW" if gives == "KZT" else "KZT"
+    _, buys = _author_currencies(deal.request.direction)
     who = _profile(deal.other_profile)
     wants = (
-        f"sent a counter offer: {_money(deal.amount, gives)} of the "
-        f"{_money(request.amount, gives)} you're exchanging for {buys} {FLAG[buys]}"
+        f"sent a counter offer: {_deal_terms(deal)} "
+        f"(part of the {_money(deal.request.amount, buys)} you're buying)"
         if deal.partial
-        else f"wants to take your request: buy {buys} {FLAG[buys]} for {_money(deal.amount, gives)}"
+        else f"wants to take your request: {_deal_terms(deal)}"
     )
     return (
         f"🔔 {who or 'Someone'} {wants}.\n"
@@ -67,35 +93,39 @@ def deal_requested(deal: DealOut) -> str:
 
 
 def deal_accepted(deal: DealOut) -> str:
-    request = deal.request
-    # The responder gets the currency the author gives.
-    gets: Currency = "KZT" if request.direction == "KZT_KRW" else "KRW"
-    pays: Currency = "KRW" if gets == "KZT" else "KZT"
+    """To the responder. `deal` is as they see it, with its rate locked."""
     return (
-        "✅ Your deal was accepted: "
-        f"you get {_money(deal.amount, gets)} {FLAG[gets]} and pay in {pays} {FLAG[pays]}.\n"
+        f"✅ Your deal was accepted: {_deal_terms(deal)}.\n"
         "Open the deal to message them and see where to pay."
     )
 
 
+def payment_reminder(deal: DealOut) -> str:
+    """To a side of an accepted deal that hasn't confirmed receiving the money. `deal` is as
+    they see it."""
+    terms = _deal_terms(deal)
+    if deal.other_confirmed:
+        return (
+            f"⏰ They confirmed receiving your payment ({terms}).\n"
+            f"Once theirs is in your account, open the deal and tap “{CONFIRM_BUTTON}”. "
+            "If it hasn't arrived, report a problem there."
+        )
+    return (
+        f"⏰ Your deal isn't finished yet: {terms}.\n"
+        f"Once their payment is in your account, open the deal and tap “{CONFIRM_BUTTON}”. "
+        "It completes when you both confirm."
+    )
+
+
 def request_alert(alert: Alert) -> str:
-    """A new request, from the side of whoever takes it, e.g.
-    "Pay ≈ 1,850,000 ₸ → Get 500,000 ₩" and "1.5% better rate"."""
-    # The author gives the request's currency, so whoever takes it gets that.
-    gets: Currency = "KZT" if alert.direction == "KZT_KRW" else "KRW"
-    pays: Currency = "KRW" if gets == "KZT" else "KZT"
-    get = _money(alert.amount, gets)
+    """A new request, from the side of whoever takes it, e.g. "Pay 500,000 ₩ → Get ≈ 169,568 ₸"."""
+    # The amount is what the author buys, so whoever takes it pays that, and gets the rest.
+    gets, pays = _author_currencies(alert.direction)
+    pay = _money(alert.amount, pays)
     rate = alert.effective_rate
     if rate:
-        paid = alert.amount * rate if gets == "KZT" else alert.amount / rate
-        line = f"Pay ≈ {_money(round(paid), pays)} → Get {get}"
-    else:
-        line = f"Get {get}, pay in {pays} {SYMBOL[pays]}"
-    # A higher rate (more KRW per KZT) is better for whoever pays KZT.
-    gain = alert.rate_value if pays == "KZT" else -alert.rate_value
-    if gain == 0:
-        return f"{line}\nMarket rate"
-    return f"{line}\n{abs(gain):g}% {'better' if gain > 0 else 'worse'} rate"
+        return f"Pay {pay} → Get ≈ {_money(_convert(alert.amount, pays, rate), gets)}"
+    return f"Pay {pay}, get {gets} {SYMBOL[gets]}"
 
 
 def alert_gone(text: str) -> str:

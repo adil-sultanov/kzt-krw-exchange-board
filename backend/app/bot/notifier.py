@@ -45,6 +45,9 @@ class BotNotifier:
     def deal_accepted(self, responder_id: int, deal: DealOut) -> None:
         self._send(responder_id, texts.deal_accepted(deal), deal.id)
 
+    def payment_reminder(self, user_id: int, deal: DealOut) -> None:
+        self._send(user_id, texts.payment_reminder(deal), deal.id)
+
     def request_posted(self, request_id: int) -> None:
         if self.alerts is not None:
             self.alerts.request_posted(request_id)

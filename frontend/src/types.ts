@@ -2,8 +2,8 @@
 
 export type Direction = "KZT_KRW" | "KRW_KZT";
 export type RequestStatus = "open" | "in_progress" | "completed" | "closed" | "expired";
-export type BoardSort = "date" | "rate" | "amount";
-/** "desc" is newest, best rate for the viewer, or largest first. */
+export type BoardSort = "date" | "amount";
+/** "desc" is newest or largest first. */
 export type SortOrder = "desc" | "asc";
 export type Currency = "KZT" | "KRW";
 /** `cancelled`: its responder cancelled their offer before the author answered. */
@@ -11,13 +11,12 @@ export type DealStatus = "pending" | "accepted" | "declined" | "cancelled" | "co
 export type DealRole = "author" | "responder";
 
 export const CURRENCIES: Currency[] = ["KRW", "KZT"];
-export const BOARD_SORTS: BoardSort[] = ["date", "amount", "rate"];
+export const BOARD_SORTS: BoardSort[] = ["date", "amount"];
 export const DURATIONS = [1, 3] as const;
 export type DurationDays = (typeof DURATIONS)[number];
 
 // Limits enforced by the backend.
 export const MAX_AMOUNT = 100_000_000;
-export const MAX_MARKET_OFFSET = 20;
 export const MAX_BANK_LENGTH = 100;
 export const MAX_ACCOUNT_LENGTH = 100;
 export const MAX_NAME_LENGTH = 40;
@@ -106,11 +105,15 @@ export interface Rate {
 export interface ExchangeRequest {
   id: number;
   direction: Direction;
+  /** In the currency the author buys (see `amountCurrency`): what they get is fixed. */
   amount: number;
-  /** Percent offset from the reference (market) rate. */
-  rate_value: number;
   /** KRW per 1 KZT at the current reference rate (null while none is available). */
   effective_rate: number | null;
+  /**
+   * Not from the API: set on a deal's terms (see `dealTerms`) once its rate was locked at
+   * acceptance, when `effective_rate` is that rate and both amounts are exact.
+   */
+  rate_locked?: boolean;
   /** The smallest counter offer the author accepts, in `amount`'s currency (null: they don't). */
   min_counter_amount: number | null;
   /** The bank the author would rather use for the KZT side, e.g. "Kaspi" (null: no preference). */
@@ -160,6 +163,13 @@ export interface Deal {
   request: ExchangeRequest;
   created_at: string;
   updated_at: string;
+  /** When the author accepted it (null while pending, and for deals never accepted). */
+  accepted_at: string | null;
+  /**
+   * KRW per 1 KZT, locked when the author accepted it (null while pending, when the request's
+   * current rate applies, or if no rate was known then).
+   */
+  rate: number | null;
 }
 
 export type ReportCategory = "scam" | "no_payment" | "disappeared" | "spam" | "other";
@@ -208,7 +218,6 @@ export interface CancelledRequest {
   id: number;
   direction: Direction;
   amount: number;
-  rate_value: number;
   created_at: string;
   closed_at: string;
   /** Null for requests closed before this was recorded. */
@@ -226,7 +235,6 @@ export interface AdminBoardRequest {
   id: number;
   direction: Direction;
   amount: number;
-  rate_value: number;
   effective_rate: number | null;
   created_at: string;
   expires_at: string;
@@ -300,8 +308,6 @@ export interface Contact {
 export interface RequestCreate {
   direction: Direction;
   amount: number;
-  /** Percent offset from the reference (market) rate; 0 is the market rate. */
-  rate_value: number;
   duration_days: DurationDays;
   /** The smallest counter offer to accept (at most `amount`); null turns counter offers off. */
   min_counter_amount: number | null;
@@ -317,7 +323,6 @@ export interface RequestCreate {
  */
 export interface RequestUpdate {
   amount?: number;
-  rate_value?: number;
   min_counter_amount?: number | null;
   kzt_bank?: string | null;
   extend_days?: DurationDays;
@@ -326,7 +331,7 @@ export interface RequestUpdate {
 /** A request's terms, e.g. to post an expired one again. */
 export type RequestTerms = Pick<
   ExchangeRequest,
-  "direction" | "amount" | "rate_value" | "min_counter_amount" | "kzt_bank"
+  "direction" | "amount" | "min_counter_amount" | "kzt_bank"
 >;
 
 /**
@@ -349,17 +354,27 @@ export interface BoardFilters {
   order: SortOrder;
 }
 
-/** The currency the author gives; `amount` is in this currency. */
+/** The currency the author gives (and whoever takes the request gets). */
 export function giveCurrency(direction: Direction): Currency {
   return direction === "KZT_KRW" ? "KZT" : "KRW";
 }
 
+/** The currency the author gets (and whoever takes the request pays). */
 export function getCurrency(direction: Direction): Currency {
   return direction === "KZT_KRW" ? "KRW" : "KZT";
 }
 
+/**
+ * The currency a request's `amount` is in (and its counter offer minimum, and its deals'
+ * amounts): what its author buys. That side is fixed; the other follows the market rate until
+ * a deal is accepted.
+ */
+export function amountCurrency(direction: Direction): Currency {
+  return getCurrency(direction);
+}
+
 // The UI always speaks from the viewer's side: what *you* pay and get. The author of a
-// request pays its `amount` in the give currency; whoever takes it gets that amount.
+// request gets its `amount`; whoever takes it pays that amount.
 
 /** Requests on the Board that get the viewer `currency` when they take one. */
 export function boardDirection(currency: Currency): Direction {
@@ -371,7 +386,7 @@ export function postDirection(currency: Currency): Direction {
   return currency === "KRW" ? "KZT_KRW" : "KRW_KZT";
 }
 
-/** What the author gets for their amount at `rate` (KRW per 1 KZT). */
+/** An amount in the other currency at `rate` (KRW per 1 KZT). */
 export function convert(amount: number, from: Currency, rate: number): number {
   return from === "KZT" ? amount * rate : amount / rate;
 }
@@ -380,29 +395,24 @@ export function convert(amount: number, from: Currency, rate: number): number {
 export interface Side {
   currency: Currency;
   amount: number | null;
-  /** Converted at the current market rate, so it moves with it. */
+  /** Converted at the current market rate, so it moves with it (until a deal locks it). */
   approx: boolean;
 }
 
-/** What the viewer pays and gets: as its author, or by taking it. */
-export function viewerSides(request: ExchangeRequest): { pay: Side; get: Side } {
-  const give = giveCurrency(request.direction);
-  const fixed: Side = { currency: give, amount: request.amount, approx: false };
-  const converted: Side = {
-    currency: getCurrency(request.direction),
-    amount: request.effective_rate === null ? null : convert(request.amount, give, request.effective_rate),
-    approx: true,
-  };
-  return request.is_own ? { pay: fixed, get: converted } : { pay: converted, get: fixed };
-}
-
 /**
- * How much better (positive) or worse than the market rate the request is for the viewer,
- * in percent. The author of a KZT_KRW request gets KRW, so a higher rate is better for them.
+ * What the viewer pays and gets: as its author, or by taking it. The amount (what the author
+ * gets, so what a taker pays) is fixed; the other side is converted at the rate.
  */
-export function viewerRateGain(request: Pick<ExchangeRequest, "direction" | "rate_value" | "is_own">): number {
-  const authorGain = request.direction === "KZT_KRW" ? request.rate_value : -request.rate_value;
-  return request.is_own ? authorGain : -authorGain;
+export function viewerSides(request: ExchangeRequest): { pay: Side; get: Side } {
+  const currency = amountCurrency(request.direction);
+  const fixed: Side = { currency, amount: request.amount, approx: false };
+  const converted: Side = {
+    currency: giveCurrency(request.direction),
+    amount:
+      request.effective_rate === null ? null : Math.round(convert(request.amount, currency, request.effective_rate)),
+    approx: !request.rate_locked,
+  };
+  return request.is_own ? { pay: converted, get: fixed } : { pay: fixed, get: converted };
 }
 
 /**
@@ -424,14 +434,21 @@ export function takesCounterOffers(request: ExchangeRequest): boolean {
   return request.min_counter_amount !== null && request.min_counter_amount < request.amount;
 }
 
-/** The request as a deal covers it: its amount is the deal's (a part of it, for a counter offer). */
+/**
+ * The request as a deal covers it: its amount is the deal's (a part of it, for a counter offer),
+ * at the deal's locked rate once accepted.
+ */
 export function dealTerms(deal: Deal): ExchangeRequest {
-  return { ...deal.request, amount: deal.amount };
+  return { ...lockedRate(deal), amount: deal.amount };
 }
 
 /** For a counter offer, the whole request it's part of (see `Deal.request_amount`); else null. */
 export function dealWhole(deal: Deal): ExchangeRequest | null {
-  return deal.partial ? { ...deal.request, amount: deal.request_amount } : null;
+  return deal.partial ? { ...lockedRate(deal), amount: deal.request_amount } : null;
+}
+
+function lockedRate(deal: Deal): ExchangeRequest {
+  return deal.rate === null ? deal.request : { ...deal.request, effective_rate: deal.rate, rate_locked: true };
 }
 
 /** Whether the viewer has saved where they receive a currency. */
@@ -475,8 +492,24 @@ export function extendOptions(request: ExchangeRequest, now: number = Date.now()
   return DURATIONS.filter((days) => now + days * 24 * HOUR_MS > expires + MIN_EXTENSION_MS);
 }
 
+/**
+ * An accepted deal the viewer hasn't confirmed this long after acceptance is waiting on them
+ * (the bot reminds them once then too: CONFIRM_REMINDER_DELAY in backend services/deals.py).
+ */
+const CONFIRM_REMINDER_MS = 3 * HOUR_MS;
+
+/**
+ * Whether the viewer should confirm receiving the money on an accepted deal: the other side
+ * already has, or it was accepted a while ago (they've had time to pay each other).
+ */
+export function awaitsMyConfirmation(deal: Deal, now: number = Date.now()): boolean {
+  if (deal.status !== "accepted" || deal.my_confirmed) return false;
+  if (deal.other_confirmed) return true;
+  return deal.accepted_at !== null && now - new Date(deal.accepted_at).getTime() >= CONFIRM_REMINDER_MS;
+}
+
 /** Whether a deal is waiting on the viewer: answering a responder, or confirming a payment. */
 export function needsMyAction(deal: Deal): boolean {
   if (deal.status === "pending") return deal.role === "author";
-  return deal.status === "accepted" && deal.other_confirmed && !deal.my_confirmed;
+  return awaitsMyConfirmation(deal);
 }

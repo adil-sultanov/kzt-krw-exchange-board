@@ -13,6 +13,7 @@ import { BoardRequests } from "./screens/BoardRequests";
 import { CounterOffer } from "./screens/CounterOffer";
 import { Created } from "./screens/Created";
 import { DealScreen } from "./screens/Deal";
+import { Guide } from "./screens/Guide";
 import { MyDeals } from "./screens/MyDeals";
 import { NewRequest } from "./screens/NewRequest";
 import { Profile } from "./screens/Profile";
@@ -27,7 +28,7 @@ function Screen(props: { route: Route; active: boolean }) {
     case "board":
       return <Board active={active} />;
     case "new":
-      return <NewRequest active={active} prefill={route.prefill} />;
+      return <NewRequest active={active} prefill={route.prefill} buy={route.buy} />;
     case "edit":
       return <NewRequest active={active} edit={route.request} />;
     case "created":
@@ -46,6 +47,8 @@ function Screen(props: { route: Route; active: boolean }) {
       return <Report target={route.target} active={active} />;
     case "about":
       return <About active={active} />;
+    case "guide":
+      return <Guide />;
     case "admin":
       return <Admin active={active} />;
     case "boardRequests":

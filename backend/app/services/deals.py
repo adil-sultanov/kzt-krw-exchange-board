@@ -4,7 +4,9 @@ responders, responders cancelling their offer, confirming payment received, cont
 Every state change runs in one transaction with the expected status in the UPDATE's
 WHERE clause, so double taps and races between two open copies of the app are harmless.
 The bot messages the author when their request is taken and the responder when they're
-accepted, after the transaction commits; everything else is shown only in the app.
+accepted, after the transaction commits, and (the reminder job) once to each side that hasn't
+confirmed receiving the money 3 h after their deal was accepted; everything else is shown only
+in the app.
 
 A responder may cancel their offer while the author hasn't answered it yet, and then send
 another, up to MAX_OFFERS_PER_REQUEST offers on a request in all (so taking and cancelling
@@ -43,6 +45,7 @@ from app.models import (
 )
 from app.services.errors import ConflictError, NotFoundError, PermissionDeniedError
 from app.services.notifications import Notifier
+from app.services.rates import get_reference_rate
 from app.services.requests import (
     COUNTS_AS_RESPONSE,
     MAX_OFFERS_PER_REQUEST,
@@ -56,11 +59,16 @@ DEAL_RETENTION_DAYS = 30
 
 MY_DEALS_LIMIT = 100
 
+# Each side that hasn't confirmed receiving the money this long after their deal was accepted
+# gets one bot reminder. The app's My deals badge counts it from then too (frontend types.ts).
+CONFIRM_REMINDER_DELAY = timedelta(hours=3)
+
 # A deal with its request's current state.
 _LOAD_DEAL = """
 SELECT d.id, d.request_id, d.author_id, d.responder_id, d.status, d.amount, d.partial,
        d.author_confirmed, d.responder_confirmed,
-       r.status AS request_status, r.expires_at, r.direction, r.amount AS request_amount
+       r.status AS request_status, r.expires_at, r.direction, r.amount AS request_amount,
+       r.rate_value
 FROM deals d
 JOIN requests r ON r.id = d.request_id
 WHERE d.id = ?
@@ -69,7 +77,7 @@ WHERE d.id = ?
 # Columns for DealOut, except `request`. :viewer is the caller.
 _SELECT_DEALS = """
 SELECT d.id, d.status, d.amount, d.partial, d.request_amount, d.request_id, d.created_at,
-       d.updated_at,
+       d.updated_at, d.accepted_at, d.rate,
        CASE WHEN d.author_id = :viewer THEN 'author' ELSE 'responder' END AS role,
        CASE WHEN d.author_id = :viewer THEN d.author_confirmed
             ELSE d.responder_confirmed END AS my_confirmed,
@@ -125,7 +133,8 @@ async def _username(conn: aiosqlite.Connection, telegram_id: int) -> str | None:
 
 
 def gives_currency(direction: Direction, role: DealRole) -> Currency:
-    """The currency this side of a deal pays. The author gives the request's currency."""
+    """The currency this side of a deal pays. The author of a KZT_KRW request gives KZT (and
+    buys KRW, the currency its amount is in)."""
     author_gives: Currency = "KZT" if direction == "KZT_KRW" else "KRW"
     if role == "author":
         return author_gives
@@ -285,8 +294,12 @@ async def accept_deal(db: Database, actor_id: int, deal_id: int, notifier: Notif
     declined. For part of it (a counter offer), it stays on the board with that part taken off
     its amount; other offers stay pending if they still fit in what's left, and are declined if
     not.
+
+    The deal's rate is locked at the request's current rate, so neither side's amount moves
+    with the market any more.
     """
     now = utc_now()
+    reference = await get_reference_rate(db)
     async with db.transaction() as conn:
         deal = await _load_for(conn, deal_id, actor_id, "author")
         if deal["status"] != "pending":
@@ -296,11 +309,12 @@ async def accept_deal(db: Database, actor_id: int, deal_id: int, notifier: Notif
         request_id = deal["request_id"]
         amount = deal["amount"]
         partial = amount < deal["request_amount"]
+        rate = reference.rate * (1 + deal["rate_value"] / 100) if reference else None
         await _update_one(
             conn,
-            "UPDATE deals SET status = 'accepted', partial = ?, request_amount = ?, updated_at = ? "
-            "WHERE id = ? AND status = 'pending'",
-            (partial, deal["request_amount"], now, deal_id),
+            "UPDATE deals SET status = 'accepted', partial = ?, request_amount = ?, rate = ?, "
+            "accepted_at = ?, updated_at = ? WHERE id = ? AND status = 'pending'",
+            (partial, deal["request_amount"], rate, now, now, deal_id),
         )
         guard = "id = :id AND status = 'open' AND expires_at > :now"
         params = {"id": request_id, "amount": amount, "now": now}
@@ -436,6 +450,55 @@ async def _confirm(
         "WHERE telegram_id IN (?, ?)",
         (now, deal["author_id"], deal["responder_id"]),
     )
+
+
+async def remind_unconfirmed(db: Database, notifier: Notifier, now: datetime | None = None) -> int:
+    """Remind each side that hasn't confirmed receiving the money, once, CONFIRM_REMINDER_DELAY
+    after their deal was accepted (the job). Returns how many reminders were sent.
+
+    Not while the deal has an unresolved report (an admin is on it; the reminder comes once
+    it's resolved), and not to banned users. Each reminder is claimed in the transaction, so
+    it's sent once even if the job overlaps itself; a failed send isn't retried.
+    """
+    cutoff = utc_iso((now or datetime.now(UTC)) - CONFIRM_REMINDER_DELAY)
+    due: list[tuple[int, int]] = []  # (user, deal)
+    async with db.transaction() as conn:
+        async with conn.execute(
+            """
+            SELECT d.id, d.author_id, d.responder_id,
+                   d.author_confirmed = 0 AND d.author_reminded = 0 AND a.is_banned = 0
+                       AS remind_author,
+                   d.responder_confirmed = 0 AND d.responder_reminded = 0 AND r.is_banned = 0
+                       AS remind_responder
+            FROM deals d
+            JOIN users a ON a.telegram_id = d.author_id
+            JOIN users r ON r.telegram_id = d.responder_id
+            WHERE d.status = 'accepted' AND d.accepted_at <= ?
+              AND NOT EXISTS (SELECT 1 FROM reports WHERE deal_id = d.id AND resolved = 0)
+            """,
+            (cutoff,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        for row in rows:
+            for side in ("author", "responder"):
+                if not row[f"remind_{side}"]:
+                    continue
+                cursor = await conn.execute(
+                    f"UPDATE deals SET {side}_reminded = 1 WHERE id = ? AND status = 'accepted' "
+                    f"AND {side}_confirmed = 0 AND {side}_reminded = 0",
+                    (row["id"],),
+                )
+                if cursor.rowcount == 1:
+                    due.append((row[f"{side}_id"], row["id"]))
+    for user_id, deal_id in due:
+        try:
+            deal = await get_deal(db, user_id, deal_id)
+        except NotFoundError:  # the owner deleted it just now
+            continue
+        notifier.payment_reminder(user_id, deal)
+    if due:
+        logger.info("Sent %d payment reminders", len(due))
+    return len(due)
 
 
 async def delete_old_deals(db: Database, now: datetime | None = None) -> int:

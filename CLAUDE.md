@@ -10,7 +10,8 @@ Schema source of truth: `backend/app/migrations/`.
   About page, which never unlock features. No group-chat integration beyond the membership check
   (`GROUP_ID`): the bot never posts in, or stores anything from, the group.
 - The bot sends only: "someone took your request" (to the author), "your deal was accepted"
-  (to the responder), opt-in alerts about new requests (crossed out once the request leaves
+  (to the responder), one "did you get the money?" reminder per side of an accepted deal 3 h
+  after acceptance (if they haven't confirmed), opt-in alerts about new requests (crossed out once the request leaves
   the board), and its `/start` reply. Every other update is in-app only.
 - Users identified only by `telegram_id`. `username` is a nullable, non-unique cache refreshed
   on every API request/bot update; never store usernames elsewhere. Username and a full profile
@@ -33,8 +34,11 @@ All rights reserved (see `LICENSE`); author @moonpie24. Keep `TERMS.md` / `PRIVA
 when stored data or behavior changes.
 
 ## Conventions
-- Rate = KRW per 1 KZT. Amount = integer, currency being given. Requests are market-rate only:
-  `rate_value` is a ±% offset from the reference rate (no fixed rates, notes or payment methods).
+- Rate = KRW per 1 KZT. Amount = integer, in the currency the author **buys** (KRW for
+  `KZT_KRW`): that side is fixed, the other follows the rate until a deal is accepted, which
+  locks it (`deals.rate`). Requests are always at the reference (market) rate: no offsets,
+  fixed rates, notes or payment methods (`rate_value` is 0 for new requests; older ones may
+  carry an offset).
 - UI speaks from the viewer's side: a request reads as what *you* pay and get. "Buy KRW" = you get
   KRW: the Board's tab lists `KRW_KZT` requests (taking one gets you KRW); New request posts `KZT_KRW`.
 - Timestamps UTC ISO 8601; display in KST.

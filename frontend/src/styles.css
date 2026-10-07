@@ -18,6 +18,10 @@
   --warning: #e8870e;
   --radius: 14px;
   --radius-small: 10px;
+  /* The bottom inset (home indicator), from the browser or Telegram (Bot API 8.0+). */
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--tg-safe-area-inset-bottom, 0px));
+  /* The pinned bar on an accepted deal (see .dock), without the inset. */
+  --dock-height: 72px;
   /* Motion: settles quickly without a hard stop; the spring overshoots a little. */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
@@ -114,10 +118,6 @@ p {
   text-align: center;
 }
 
-.nowrap {
-  white-space: nowrap;
-}
-
 .icon {
   width: 22px;
   height: 22px;
@@ -149,6 +149,10 @@ p {
 
 /* Tapped: dims (and buttons shrink a touch) at once, then eases back on release. */
 .nav-button,
+.confirm-notice,
+.pill-button,
+.fold-toggle,
+.dock-button,
 .card,
 .chip-button,
 .icon-button,
@@ -168,6 +172,10 @@ p {
 }
 
 .nav-button:active,
+.confirm-notice:active,
+.pill-button:active:not(:disabled),
+.fold-toggle:active,
+.dock-button:active:not(:disabled),
 .card:active,
 .chip-button:active:not(:disabled),
 .icon-button:active:not(:disabled),
@@ -286,15 +294,11 @@ p {
   color: var(--hint);
 }
 
-/* How a request's rate compares to the market, for the viewer. */
+/* A short bold tag, e.g. "Banned" on an admin's view of a user. */
 .rate-tag {
   font-weight: 600;
   color: var(--hint);
   white-space: nowrap;
-}
-
-.rate-tag.better {
-  color: var(--positive);
 }
 
 .rate-tag.worse {
@@ -437,15 +441,27 @@ p {
   color: var(--destructive);
 }
 
-/* A second important action next to the MainButton, e.g. "I received the money". */
-.secondary-button.strong {
-  box-shadow: inset 0 0 0 1.5px var(--button);
-  font-weight: 600;
-}
-
 .secondary-button .icon {
   width: 20px;
   height: 20px;
+}
+
+/* A smaller one, e.g. "How it works" at the bottom of the Board. */
+.secondary-button.small {
+  align-self: center;
+  border-radius: 18px;
+  padding: 8px 16px;
+  font-size: 15px;
+}
+
+.secondary-button.small .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* Sits at the bottom of the Board, just above the footer. */
+.guide-button {
+  margin-top: 8px;
 }
 
 /* --- Forms --- */
@@ -575,30 +591,6 @@ p {
   color: var(--hint);
 }
 
-.input-wrap.compact {
-  width: 96px;
-  flex-shrink: 0;
-}
-
-/* Room for a whole amount, e.g. "1,000,000". */
-.input-wrap.compact.wide {
-  width: 140px;
-}
-
-.input-wrap.compact .input-bare {
-  padding: 8px 0;
-  text-align: right;
-}
-
-/* A label and a small input on one line, e.g. "By how much [1.5] %". */
-.inline-field {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  font-size: 15px;
-}
-
 /* A checkbox and its label, e.g. "Remember for my next requests". The native input stays
    (for focus, keyboard and screen readers), invisible over the drawn box. */
 .checkbox {
@@ -687,11 +679,6 @@ p {
   padding: 0 4px;
 }
 
-/* Counter offers on New request: optional, so tinted and outlined to be noticed. */
-.section-body.counter-box {
-  background: color-mix(in srgb, var(--button) 10%, var(--section-bg));
-  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--button) 45%, transparent);
-}
 
 /* --- Request cards --- */
 
@@ -1068,6 +1055,39 @@ p {
   background: color-mix(in srgb, var(--destructive) 12%, var(--section-bg));
 }
 
+/* On the Board: accepted deals waiting for the viewer to confirm receiving the money. */
+.confirm-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--section-bg);
+  background: color-mix(in srgb, var(--destructive) 12%, var(--section-bg));
+  color: var(--text);
+  padding: 12px 16px;
+  text-align: left;
+}
+
+.confirm-notice-title {
+  font-weight: 600;
+}
+
+/* How it works: short points under each section title. */
+.guide-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding-left: 32px;
+  font-size: 15px;
+}
+
+.guide-list li::marker {
+  color: var(--hint);
+}
+
 /* The deal's state, on the deal screen. */
 .banner {
   display: flex;
@@ -1229,6 +1249,57 @@ p {
   border-bottom-left-radius: 0;
 }
 
+/* A card with Accept and Decline floating under it, apart from the card. */
+.answer-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.answer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.answer-button {
+  flex: 1;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--secondary-bg);
+  color: var(--hint);
+  padding: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition:
+    transform 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.answer-button.accept {
+  background: var(--positive);
+  color: #ffffff;
+}
+
+.answer-button.decline {
+  background: var(--destructive);
+  color: #ffffff;
+}
+
+.answer-button:active:not(:disabled) {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+
+.answer-button:disabled:not(.accept):not(.decline) {
+  box-shadow: none;
+}
+
+.answer-button.accept:disabled,
+.answer-button.decline:disabled {
+  opacity: 0.5;
+}
+
 /* --- Payment details --- */
 
 .pay-to {
@@ -1263,6 +1334,187 @@ p {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   user-select: all;
+}
+
+/* --- Deal screen --- */
+
+/* Who the deal is with; once accepted, Message and where to send them the money. */
+.person-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--section-bg);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.person-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.person-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.person-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.person-pay {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+  border-top: 1px solid var(--separator);
+  padding-top: 12px;
+}
+
+/* A compact action inside a card, e.g. "Message". */
+.pill-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--button) 12%, var(--section-bg));
+  color: var(--link);
+  padding: 8px 14px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pill-button .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* Who has confirmed receiving the money, under the status. */
+.banner-checks {
+  margin-top: 8px;
+  border-top: 1px solid var(--separator);
+}
+
+.banner-checks .check-row {
+  padding: 10px 0 0;
+  border-bottom: 0;
+}
+
+/* A card whose title row folds its rows away, e.g. Deal details. */
+.fold-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 13px 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.fold-toggle .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--hint);
+}
+
+.fold > .collapse {
+  --collapse-gap: 0px;
+}
+
+.fold-body {
+  border-top: 1px solid var(--separator);
+}
+
+.fold-note {
+  padding: 10px 0 12px;
+}
+
+/* An accepted deal's actions, pinned to the bottom (see DealDock). */
+.dock {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 10;
+  border-top: 1px solid var(--separator);
+  background: var(--section-bg);
+  background: color-mix(in srgb, var(--section-bg) 88%, transparent);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  padding: 10px 16px calc(10px + var(--safe-bottom));
+  animation: dock-in 0.35s var(--ease-out) backwards;
+}
+
+.dock-inner {
+  display: grid;
+  grid-template-columns: 2fr 3fr;
+  gap: 10px;
+  max-width: 608px;
+  margin: 0 auto;
+}
+
+.dock-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 50px;
+  border: 0;
+  border-radius: var(--radius);
+  padding: 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dock-button .icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.dock-button.confirm {
+  background: var(--positive);
+  color: #ffffff;
+}
+
+.dock-button.confirm:disabled {
+  background: color-mix(in srgb, var(--positive) 16%, var(--section-bg));
+  color: var(--positive);
+}
+
+.dock-button.report {
+  background: color-mix(in srgb, var(--destructive) 14%, var(--section-bg));
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--destructive) 45%, transparent);
+  color: var(--destructive);
+}
+
+.dock-button.report:disabled {
+  box-shadow: none;
+  opacity: 0.6;
+}
+
+/* Room below the page (and its footer) so the bar never covers the end of it. */
+html.has-dock body {
+  padding-bottom: calc(var(--dock-height) + var(--safe-bottom));
+}
+
+@keyframes dock-in {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
 }
 
 .copy-button {
@@ -1492,14 +1744,6 @@ p {
 }
 
 /* --- Report --- */
-
-/* "Report a problem" on a deal: easy to find, clearly not a routine action. */
-.secondary-button.danger {
-  background: color-mix(in srgb, var(--destructive) 14%, var(--section-bg));
-  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--destructive) 45%, transparent);
-  color: var(--destructive);
-  font-weight: 600;
-}
 
 .link-button.subtle {
   align-self: center;
@@ -1787,6 +2031,7 @@ p {
   .checkbox-box .icon,
   .saved .icon,
   .success-icon,
+  .dock,
   .icon.bell,
   .support-icon .icon {
     animation: none;

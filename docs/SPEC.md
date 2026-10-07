@@ -4,8 +4,15 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
 
 ## Screens (Mini App)
 - Every screen speaks from the viewer's side: a request shows **You pay** / **You get** (for its
-  author, or for whoever takes it), and its rate as better / worse than the market *for them*
-  (or "Market rate"). The amount converted at the market rate is marked "≈".
+  author, or for whoever takes it). A request's amount is what its author **buys** (`requests.amount`, in
+  KRW for `KZT_KRW`, in KZT for `KRW_KZT`): fixed, so it's what the author gets and what whoever
+  takes it pays. The other side is converted at the request's rate and marked "≈", moving with
+  the market until a deal is accepted: accepting locks the rate (`deals.rate`), and from then
+  on both of the deal's amounts are exact. New request shows this under the amounts. Requests
+  posted before migration 016 had their amount in what the author gave; it was converted at
+  that day's rate (and accepted deals locked at it).
+- Screens keep explanations out of the way: short labels and status lines, a hint only where
+  something is missing or blocked. How things work is on **How it works** (see below).
 - Every request and deal shows the other side's **profile tag**: "Adil Sultanov, UNIST, 2022"
   (see Profiles), next to their completed-deal count. Not on the viewer's own requests.
 - Someone else's request also shows its author's current Telegram username as a tappable
@@ -14,8 +21,10 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   card. Hidden when the author has no username.
 - **Board** — open requests in two tabs by what the viewer would buy by taking one ("Buy KRW
   🇰🇷", the default, lists `KRW_KZT` requests; "Buy KZT 🇰🇿" lists `KZT_KRW`). **Filters**
-  (highlighted while not the default) sorts by date, amount they'd get or rate for the viewer,
-  descending (newest / largest / best first) or ascending via an arrow toggle.
+  (highlighted while not the default) sorts by date or amount they'd get (no rate sort: every
+  request is at the market rate); an arrow toggle flips the order. Picking a sort starts it in
+  its default order: oldest first for date (the Board's default, so older requests are taken
+  first), largest first for amount.
   Cards show the author's profile tag and @username, pay / get, the rate compared to the market, the
   author's completed deals and time left, and under the rate their preferred KZT bank, if any
   ("Preferred KZT bank: Kaspi"; on every request card, in My deals and matches too). Shows the reference rate both ways at the top (1 ₸ = X ₩ and 1 ₩ = Y ₸).
@@ -23,7 +32,8 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   Alerts); it's highlighted, with a filled bell, while that tab's alerts are on, and carries a
   red "new" dot until the user first opens it.
   Large **My deals** and **Profile** buttons with icons, and a **Refresh** button next to
-  Filters and Alerts. Hides the viewer's own requests and requests from banned users.
+  Filters and Alerts. A **How it works** link at the bottom, above the footer. Hides the viewer's
+  own requests and requests from banned users.
   Under each card the viewer hasn't responded to: **Counter offer** (only if its author takes
   them, see Counter offers) and **Take request** (the same confirm popup as on the request,
   then the new deal opens; an error shows in a popup). Without a username or a full profile,
@@ -39,20 +49,21 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   replaced by a notice linking to Profile (as posting is on New request). A request an admin
   removed reads "An admin took this request off the board" (status "Removed by an admin").
 - **New request** — form: what the author buys ("Buy KRW" posts `KZT_KRW`, "Buy KZT" posts
-  `KRW_KZT`), the amount they pay or the amount they get (either can be typed; the other is
-  converted at the request's rate, and the request stores what they pay, rounded), rate (Market (default) /
-  Ask more % (better for the author) / Offer more % (better for whoever takes it), up to 20%;
-  always relative to the reference rate, no fixed rates),
-  **Counter offers** (optional, in a tinted, outlined box so it gets noticed): the smallest part
-  of the amount they pay that they'd accept from a counter offer, a positive whole number up to
+  `KRW_KZT`; from the Board it starts on the open tab's currency), the amount they get or the amount they pay (either can be typed, what they get
+  first; the other is converted at the market rate, and the request stores what they get,
+  rounded; the paid side reads "You pay ≈"), with the market rate under them. There's no rate to choose:
+  every request is at the reference (market) rate (`rate_value` 0), and the app never compares
+  a request's rate with the market. Requests posted before that may carry a ±% offset, which
+  still applies to their rate (`effective_rate`) until they're gone, but isn't sent to the app.
+  **Counter offers** (optional): the smallest part
+  of the amount they get that they'd accept from a counter offer, a positive whole number up to
   that amount; left empty, counter offers are off.
   **Preferred KZT bank** (optional free text, max 40 chars: letters, digits, spaces and
   `-'’.&()/,+`, e.g. "Kaspi, Halyk"; shown on the request) with a **Remember for my next
   requests** checkbox: New request (not Post again or Edit) starts with the remembered bank
   (`users.saved_kzt_bank`), ticked if there is one. Posting with it ticked remembers this
   request's bank (empty forgets it); unticked forgets it.
-  Duration (1 / 3 days), with a note that the request leaves the board once the author accepts
-  someone for all of it or cancels it, or when the time runs out. No free-text note, no payment methods
+  Duration (1 / 3 days). No free-text note, no payment methods
   (where to pay comes from the receiving details once a deal is accepted).
   Show matching opposite requests right after creation.
 - **My requests** (no separate screen: they're on My deals and the request screen):
@@ -77,7 +88,10 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   requests on the board (open, not expired), each request once, with **Extend** and **Cancel
   request**: a pending deal on it isn't listed apart. When someone took it, the card reads
   "Waiting for your answer" and opens that deal (the first taker's; after answering, the next
-  one's); otherwise it's marked when it leaves the board within 6 h. If that first one is a
+  one's), with green **Accept** and red **Decline** buttons for it floating below the card and its
+  Extend / Cancel request (the same confirm
+  popups as on the deal screen; accepting opens the deal); otherwise it's marked when it leaves
+  the board within 6 h. If that first one is a
   counter offer, the card shows what it asks for, with the whole request dimmed below it
   ("Whole request: … → …") and "Counter offer · Waiting for your answer". Accepted counter
   offers on it are listed as deals of their own. Every counter offer's deal card (and deal
@@ -90,16 +104,30 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
 - **Profile** — name, username and completed deals count; *About you*: first and last name,
   university and year of enrollment (see Profiles), with a preview of the tag; receiving
   details per currency (KZT, KRW): bank and account holder, and account / card / phone number
-  (max 100 chars each). One MainButton **Save** for all of it. Then links to **About &
-  support** and (admins only) **Admin: reports**, **Admin: board requests** and **Admin: all
+  (max 100 chars each). One MainButton **Save** for all of it. Then links to **How it works**,
+  **About & support** and (admins only) **Admin: reports**, **Admin: board requests** and **Admin: all
   deals**. The owner also gets an *Owner* section with **Admins**.
+- **How it works** — a few very short points per topic (people skip long instructions): the
+  basics (free, never handles money, what you need to take part), posting (fixed amount, ≈
+  side and the rate lock, counter offers, duration), taking (offers and their limits), deals
+  (contacts, Received payment, no cancelling, Report), alerts & privacy. Static text in
+  `i18n.ts`; from Profile and from New request (a small rounded button with an info icon).
 - **About & support** — what the app is and the disclaimer, "Made by Adil Sultanov (@moonpie24)",
   a link to the GitHub repo, Terms and Privacy. **Support the project**: the owner's note and up
   to 6 donate options (label + value; a `http(s)://` value opens as a link, anything else gets a
   Copy button), with a line saying donations are voluntary and unlock nothing. Hidden while
   empty, except for the owner, who gets **Edit** (note, add / remove options, MainButton Save).
-- **Report** — from **Report this request** on someone else's request, or **Report a problem**
-  on an accepted deal: pick a reason (request: scam / spam or fake / other; deal: didn't pay /
+- **Deal** — the status (on an accepted deal, with a check for each side that confirmed
+  receiving the money), what the viewer pays and gets, and who it's with (profile tag and
+  completed-deal count; once accepted, a **Message** button and where to send them the money,
+  with Copy). Rate, preferred KZT bank, the whole request (counter offers), when it started and
+  was accepted, and the no-cancel rule fold away under **Deal details**. An accepted deal has
+  no MainButton: a bar pinned to the bottom holds **Report** (red; "Reported" once sent) and
+  **Received payment** (green, with a confirm popup; "You confirmed" afterwards). The author
+  answers a pending deal with MainButton **Accept** (or **Decline** below); a responder can
+  **Cancel offer** while it's pending.
+- **Report** — from **Report this request** on someone else's request, or **Report** on an
+  accepted deal: pick a reason (request: scam / spam or fake / other; deal: didn't pay /
   stopped replying / scam / other), add an optional note (max 500 chars), MainButton **Send
   report**. Once sent, the deal screen says so instead of offering it again.
 - **Admin: reports** (admins only) — Open / Resolved tabs of reports, newest first: reason,
@@ -127,9 +155,12 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   its accepted deal; or "not recorded" for ones closed before migration 010), when, what the
   author paid, open reports, the author, the admin who closed it, and the people who had taken
   it (their deals were declined; a deleted deal's taker isn't listed).
-- The Board's **My deals** link shows a badge with the number of things waiting on the viewer:
-  a pending responder to answer, a payment to confirm once the other side has, or one of
-  their requests leaving the board within 6 h (the in-app expiry notice).
+- The Board's **My deals** link shows a red badge with the number of things waiting on the
+  viewer: a pending responder to answer, a payment to confirm (once the other side has
+  confirmed theirs, or 3 h after the deal was accepted), or one of their requests leaving the
+  board within 6 h (the in-app expiry notice). Payments to confirm also show a notice under the
+  Board's top buttons ("Did you get the money?", with the same red count) that opens the deal,
+  or My deals when there are several.
 - A small gray "Made by @moonpie24" footer under every screen.
 
 **Auto-refresh**: the screen on top re-fetches its data while the app is in view (paused while
@@ -146,12 +177,19 @@ parameter (e.g. `req_123`, `deal_45`).
 ## Bot messages
 The bot answers `/start` (in private chats only) with a button that opens the Mini App, or
 without one for non-members of the group (see Group members only), sets the chat menu button, and
-sends alerts to those who turned them on (see Alerts), and exactly two notifications, each
+sends alerts to those who turned them on (see Alerts), and exactly three notifications, each
 with an **Open deal** button (a `web_app` button whose URL carries `?startapp=deal_<id>`):
 - to the author, when someone takes their request or sends a counter offer on it (the
   responder's profile tag, amount, and for a counter offer the part of it they asked for,
   direction, the responder's completed-deal count);
-- to the responder, when the author accepts their deal (with the deal's amount).
+- to the responder, when the author accepts their deal (with the deal's amount);
+- once to each side of an accepted deal that hasn't tapped **Received payment** 3 h after
+  it was accepted (`deals.accepted_at`): what they pay and get, and whether the other side has
+  already confirmed (then: "If it hasn't arrived, report a problem there"). A job checks every
+  5 minutes; `deals.{author,responder}_reminded` records it was sent, so it's never repeated,
+  even if the send failed. None while the deal has an unresolved report (it comes once that's
+  resolved, if still due), and none to banned users. Deals accepted before migration 015 count
+  from their last change.
 
 They're sent in the background after the deal's transaction commits. A failed send (the user
 never started or blocked the bot) is logged with the deal id and error type only, and never
@@ -166,7 +204,7 @@ matches are in-app too.
 - Posting a request alerts everyone with that tab's alerts on, except its author and banned
   users, and only members of the group (checked as for the API). The message reads from the
   taker's side, with an **Open request** button (`?startapp=req_<id>`):
-  "Pay ≈ 1,850,000 ₸ → Get 500,000 ₩" and "Market rate" (or "1.5% better rate" / "worse").
+  "Pay 500,000 ₸ → Get ≈ 1,850,000 ₩".
   Never the author's name or username.
 - Once the request leaves the board (accepted for all of what's left, cancelled, removed by an
   admin, closed by a ban, or expired), every alert about it is edited: the text struck through,
@@ -182,16 +220,18 @@ matches are in-app too.
 ## Deal flow
 1. B (with a username and a full profile) opens A's request and taps **I'll take it**. The backend creates a `pending` deal
    with B's `telegram_id` taken from B's verified initData (never from the request body).
-2. A sees B in My deals with Accept / Decline. A can have several pending responders on one request.
+2. A sees B in My deals with Accept / Decline (under A's request card, or on the deal screen). A can have several pending responders on one request.
    Or B sends a **counter offer** instead: a pending deal for part of the request (see
    Counter offers).
 3. **Accept**: deal → `accepted`, request → `in_progress` (hidden from the Board);
    other pending deals on that request → `declined`. Accepting a counter offer instead keeps
-   the request on the board (see Counter offers).
-   Both A and B get a Contact button: `https://t.me/<current username>`, opened in the
+   the request on the board (see Counter offers). The deal's rate is locked at the request's
+   rate at that moment (`deals.rate`), so neither side's amount moves any more.
+   Both A and B get a **Message** button: `https://t.me/<current username>`, opened in the
    Mini App via `Telegram.WebApp.openTelegramLink`. They arrange the exchange privately.
    Each side also sees where to pay: the other side's receiving details for the currency
-   they give (the author gives the request's currency; the responder gives the other one),
+   they give (the responder gives the request's currency, its amount; the author gives the
+   other one, at the rate locked on acceptance),
    with a copy button for the account number.
 4. **Decline**: deal → `declined`. Or, before the author answers, B taps **Cancel offer**
    (on the deal screen or under its card in My deals, with a confirm popup): deal →
@@ -200,15 +240,16 @@ matches are in-app too.
    new offer** on the cancelled deal; the request shows how many offers they have left. Refused
    (`deal_not_pending`) once the author answered or the request left the board; only the
    responder may cancel (`not_deal_responder`).
-5. Each side taps **I received the money** once the other's payment is in their account
+5. Each side taps **Received payment** once the other's payment is in their account
    (sets `author_confirmed` / `responder_confirmed`; repeating it is a no-op). Once both have
    confirmed, the deal and request become `completed` (a counter offer completes alone; its
    request goes on), and both users' `completed_deals` += 1, in the same transaction.
-   **Report a problem** (either side) leaves the deal `accepted` and creates a report on the
+   Whoever hasn't confirmed 3 h after acceptance gets one bot reminder (see Bot messages).
+   **Report** (either side) leaves the deal `accepted` and creates a report on the
    deal for admin review; this is what's meant by a "dispute".
 6. An accepted deal **can't be cancelled**: once contacts are exchanged, money may already
    have moved, and a cancel would let someone back out after being paid. It ends only when
-   both sides confirm; if the other side disappears, **Report a problem** brings in an admin. Deals
+   both sides confirm; if the other side disappears, **Report** brings in an admin. Deals
    cancelled before this rule were deleted (migration 005); the status now only means a
    responder cancelled their pending offer (step 4).
 7. A user cannot take their own request, and has at most one response to it at a time
@@ -230,14 +271,15 @@ matches are in-app too.
 
 ## Counter offers
 - A request takes counter offers when its author set a minimum (`requests.min_counter_amount`,
-  in the request's currency, at most its amount) and that minimum is below what's left of it.
+  in the request's currency, what the author buys, at most its amount) and that minimum is
+  below what's left of it.
   Every request posted before counter offers existed has none.
 - A counter offer is a pending deal whose `deals.amount` is part of the request, what the
-  responder gets: at least the minimum, at most the request's amount (asking for all of it is
+  responder pays (and the author gets): at least the minimum, at most the request's amount (asking for all of it is
   the same as taking it). A deal from **Take request** is for the request's whole amount.
   Either way it counts as the person's response to the request (Deal flow, rule 7).
 - Nothing changes on the board until the author answers, in My deals as for any taker; the
-  deal screen reads "Someone sent a counter offer: they want X of the Y you pay".
+  deal screen reads "Someone sent a counter offer: they offer X of the Y you're buying".
 - **Accepting** a counter offer (one transaction): the deal → `accepted` (contacts and
   receiving details as usual), and the request stays `open` with its `amount` reduced by the
   deal's. Pending deals for more than what's left are declined; the others stay pending (one
@@ -328,7 +370,7 @@ All routes require valid initData.
   false forgets the remembered one, left out leaves it)
 - `GET  /api/requests/{id}` (with the viewer's latest response, `my_deal_id` /
   `my_deal_status`, and `offers_left`: how many more they may send; null on their own)
-- `PATCH /api/requests/{id}` (author only, `open` only: `amount` / `rate_value` /
+- `PATCH /api/requests/{id}` (author only, `open` only: `amount` /
   `min_counter_amount` (null turns them off) / `kzt_bank` (null or empty removes it) to edit, `extend_days` (1 or 3) to extend)
 - `POST /api/requests/{id}/close` ("Cancel request"; author only, `open` requests only)
 - `GET  /api/my/requests` (the caller's requests on the board, then those expired in the last
@@ -340,8 +382,8 @@ All routes require valid initData.
 - `GET  /api/deals/{id}` (participants only; used by the `deal_45` deep link)
 - `POST /api/deals/{id}/accept` | `/decline` (request author only)
 - `POST /api/deals/{id}/cancel` ("Cancel offer"; the responder only, `pending` deals only)
-- `POST /api/deals/{id}/confirm` ("I received the money"; deal participants only)
-- `POST /api/deals/{id}/report` ("Report a problem"; participants, `accepted` deals only)
+- `POST /api/deals/{id}/confirm` ("Received payment"; deal participants only)
+- `POST /api/deals/{id}/report` ("Report" on a deal; participants, `accepted` deals only)
 - `GET  /api/deals/{id}/contact` (returns the other side's current `t.me` link and their
   receiving details (`pay_bank`, `pay_account`) for the currency the caller pays; only when the deal is `accepted` or
   `completed` and the caller is a participant)

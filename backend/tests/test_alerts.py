@@ -137,30 +137,22 @@ async def test_no_alert_once_off_the_board(db: Database) -> None:
 # --- Texts ---
 
 
-def make_alert(direction: str, rate_value: float = 0, rate: float | None = 3.7) -> Alert:
+def make_alert(direction: str, rate: float | None = 3.7) -> Alert:
     return Alert(
         request_id=7,
         direction=direction,  # type: ignore[arg-type]
         amount=500_000,
-        rate_value=rate_value,
-        effective_rate=rate * (1 + rate_value / 100) if rate else None,
+        effective_rate=rate,
         recipients=[],
     )
 
 
 def test_alert_text() -> None:
-    # KRW_KZT: whoever takes it gets KRW and pays KZT.
-    assert texts.request_alert(make_alert("KRW_KZT")) == (
-        "Pay ≈ 135,135 ₸ → Get 500,000 ₩\nMarket rate"
-    )
-    # A higher rate means fewer KZT for the same KRW: better for whoever pays KZT.
-    assert texts.request_alert(make_alert("KRW_KZT", 1.5)).endswith("\n1.5% better rate")
-    # KZT_KRW: they get KZT and pay KRW; a higher rate is worse for them.
-    text = texts.request_alert(make_alert("KZT_KRW", 2))
-    assert text == "Pay ≈ 1,887,000 ₩ → Get 500,000 ₸\n2% worse rate"
-    assert texts.request_alert(make_alert("KZT_KRW", rate=None)).startswith(
-        "Get 500,000 ₸, pay in KRW ₩\n"
-    )
+    # KRW_KZT: its author buys 500,000 ₸, so whoever takes it pays that and gets KRW.
+    assert texts.request_alert(make_alert("KRW_KZT")) == "Pay 500,000 ₸ → Get ≈ 1,850,000 ₩"
+    # KZT_KRW: they pay 500,000 ₩ and get KZT.
+    assert texts.request_alert(make_alert("KZT_KRW")) == "Pay 500,000 ₩ → Get ≈ 135,135 ₸"
+    assert texts.request_alert(make_alert("KZT_KRW", rate=None)) == "Pay 500,000 ₩, get KZT ₸"
 
 
 def test_crossed_out_text_is_escaped() -> None:
@@ -236,8 +228,8 @@ async def test_sends_and_crosses_out(db: Database) -> None:
     await drain(sender)
     assert [chat_id for chat_id, _, _ in bot.sent] == [2, 3]
     _, text, markup = bot.sent[0]
-    # VALID: 100,000 ₸ at 1.5% above the market rate (worse for whoever pays KRW).
-    assert text == "Pay ≈ 375,550 ₩ → Get 100,000 ₸\n1.5% worse rate"
+    # VALID: buying 100,000 ₩ at the market rate.
+    assert text == "Pay 100,000 ₩ → Get ≈ 27,027 ₸"
     [[button]] = markup.inline_keyboard
     assert button.text == "Open request"
     assert button.web_app.url == f"https://example.test?startapp=req_{request_id}"

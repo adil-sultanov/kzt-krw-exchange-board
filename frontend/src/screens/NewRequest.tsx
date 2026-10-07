@@ -2,16 +2,8 @@ import { useEffect, useState } from "react";
 import { api, errorCode } from "../api";
 import { AmountInput, ExchangeBox, ExchangeRow } from "../components/Exchange";
 import { ProfileRequired } from "../components/ProfileHint";
-import { Checkbox, Collapse, ErrorBox, Notice, Section, Segmented } from "../components/ui";
-import {
-  formatAmountInput,
-  formatDecimalInput,
-  formatMoney,
-  formatRatePair,
-  parseAmount,
-  parseDecimal,
-  SYMBOL,
-} from "../format";
+import { Checkbox, ErrorBox, Notice, Section, Segmented } from "../components/ui";
+import { formatAmountInput, formatMoney, formatRatePair, parseAmount, SYMBOL } from "../format";
 import { t } from "../i18n";
 import { useMe, useSetMe } from "../me";
 import { useNav } from "../nav";
@@ -29,26 +21,16 @@ import {
   hasProfile,
   MAX_AMOUNT,
   MAX_KZT_BANK_LENGTH,
-  MAX_MARKET_OFFSET,
   postDirection,
   type RequestCreate,
   type RequestTerms,
-  viewerRateGain,
 } from "../types";
 
-/**
- * The rate compared to the market, from the author's side: asking for more than the market
- * gives them more of what they get; offering more gives the other side a better rate.
- */
-type RateChoice = "market" | "ask" | "offer";
-const RATE_CHOICES: RateChoice[] = ["market", "ask", "offer"];
-
-/** The side whose amount the viewer typed; the other is converted from it at the request's rate. */
+/** The side whose amount the viewer typed; the other is converted from it at the market rate. */
 type TypedSide = "pay" | "get";
 
 interface FormErrors {
   amount?: string;
-  rate?: string;
   minCounter?: string;
   kztBank?: string;
 }
@@ -56,32 +38,32 @@ interface FormErrors {
 interface FormValues {
   buy: Currency;
   amountText: string;
-  rateChoice: RateChoice;
-  percentText: string;
   minCounterText: string;
   kztBankText: string;
 }
 
 /** The form showing an existing request's terms, from its author's side. */
 function formValues(terms: RequestTerms): FormValues {
-  const gain = viewerRateGain({ ...terms, is_own: true });
   return {
     buy: getCurrency(terms.direction),
     amountText: formatAmountInput(String(terms.amount)),
-    rateChoice: gain > 0 ? "ask" : gain < 0 ? "offer" : "market",
-    percentText: gain === 0 ? "" : formatDecimalInput(String(Math.abs(gain)), 2),
     minCounterText: formatAmountInput(String(terms.min_counter_amount ?? "")),
     kztBankText: terms.kzt_bank ?? "",
   };
 }
 
 /**
- * Posts a new request, optionally prefilled (`prefill`, "Post again"), or edits the amount, rate,
+ * Posts a new request, optionally prefilled (`prefill`, "Post again"), or edits the amount,
  * smallest counter offer and preferred KZT bank of the viewer's open request (`edit`; its
- * direction and expiry stay as they are). A new request without a prefill starts with the bank
- * the viewer asked to remember.
+ * direction and expiry stay as they are). A new request without a prefill starts buying `buy`
+ * (the Board tab it came from) and with the bank the viewer asked to remember.
  */
-export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edit?: ExchangeRequest }) {
+export function NewRequest(props: {
+  active: boolean;
+  prefill?: RequestTerms;
+  buy?: Currency;
+  edit?: ExchangeRequest;
+}) {
   const me = useMe();
   const setMe = useSetMe();
   const nav = useNav();
@@ -90,49 +72,41 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
     const terms = edit ?? props.prefill;
     return terms ? formValues(terms) : null;
   });
-  const [buy, setBuy] = useState<Currency>(initial?.buy ?? "KRW");
-  const [typed, setTyped] = useState<TypedSide>("pay");
+  const [buy, setBuy] = useState<Currency>(initial?.buy ?? props.buy ?? "KRW");
+  // The amount the author gets is the request's (fixed) amount, so that's what they type first.
+  const [typed, setTyped] = useState<TypedSide>("get");
   const [amountText, setAmountText] = useState(initial?.amountText ?? "");
-  const [rateChoice, setRateChoice] = useState<RateChoice>(initial?.rateChoice ?? "market");
-  const [percentText, setPercentText] = useState(initial?.percentText ?? "");
   // Empty: counter offers are off.
   const [minCounterText, setMinCounterText] = useState(initial?.minCounterText ?? "");
   const [kztBankText, setKztBankText] = useState(initial?.kztBankText ?? me.saved_kzt_bank ?? "");
   const [rememberKztBank, setRememberKztBank] = useState(me.saved_kzt_bank !== null);
   const [duration, setDuration] = useState<DurationDays>(1);
-  const [referenceRate, setReferenceRate] = useState<number | null>(null);
+  // Requests are always at the market rate.
+  const [rate, setRate] = useState<number | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.rate().then((r) => setReferenceRate(r.rate), () => setReferenceRate(null));
+    api.rate().then((r) => setRate(r.rate), () => setRate(null));
   }, []);
 
   const direction = postDirection(buy);
   const pay = giveCurrency(direction);
   const typedAmount = parseAmount(amountText);
-  const percent = rateChoice === "market" ? 0 : parseDecimal(percentText);
-  // The offset is on the rate (KRW per 1 KZT): more KRW per KZT is more for whoever gets KRW.
-  const gainSign = rateChoice === "offer" ? -1 : 1;
-  const offset = (buy === "KRW" ? gainSign : -gainSign) * (percent ?? 0);
-  const effectiveRate = referenceRate !== null ? referenceRate * (1 + offset / 100) : null;
   const converted = (value: number | null, from: Currency) =>
-    value !== null && effectiveRate !== null ? Math.round(convert(value, from, effectiveRate)) : null;
-  // The request's amount is always what the author pays.
-  const amount = typed === "pay" ? typedAmount : converted(typedAmount, buy);
-  const gets = typed === "get" ? typedAmount : converted(amount, pay);
-  // In what the author pays, like the amount. formatAmountInput keeps it a positive integer.
+    value !== null && rate !== null ? Math.round(convert(value, from, rate)) : null;
+  // The request's amount is always what the author gets: fixed, while what they pay follows
+  // the rate. Typing what they pay works it out at today's rate.
+  const amount = typed === "get" ? typedAmount : converted(typedAmount, pay);
+  const pays = typed === "pay" ? typedAmount : converted(amount, buy);
+  // In what the author gets, like the amount. formatAmountInput keeps it a positive integer.
   const minCounter = parseAmount(minCounterText);
   const kztBank = cleanKztBank(kztBankText);
 
   const errors: FormErrors = {};
   if (amount === null || amount <= 0) errors.amount = t.form.errors.amount;
   else if (amount > MAX_AMOUNT) errors.amount = t.form.errors.amountTooLarge;
-  if (rateChoice !== "market") {
-    if (percent === null || percent <= 0) errors.rate = t.form.errors.percent;
-    else if (percent > MAX_MARKET_OFFSET) errors.rate = t.form.errors.percentRange(MAX_MARKET_OFFSET);
-  }
   if (minCounter !== null && amount !== null && minCounter > amount) {
     errors.minCounter = t.form.errors.counterAboveAmount;
   }
@@ -151,7 +125,6 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
       if (edit) {
         await api.updateRequest(edit.id, {
           amount,
-          rate_value: offset,
           min_counter_amount: minCounter,
           kzt_bank: kztBank.value,
         });
@@ -162,7 +135,6 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
       const body: RequestCreate = {
         direction,
         amount,
-        rate_value: offset,
         duration_days: duration,
         min_counter_amount: minCounter,
         kzt_bank: kztBank.value,
@@ -206,14 +178,14 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
 
   const shown = showErrors ? errors : {};
   const amountInput = (side: TypedSide) => {
-    const value = side === typed ? amountText : formatAmountInput(String((side === "pay" ? amount : gets) ?? ""));
+    const value = side === typed ? amountText : formatAmountInput(String((side === "pay" ? pays : amount) ?? ""));
     return (
       <AmountInput
-        label={side === "pay" ? t.side.pay : t.side.get}
+        label={side === "pay" ? t.side.payApprox : t.side.get}
         value={value}
         invalid={Boolean(shown.amount) && side === typed}
-        // Without a market rate, only the amount paid can be entered.
-        disabled={side === "get" && effectiveRate === null}
+        // Without a market rate, only the amount the author gets can be entered.
+        disabled={side === "pay" && rate === null}
         onChange={(text) => {
           setTyped(side);
           setAmountText(text);
@@ -241,7 +213,7 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
 
       <ExchangeBox
         pay={
-          <ExchangeRow label={t.side.pay} currency={pay}>
+          <ExchangeRow label={t.side.payApprox} currency={pay}>
             {amountInput("pay")}
           </ExchangeRow>
         }
@@ -251,38 +223,13 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
           </ExchangeRow>
         }
       />
-      {shown.amount && <p className="field-error">{shown.amount}</p>}
-
-      <Section title={t.form.rate}>
-        <Segmented
-          options={RATE_CHOICES.map((choice) => ({ value: choice, label: t.form.rateChoice[choice] }))}
-          value={rateChoice}
-          onChange={setRateChoice}
-        />
-        <Collapse open={rateChoice !== "market"}>
-          <label className="inline-field">
-            <span>{t.form.percentLabel}</span>
-            <span className={shown.rate ? "input-wrap compact invalid" : "input-wrap compact"}>
-              <input
-                className="input-bare"
-                inputMode="decimal"
-                autoComplete="off"
-                placeholder={t.form.percentPlaceholder}
-                value={percentText}
-                onChange={(event) => setPercentText(formatDecimalInput(event.target.value, 2))}
-              />
-              <span className="input-suffix">%</span>
-            </span>
-          </label>
-        </Collapse>
-        {shown.rate && <p className="field-error">{shown.rate}</p>}
-        <p className="hint small">
-          {t.form.rateHint[rateChoice]}{" "}
-          {effectiveRate === null
-            ? t.rate.unavailable
-            : !errors.rate && <span className="nowrap">{t.form.rateNow(formatRatePair(effectiveRate))}</span>}
+      {shown.amount ? (
+        <p className="field-error">{shown.amount}</p>
+      ) : (
+        <p className="hint small section-note">
+          {rate === null ? t.rate.unavailable : t.form.rateNow(formatRatePair(rate))}
         </p>
-      </Section>
+      )}
 
       <Section title={t.form.kztBank}>
         <input
@@ -296,7 +243,6 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
           onChange={(event) => setKztBankText(event.target.value)}
         />
         {shown.kztBank && <p className="field-error">{shown.kztBank}</p>}
-        <p className="hint small">{t.form.kztBankHint}</p>
         {!edit && (
           <Checkbox checked={rememberKztBank} onChange={setRememberKztBank}>
             {t.form.kztBankRemember}
@@ -304,30 +250,26 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
         )}
       </Section>
 
-      <section className="section">
-        <h2 className="section-title">{t.form.counter}</h2>
-        <div className="section-body counter-box">
-          <p className="small">{t.form.counterHint}</p>
-          <label className="inline-field">
-            <span>{t.form.counterLabel}</span>
-            <span className={shown.minCounter ? "input-wrap compact wide invalid" : "input-wrap compact wide"}>
-              <input
-                className="input-bare"
-                inputMode="numeric"
-                autoComplete="off"
-                placeholder={t.form.counterPlaceholder}
-                value={minCounterText}
-                onChange={(event) => setMinCounterText(formatAmountInput(event.target.value))}
-              />
-              <span className="input-suffix">{SYMBOL[pay]}</span>
-            </span>
-          </label>
-          {shown.minCounter && <p className="field-error">{shown.minCounter}</p>}
-          {minCounter !== null && amount !== null && !errors.minCounter && (
-            <p className="hint small">{t.form.counterRange(formatMoney(minCounter, pay), formatMoney(amount, pay))}</p>
-          )}
-        </div>
-      </section>
+      <Section title={t.form.counter}>
+        <p className="small">{t.form.counterHint}</p>
+        <span className={shown.minCounter ? "input-wrap invalid" : "input-wrap"}>
+          <input
+            className="input-bare"
+            inputMode="numeric"
+            autoComplete="off"
+            aria-label={t.form.counterLabel}
+            aria-invalid={Boolean(shown.minCounter)}
+            placeholder={t.form.counterPlaceholder}
+            value={minCounterText}
+            onChange={(event) => setMinCounterText(formatAmountInput(event.target.value))}
+          />
+          <span className="input-suffix">{SYMBOL[buy]}</span>
+        </span>
+        {shown.minCounter && <p className="field-error">{shown.minCounter}</p>}
+        {minCounter !== null && amount !== null && !errors.minCounter && (
+          <p className="hint small">{t.form.counterRange(formatMoney(minCounter, buy), formatMoney(amount, buy))}</p>
+        )}
+      </Section>
 
       {!edit && (
         <Section title={t.form.duration}>
@@ -336,12 +278,10 @@ export function NewRequest(props: { active: boolean; prefill?: RequestTerms; edi
             value={duration}
             onChange={setDuration}
           />
-          <p className="hint small">{t.form.durationHint}</p>
         </Section>
       )}
 
       {error && <ErrorBox code={error} />}
-      <p className="hint small center">{t.form.disclaimer}</p>
     </div>
   );
 }

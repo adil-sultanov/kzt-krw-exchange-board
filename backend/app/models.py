@@ -1,6 +1,5 @@
 """Pydantic schemas."""
 
-import math
 import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -212,37 +211,28 @@ class AlertsUpdate(BaseModel):
 Direction = Literal["KZT_KRW", "KRW_KZT"]
 Currency = Literal["KZT", "KRW"]
 RequestStatus = Literal["open", "in_progress", "completed", "closed", "expired"]
-BoardSort = Literal["date", "rate", "amount"]
-# "desc" is newest, best rate for the viewer, or largest first.
+BoardSort = Literal["date", "amount"]
+# "desc" is newest or largest first.
 SortOrder = Literal["desc", "asc"]
 # `cancelled`: its responder cancelled it while it was pending.
 DealStatus = Literal["pending", "accepted", "declined", "cancelled", "completed"]
 DealRole = Literal["author", "responder"]
 
 MAX_AMOUNT = 100_000_000
-MAX_MARKET_OFFSET = 20.0  # percent
 
 
 Amount = Annotated[int, Field(gt=0, le=MAX_AMOUNT, strict=True)]
 DurationDays = Literal[1, 3]
 
 
-def _check_offset(value: float) -> float:
-    """A percent offset from the reference rate, rounded to 2 decimals."""
-    if not math.isfinite(value):
-        raise ValueError("rate must be finite")
-    if not -MAX_MARKET_OFFSET <= value <= MAX_MARKET_OFFSET:
-        raise ValueError("market offset out of range")
-    return round(value, 2)
-
-
 class RequestCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     direction: Direction
+    # In the currency the author buys (KRW for KZT_KRW, KZT for KRW_KZT): what they get is
+    # fixed, and what they pay follows the market rate until a deal is accepted.
     amount: Amount
-    # Percent offset from the reference (market) rate: 0 is the market rate itself.
-    rate_value: float = 0
+    # Always at the market rate: there's no offset to choose (`requests.rate_value` is 0).
     duration_days: DurationDays
     # The smallest counter offer the author accepts, in the request's currency (at most the
     # amount). Null turns counter offers off.
@@ -259,8 +249,7 @@ class RequestCreate(BaseModel):
         return _clean_kzt_bank(value)
 
     @model_validator(mode="after")
-    def _check_rate(self) -> Self:
-        self.rate_value = _check_offset(self.rate_value)
+    def _check_minimum(self) -> Self:
         if self.min_counter_amount is not None and self.min_counter_amount > self.amount:
             raise ValueError("minimum counter offer above the amount")
         return self
@@ -277,7 +266,6 @@ class RequestUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     amount: Amount | None = None
-    rate_value: float | None = None
     min_counter_amount: Amount | None = None
     kzt_bank: str | None = None
     extend_days: DurationDays | None = None
@@ -289,11 +277,8 @@ class RequestUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _check(self) -> Self:
-        if self.rate_value is not None:
-            self.rate_value = _check_offset(self.rate_value)
         if (
             self.amount is None
-            and self.rate_value is None
             and self.extend_days is None
             and "min_counter_amount" not in self.model_fields_set
             and "kzt_bank" not in self.model_fields_set
@@ -308,10 +293,10 @@ class RequestOut(BaseModel):
 
     id: int
     direction: Direction
+    # In the currency the author buys (see RequestCreate).
     amount: int
-    # Percent offset from the reference rate.
-    rate_value: float
-    # KRW per 1 KZT at the current reference rate (null while none is available).
+    # KRW per 1 KZT at the current reference rate (null while none is available). Requests
+    # posted before every request was at the market rate keep their offset here.
     effective_rate: float | None
     # The smallest counter offer the author accepts (null: counter offers are off).
     min_counter_amount: int | None
@@ -375,9 +360,9 @@ class DealOut(BaseModel):
     status: DealStatus
     # The viewer's side: 'author' posted the request, 'responder' took it.
     role: DealRole
-    # What the deal is for, in the request's currency: the whole request, or the part a
-    # counter offer asked for. `partial`: less than the whole request, whose rest stays on the
-    # board once it's accepted.
+    # What the deal is for, in the request's currency (what the author buys): the whole
+    # request, or the part a counter offer asked for. `partial`: less than the whole request,
+    # whose rest stays on the board once it's accepted.
     amount: int
     partial: bool
     # The whole request the deal is part of, in its currency: what's on the board now while the
@@ -393,6 +378,11 @@ class DealOut(BaseModel):
     request: RequestOut
     created_at: str
     updated_at: str
+    # When the author accepted it (null while pending, and for deals never accepted).
+    accepted_at: str | None
+    # KRW per 1 KZT, locked when the author accepted it: both amounts are exact from then on.
+    # Null while pending (the request's current rate applies) or if no rate was known then.
+    rate: float | None
 
 
 class ContactOut(BaseModel):
@@ -542,7 +532,6 @@ class CancelledRequestOut(BaseModel):
     id: int
     direction: Direction
     amount: int
-    rate_value: float
     created_at: str
     closed_at: str
     # Null for requests closed before this was recorded.
@@ -562,7 +551,6 @@ class AdminBoardRequestOut(BaseModel):
     id: int
     direction: Direction
     amount: int
-    rate_value: float
     effective_rate: float | None
     created_at: str
     expires_at: str

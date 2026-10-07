@@ -195,7 +195,7 @@ async def unban_user(db: Database, actor: User, user_id: int) -> AdminUserOut:
 # --- Board requests ---
 
 _SELECT_BOARD_REQUESTS = """
-SELECT r.id, r.user_id, r.direction, r.amount, r.rate_value, r.created_at, r.expires_at,
+SELECT r.id, r.user_id, r.direction, r.amount, r.created_at, r.expires_at,
        :ref * (1 + r.rate_value / 100.0) AS effective_rate,
        (SELECT COUNT(*) FROM reports rp WHERE rp.request_id = r.id AND rp.resolved = 0)
            AS open_reports
@@ -237,7 +237,6 @@ async def list_board_requests(db: Database, actor: User) -> list[AdminBoardReque
             id=row["id"],
             direction=row["direction"],
             amount=row["amount"],
-            rate_value=row["rate_value"],
             effective_rate=row["effective_rate"],
             created_at=row["created_at"],
             expires_at=row["expires_at"],
@@ -398,7 +397,7 @@ async def list_deals(db: Database, actor: User, *, active: bool) -> list[ListedD
 
 
 _SELECT_CANCELLED = """
-SELECT r.id, r.user_id, r.direction, r.amount, r.rate_value, r.created_at,
+SELECT r.id, r.user_id, r.direction, r.amount, r.created_at,
        r.updated_at AS closed_at, r.close_reason, r.closed_by,
        (SELECT COUNT(*) FROM reports rp WHERE rp.request_id = r.id AND rp.resolved = 0)
            AS open_reports
@@ -439,7 +438,6 @@ async def list_cancelled_requests(db: Database, actor: User) -> list[CancelledRe
             id=row["id"],
             direction=row["direction"],
             amount=row["amount"],
-            rate_value=row["rate_value"],
             created_at=row["created_at"],
             closed_at=row["closed_at"],
             close_reason=row["close_reason"],

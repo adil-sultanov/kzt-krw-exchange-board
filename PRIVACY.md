@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-10-01_
+_Last updated: 2026-10-07_
 
 This policy explains what the KZT ↔ KRW Exchange Board Telegram bot and Mini App (the
 "Service") stores and why. The Service is operated by Adil Sultanov
@@ -55,9 +55,10 @@ This policy explains what the KZT ↔ KRW Exchange Board Telegram bot and Mini A
 
 Your data is never sold or shared with third parties for advertising. There is no analytics
 or tracking. The bot messages you when someone takes your request or sends a counter offer on it (the
-message shows their profile: name, university and year of enrollment) and when your deal is
+message shows their profile: name, university and year of enrollment), when your deal is
+accepted, and once if you haven't confirmed receiving the money 3 hours after your deal was
 accepted. If you turn alerts on for a Board tab (they're off unless you do), it also messages
-you about each new request there: only its amounts and rate, never who posted it. If the bot
+you about each new request there: only its amounts, never who posted it. If the bot
 can't reach you (for example, you blocked it), your alerts are turned off. These
 messages never contain anyone's username. The Service runs inside Telegram, and
 [Telegram's privacy policy](https://telegram.org/privacy) applies to Telegram itself.

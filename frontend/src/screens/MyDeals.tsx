@@ -4,6 +4,7 @@ import { type CardStatus, RequestCard } from "../components/RequestCard";
 import { ChevronIcon } from "../components/icons";
 import { Collapse, Empty, ErrorBox, SkeletonList, TitleWithRefresh } from "../components/ui";
 import { askExtendDays } from "../extend";
+import { acceptQuestion } from "./Deal";
 import { timeLeft } from "../format";
 import { t } from "../i18n";
 import { lastMyLists, loadMyLists, type MyLists } from "../myLists";
@@ -132,7 +133,8 @@ export function MyDeals(props: { active: boolean }) {
   const [lists, setLists] = useState<MyLists | null>(lastMyLists);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  // What an action is running on: a request (extend or cancel) or an offer (cancel).
+  // What an action is running on: a request (extend or cancel) or a deal (accept, decline or
+  // cancel the offer).
   const [busy, setBusy] = useState<string | null>(null);
   // Responses to superseded loads are ignored.
   const loadSeq = useRef(0);
@@ -157,12 +159,14 @@ export function MyDeals(props: { active: boolean }) {
   useReactivated(props.active, load);
   usePolling(props.active, FAST_POLL_MS, () => fetchLists(true));
 
-  const runAction = async (key: string, action: () => Promise<unknown>) => {
+  /** Runs `action`, then `onDone` if it worked, and reloads the lists either way. */
+  const runAction = async (key: string, action: () => Promise<unknown>, onDone?: () => void) => {
     setBusy(key);
     setActionError(null);
     try {
       await action();
       haptic("success");
+      onDone?.();
     } catch (e) {
       haptic("error");
       setActionError(errorCode(e));
@@ -180,6 +184,51 @@ export function MyDeals(props: { active: boolean }) {
     if (busy !== null || !(await confirm(t.deal.cancelOfferConfirm(deal.request.offers_left ?? 0)))) return;
     await runAction(`deal-${deal.id}`, () => api.dealAction(deal.id, "cancel"));
   };
+
+  // Accepting opens the deal: that's where the contacts and where to pay are.
+  const acceptDeal = async (deal: Deal) => {
+    if (busy !== null || !(await confirm(acceptQuestion(deal)))) return;
+    await runAction(
+      `deal-${deal.id}`,
+      () => api.dealAction(deal.id, "accept"),
+      () => nav.push({ name: "deal", id: deal.id }),
+    );
+  };
+
+  const declineDeal = async (deal: Deal) => {
+    if (busy !== null || !(await confirm(t.deal.declineConfirm))) return;
+    await runAction(`deal-${deal.id}`, () => api.dealAction(deal.id, "decline"));
+  };
+
+  /** Accept and Decline: their own buttons, floating under the card of a deal waiting for the viewer's answer. */
+  const answerActions = (deal: Deal) => (
+    <div className="answer-actions">
+      {busy === `deal-${deal.id}` ? (
+        <button type="button" className="answer-button" disabled>
+          {t.loading}
+        </button>
+      ) : (
+        <>
+          <button
+            type="button"
+            className="answer-button accept"
+            disabled={busy !== null}
+            onClick={() => void acceptDeal(deal)}
+          >
+            {t.deal.accept}
+          </button>
+          <button
+            type="button"
+            className="answer-button decline"
+            disabled={busy !== null}
+            onClick={() => void declineDeal(deal)}
+          >
+            {t.deal.decline}
+          </button>
+        </>
+      )}
+    </div>
+  );
 
   const extendRequest = async (request: ExchangeRequest) => {
     if (busy !== null) return;
@@ -203,6 +252,14 @@ export function MyDeals(props: { active: boolean }) {
         onOpen={() => nav.push({ name: "deal", id: deal.id })}
       />
     );
+    if (deal.role === "author" && deal.status === "pending") {
+      return (
+        <div key={deal.id} className="answer-stack">
+          {card}
+          {answerActions(deal)}
+        </div>
+      );
+    }
     if (!canCancelOffer(deal)) return card;
     return (
       <div key={deal.id} className="card-stack">
@@ -220,44 +277,47 @@ export function MyDeals(props: { active: boolean }) {
   };
 
   const requestCard = (request: ExchangeRequest, taker: Deal | undefined) => (
-    <div key={`request-${request.id}`} className="card-stack">
-      <RequestCard
-        // Someone's counter offer waiting for an answer: what it asks for, over the whole request.
-        request={taker?.partial ? dealTerms(taker) : request}
-        whole={taker?.partial ? request : null}
-        status={ownRequestStatus(request, taker)}
-        profile={taker ? taker.other_profile : undefined}
-        deals={taker ? taker.other_completed_deals : undefined}
-        onOpen={() => nav.push(taker ? { name: "deal", id: taker.id } : { name: "request", id: request.id })}
-      />
-      <div className="card-actions">
-        {busy === `request-${request.id}` ? (
-          <button type="button" className="card-action" disabled>
-            {t.loading}
-          </button>
-        ) : (
-          <>
-            {extendOptions(request).length > 0 && (
+    <div key={`request-${request.id}`} className="answer-stack">
+      <div className="card-stack">
+        <RequestCard
+          // Someone's counter offer waiting for an answer: what it asks for, over the whole request.
+          request={taker?.partial ? dealTerms(taker) : request}
+          whole={taker?.partial ? request : null}
+          status={ownRequestStatus(request, taker)}
+          profile={taker ? taker.other_profile : undefined}
+          deals={taker ? taker.other_completed_deals : undefined}
+          onOpen={() => nav.push(taker ? { name: "deal", id: taker.id } : { name: "request", id: request.id })}
+        />
+        <div className="card-actions">
+          {busy === `request-${request.id}` ? (
+            <button type="button" className="card-action" disabled>
+              {t.loading}
+            </button>
+          ) : (
+            <>
+              {extendOptions(request).length > 0 && (
+                <button
+                  type="button"
+                  className="card-action neutral"
+                  disabled={busy !== null}
+                  onClick={() => void extendRequest(request)}
+                >
+                  {t.extend.button}
+                </button>
+              )}
               <button
                 type="button"
-                className="card-action neutral"
+                className="card-action"
                 disabled={busy !== null}
-                onClick={() => void extendRequest(request)}
+                onClick={() => void cancelRequest(request.id)}
               >
-                {t.extend.button}
+                {t.cancelRequest.button}
               </button>
-            )}
-            <button
-              type="button"
-              className="card-action"
-              disabled={busy !== null}
-              onClick={() => void cancelRequest(request.id)}
-            >
-              {t.cancelRequest.button}
-            </button>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
+      {taker && answerActions(taker)}
     </div>
   );
 

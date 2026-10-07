@@ -8,7 +8,6 @@ const rateFormat = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 4,
 });
-const percentFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const kstFormat = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Seoul",
   day: "numeric",
@@ -60,22 +59,6 @@ export function formatRatePair(rate: number): string {
   return t.rate.pair(formatRate(rate));
 }
 
-export function formatPercent(percent: number): string {
-  return `${percentFormat.format(percent)}%`;
-}
-
-export type RateTone = "market" | "better" | "worse";
-
-/** How the rate compares to the market for the viewer (see viewerRateGain). */
-export function rateTone(gain: number): RateTone {
-  return gain > 0 ? "better" : gain < 0 ? "worse" : "market";
-}
-
-export function describeRateGain(gain: number): string {
-  const tone = rateTone(gain);
-  return tone === "market" ? t.rate.market : t.rate[tone](formatPercent(Math.abs(gain)));
-}
-
 /** Timestamps are UTC in the API and shown in Korea time. */
 export function formatKst(iso: string): string {
   return t.time.kst(kstFormat.format(new Date(iso)));
@@ -112,15 +95,3 @@ export function parseAmount(text: string): number | null {
   return digits ? Number(digits) : null;
 }
 
-/** Keeps a decimal number as typed (comma accepted), with at most `decimals` places. */
-export function formatDecimalInput(text: string, decimals: number): string {
-  const [whole = "", ...rest] = text.replace(/,/g, ".").replace(/[^\d.]/g, "").split(".");
-  if (rest.length === 0) return whole.slice(0, 3);
-  return `${whole.slice(0, 3) || "0"}.${rest.join("").slice(0, decimals)}`;
-}
-
-export function parseDecimal(text: string): number | null {
-  if (!text || text === ".") return null;
-  const value = Number(text);
-  return Number.isFinite(value) ? value : null;
-}

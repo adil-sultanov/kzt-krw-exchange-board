@@ -7,7 +7,7 @@ import { t } from "../i18n";
 import { useMe } from "../me";
 import { useTabList } from "../tabList";
 import { confirm, haptic } from "../telegram";
-import { type AdminReport, type AdminUser, giveCurrency } from "../types";
+import { type AdminReport, type AdminUser, amountCurrency } from "../types";
 
 type Tab = "open" | "resolved";
 
@@ -37,7 +37,7 @@ function ReportCard(props: { report: AdminReport; busy: boolean; onAction: (acti
       </div>
       {report.note && <p className="admin-note">{report.note}</p>}
       <p className="small">
-        {t.admin.request(request.id)} · {formatMoney(request.amount, giveCurrency(request.direction))} ·{" "}
+        {t.admin.request(request.id)} · {formatMoney(request.amount, amountCurrency(request.direction))} ·{" "}
         {requestStatus(request)}
         {deal && (
           <>

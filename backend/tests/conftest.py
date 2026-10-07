@@ -54,6 +54,9 @@ class FakeNotifier:
     def deal_accepted(self, responder_id: int, deal: DealOut) -> None:
         self.sent.append(("accepted", responder_id, deal))
 
+    def payment_reminder(self, user_id: int, deal: DealOut) -> None:
+        self.sent.append(("reminder", user_id, deal))
+
     def request_posted(self, request_id: int) -> None:
         self.posted.append(request_id)
 

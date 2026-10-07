@@ -3,8 +3,7 @@ for (off by default), and crosses those messages out once the request leaves the
 
 Sending runs in the background after the request's transaction commits (see
 app/bot/alerts.py); this module decides who gets what and keeps track of what was sent.
-Alert messages carry no names or usernames: only amounts, the rate and a button to open
-the request.
+Alert messages carry no names or usernames: only amounts and a button to open the request.
 """
 
 from dataclasses import dataclass
@@ -27,9 +26,8 @@ class Alert:
 
     request_id: int
     direction: Direction
-    # In the request's currency: what whoever takes it gets.
+    # In the request's currency (what its author buys): what whoever takes it pays.
     amount: int
-    rate_value: float
     # KRW per 1 KZT at the current reference rate (None while none is available).
     effective_rate: float | None
     # Who has alerts on for its tab: not its author, and nobody banned.
@@ -87,7 +85,6 @@ async def load_alert(db: Database, request_id: int) -> Alert | None:
         request_id=request_id,
         direction=request["direction"],
         amount=request["amount"],
-        rate_value=request["rate_value"],
         effective_rate=rate.rate * (1 + request["rate_value"] / 100) if rate else None,
         recipients=recipients,
     )

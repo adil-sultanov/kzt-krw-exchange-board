@@ -1,6 +1,6 @@
-import { describeRateGain, formatProfile, formatSide, rateTone, timeLeft } from "../format";
+import { formatProfile, formatSide, timeLeft } from "../format";
 import { t } from "../i18n";
-import { type ExchangeRequest, type Profile, viewerRateGain, viewerSides } from "../types";
+import { type ExchangeRequest, type Profile, viewerSides } from "../types";
 
 /** The whole request under a counter offer's amounts, dimmed. */
 export function WholeRequest(props: { request: ExchangeRequest; className?: string }) {
@@ -23,8 +23,8 @@ export interface CardStatus {
 }
 
 /**
- * A request as the viewer sees it: what they pay and get, the rate compared to the market,
- * the other side's record and the time left.
+ * A request as the viewer sees it: what they pay and get, the other side's record and the time
+ * left.
  *
  * The author's username (on someone else's request) opens their Telegram profile, so the viewer
  * can check who they'd trade with.
@@ -35,7 +35,7 @@ export interface CardStatus {
  * profile tag ("Adil Sultanov, UNIST, 2022") and completed-deal count (by default the author's,
  * hidden on the viewer's own requests). `time` shows the time left while the request is on the
  * board. `whole` is the whole request under a counter offer's amounts (shown dimmed below them).
- * The author's preferred KZT bank, if any, goes under the rate.
+ * The author's preferred KZT bank, if any, goes at the bottom.
  */
 export function RequestCard(props: {
   request: ExchangeRequest;
@@ -56,7 +56,6 @@ export function RequestCard(props: {
     : null;
   const status = props.status !== undefined ? props.status : fallback;
   const { pay, get } = viewerSides(request);
-  const gain = viewerRateGain(request);
   const profile = props.profile !== undefined ? props.profile : request.is_own ? null : request.author_profile;
   const tag = formatProfile(profile);
   const username = request.is_own ? null : request.author_username;
@@ -95,7 +94,6 @@ export function RequestCard(props: {
       </span>
       {props.whole && <WholeRequest request={props.whole} />}
       <span className="card-meta">
-        <span className={`rate-tag ${rateTone(gain)}`}>{describeRateGain(gain)}</span>
         {deals !== null && <span>{t.card.deals(deals)}</span>}
         {left && <span className="card-time">{t.card.timeLeft(left)}</span>}
       </span>

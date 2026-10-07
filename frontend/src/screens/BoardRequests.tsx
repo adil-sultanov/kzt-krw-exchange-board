@@ -2,23 +2,22 @@ import { useState } from "react";
 import { api, errorCode } from "../api";
 import { Person } from "../components/AdminPerson";
 import { Empty, ErrorBox, SkeletonList, TitleWithRefresh } from "../components/ui";
-import { describeRateGain, formatKstShort, formatMoney, formatRatePair, formatSide, rateTone, timeLeft } from "../format";
+import { formatKstShort, formatMoney, formatRatePair, formatSide, timeLeft } from "../format";
 import { t } from "../i18n";
 import { useTabList } from "../tabList";
 import { confirm, haptic } from "../telegram";
-import { type AdminBoardRequest, convert, getCurrency, giveCurrency, viewerRateGain } from "../types";
+import { type AdminBoardRequest, amountCurrency, convert, giveCurrency } from "../types";
 
 function RequestCard(props: { request: AdminBoardRequest; busy: boolean; onRemove: () => void }) {
   const { request, busy } = props;
-  const give = giveCurrency(request.direction);
-  const pay = formatMoney(request.amount, give);
-  const get = formatSide({
-    currency: getCurrency(request.direction),
-    amount: request.effective_rate === null ? null : convert(request.amount, give, request.effective_rate),
+  // The author gets the (fixed) amount, and pays the other currency at the rate.
+  const currency = amountCurrency(request.direction);
+  const get = formatMoney(request.amount, currency);
+  const pay = formatSide({
+    currency: giveCurrency(request.direction),
+    amount: request.effective_rate === null ? null : convert(request.amount, currency, request.effective_rate),
     approx: true,
   });
-  // The rate as its author sees it.
-  const gain = viewerRateGain({ ...request, is_own: true });
   const left = timeLeft(request.expires_at);
   return (
     <div className="card">
@@ -30,9 +29,9 @@ function RequestCard(props: { request: AdminBoardRequest; busy: boolean; onRemov
         {t.boardRequests.exchange(pay, get)}
         <br />
         <span className="hint">
-          {request.effective_rate !== null && `${formatRatePair(request.effective_rate)} · `}
-          <span className={`rate-tag ${rateTone(gain)}`}>{describeRateGain(gain)}</span>
-          {left && ` · ${t.boardRequests.leaves(left)}`}
+          {[request.effective_rate !== null && formatRatePair(request.effective_rate), left && t.boardRequests.leaves(left)]
+            .filter(Boolean)
+            .join(" · ")}
         </span>
         {request.open_reports > 0 && (
           <>

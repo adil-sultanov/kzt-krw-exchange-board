@@ -47,11 +47,11 @@ def test_create_request(client: TestClient) -> None:
     request = body["request"]
     assert request["direction"] == "KZT_KRW"
     assert request["amount"] == 100_000
-    assert request["rate_value"] == 1.5
     assert request["effective_rate"] is None  # no reference rate yet
     assert "payment_methods" not in request
     assert "note" not in request
     assert "rate_type" not in request
+    assert "rate_value" not in request  # always the market rate
     assert request["status"] == "open"
     assert request["is_own"] is True
     assert request["author_completed_deals"] == 0
@@ -128,9 +128,9 @@ def test_banned_user_cannot_post(client: TestClient, settings: Settings) -> None
         {"amount": 1.5},
         {"amount": "100"},
         {"amount": 10**12},
-        {"rate_value": 20.01},
-        {"rate_value": -25},
-        {"rate_value": "NaN"},
+        # Always the market rate: no offset to choose, not even 0.
+        {"rate_value": 1.5},
+        {"rate_value": 0},
         {"rate_type": "fixed"},
         {"payment_methods": ["kaspi"]},
         {"duration_days": 2},
@@ -148,11 +148,6 @@ def test_create_rejects_invalid_input(client: TestClient, overrides: dict[str, A
     response = post(client, AIDA, **overrides)
     assert response.status_code == 422
     assert response.json() == {"detail": "invalid_input"}
-
-
-def test_create_normalizes_input(client: TestClient) -> None:
-    request = create(client, AIDA, rate_value=-2.345)
-    assert request["rate_value"] == -2.35
 
 
 def me(client: TestClient, user: dict[str, Any]) -> dict[str, Any]:
@@ -182,15 +177,12 @@ def test_preferred_kzt_bank_is_remembered_on_request(client: TestClient) -> None
     assert me(client, BEK)["saved_kzt_bank"] is None
 
 
-def test_create_defaults_to_market_rate(client: TestClient, settings: Settings) -> None:
+def test_create_is_at_the_market_rate(client: TestClient, settings: Settings) -> None:
     sql(settings, "INSERT INTO reference_rate VALUES (1, 2.7, 'test', '2026-01-01T00:00:00+00:00')")
-    body = {key: value for key, value in VALID.items() if key != "rate_value"}
     fill_profile(client, AIDA)
-    response = client.post("/api/requests", json=body, headers=auth_as(AIDA))
+    response = client.post("/api/requests", json=VALID, headers=auth_as(AIDA))
     assert response.status_code == 201
-    request = response.json()["request"]
-    assert request["rate_value"] == 0
-    assert request["effective_rate"] == pytest.approx(2.7)
+    assert response.json()["request"]["effective_rate"] == pytest.approx(2.7)
 
 
 def test_open_request_limit(client: TestClient, settings: Settings) -> None:
@@ -243,30 +235,32 @@ def test_board_filters(client: TestClient) -> None:
 
 
 def test_board_sorting(client: TestClient, settings: Settings) -> None:
-    below = create(client, BEK, rate_value=-3, amount=300)["id"]
-    above = create(client, BEK, rate_value=5, amount=100)["id"]
-    market = create(client, BEK, rate_value=0, amount=200)["id"]
-    krw = create(client, BEK, direction="KRW_KZT", rate_value=2, amount=400)["id"]
+    below = create(client, BEK, amount=300)["id"]
+    above = create(client, BEK, amount=100)["id"]
+    market = create(client, BEK, amount=200)["id"]
+    krw = create(client, BEK, direction="KRW_KZT", amount=400)["id"]
+    # New requests are always at the market rate; ones posted before could have an offset.
+    for request_id, offset in ((below, -3), (above, 5), (krw, 2)):
+        sql(settings, "UPDATE requests SET rate_value = ? WHERE id = ?", (offset, request_id))
 
-    # Best rate for the taker first, even without a reference rate: the taker of a KZT_KRW
-    # request pays KRW, so a lower rate is better; of a KRW_KZT one, a higher rate.
-    assert board_ids(client, AIDA, sort="rate") == [below, krw, market, above]
-    assert board_ids(client, AIDA, sort="rate", order="asc") == [above, market, krw, below]
-    # Without a reference rate, a KRW amount can't be compared with KZT ones: it comes last.
-    assert board_ids(client, AIDA, sort="amount") == [below, market, above, krw]
-    assert board_ids(client, AIDA, sort="amount", order="asc") == [above, market, below, krw]
+    # Amounts are in what the author buys: KRW for KZT_KRW. Without a reference rate, KRW
+    # amounts can't be compared with KZT ones: they come last (newest first).
+    assert board_ids(client, AIDA, sort="amount") == [krw, market, above, below]
+    assert board_ids(client, AIDA, sort="amount", order="asc") == [krw, market, above, below]
 
     sql(settings, "INSERT INTO reference_rate VALUES (1, 2.7, 'test', '2026-01-01T00:00:00+00:00')")
-    items = board(client, AIDA, sort="rate", direction="KZT_KRW")
-    assert [item["id"] for item in items] == [below, market, above]
-    assert [item["effective_rate"] for item in items] == pytest.approx([2.619, 2.7, 2.835])
+    # An older request's offset still shows in its rate.
+    items = board(client, AIDA, direction="KZT_KRW", order="asc")
+    assert [item["id"] for item in items] == [below, above, market]
+    assert [item["effective_rate"] for item in items] == pytest.approx([2.619, 2.835, 2.7])
 
     # Within a tab, by amount; across both, KRW amounts count as KZT at the request's rate.
     kzt_krw = {"direction": "KZT_KRW", "sort": "amount"}
     assert board_ids(client, AIDA, **kzt_krw, order="asc") == [above, market, below]
     assert board_ids(client, AIDA, **kzt_krw) == [below, market, above]
-    assert board_ids(client, AIDA, sort="amount") == [below, market, krw, above]  # 400 ₩ ≈ 145 ₸
-    assert board_ids(client, AIDA, sort="amount", order="asc") == [above, krw, market, below]
+    # 300 ₩ ≈ 115 ₸, 200 ₩ ≈ 74 ₸, 100 ₩ ≈ 35 ₸; the KRW_KZT request is 400 ₸.
+    assert board_ids(client, AIDA, sort="amount") == [krw, below, market, above]
+    assert board_ids(client, AIDA, sort="amount", order="asc") == [above, market, below, krw]
     assert board_ids(client, AIDA) == [krw, market, above, below]  # newest first
     assert board_ids(client, AIDA, order="asc") == [below, above, market, krw]
     assert client.get(
@@ -282,7 +276,7 @@ def test_board_pagination(client: TestClient) -> None:
 
 @pytest.mark.parametrize(
     "params",
-    [{"sort": "random"}, {"order": "up"}, {"limit": 0}, {"limit": 101}],
+    [{"sort": "random"}, {"sort": "rate"}, {"order": "up"}, {"limit": 0}, {"limit": 101}],
 )
 def test_board_rejects_bad_params(client: TestClient, params: dict[str, Any]) -> None:
     response = client.get("/api/requests", params=params, headers=auth_as(AIDA))
@@ -393,12 +387,12 @@ def iso_in(**delta: float) -> str:
     return (datetime.now(UTC) + timedelta(**delta)).isoformat(timespec="seconds")
 
 
-def test_edit_amount_and_rate(client: TestClient) -> None:
+def test_edit_amount(client: TestClient) -> None:
     request_id = create(client, AIDA)["id"]
-    response = edit(client, AIDA, request_id, amount=250_000, rate_value=-2.345)
+    response = edit(client, AIDA, request_id, amount=250_000)
     assert response.status_code == 200, response.json()
     body = response.json()
-    assert (body["amount"], body["rate_value"]) == (250_000, -2.35)
+    assert body["amount"] == 250_000
     assert body["pending_count"] == 0
     assert client.get(f"/api/requests/{request_id}", headers=auth_as(BEK)).json()["amount"] == (
         250_000
@@ -538,14 +532,15 @@ def test_matches_are_opposite_requests_closest_in_size(
     client: TestClient, settings: Settings
 ) -> None:
     sql(settings, "INSERT INTO reference_rate VALUES (1, 2.0, 'test', '2026-01-01T00:00:00+00:00')")
-    # KRW→KZT requests from others; in KZT these are worth 50k, 95k and 400k.
-    far = create(client, BEK, direction="KRW_KZT", amount=800_000, rate_value=0)["id"]
-    close = create(client, BEK, direction="KRW_KZT", amount=190_000, rate_value=0)["id"]
-    market = create(client, DANA, direction="KRW_KZT", amount=100_000, rate_value=0)["id"]
+    # KRW→KZT requests from others, whose authors buy 400k, 95k and 50k ₸.
+    far = create(client, BEK, direction="KRW_KZT", amount=400_000)["id"]
+    close = create(client, BEK, direction="KRW_KZT", amount=95_000)["id"]
+    market = create(client, DANA, direction="KRW_KZT", amount=50_000)["id"]
     create(client, BEK, direction="KZT_KRW")  # same direction: not a match
     create(client, AIDA, direction="KRW_KZT")  # own: not a match
 
-    response = post(client, AIDA, direction="KZT_KRW", amount=100_000)
+    # Buying 200,000 ₩ at 2.0: worth 100,000 ₸.
+    response = post(client, AIDA, direction="KZT_KRW", amount=200_000)
     assert [m["id"] for m in response.json()["matches"]] == [close, market, far]
 
 

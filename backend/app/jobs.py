@@ -7,13 +7,14 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.backup import run_backup
 from app.config import Settings
 from app.db import Database
-from app.services.deals import delete_old_deals
+from app.services.deals import delete_old_deals, remind_unconfirmed
 from app.services.notifications import Notifier
 from app.services.rates import refresh_reference_rate
 from app.services.requests import expire_due
 
 RATE_REFRESH_MINUTES = 60
 EXPIRY_MINUTES = 5
+REMINDER_MINUTES = 5
 CLEANUP_HOURS = 24
 BACKUP_HOUR_UTC = 18  # 03:00 KST, when the board is quietest
 
@@ -36,6 +37,16 @@ def build_scheduler(db: Database, settings: Settings, notifier: Notifier) -> Asy
         minutes=EXPIRY_MINUTES,
         args=[db, notifier],
         id="expire_due",
+        next_run_time=datetime.now(UTC),
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        remind_unconfirmed,
+        "interval",
+        minutes=REMINDER_MINUTES,
+        args=[db, notifier],
+        id="remind_unconfirmed",
         next_run_time=datetime.now(UTC),
         max_instances=1,
         coalesce=True,

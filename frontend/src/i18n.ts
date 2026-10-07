@@ -32,6 +32,9 @@ export const t = {
   side: {
     pay: "You pay",
     get: "You get",
+    /** On an amount that follows the market rate as you type the other one. */
+    payApprox: "You pay ≈",
+    getApprox: "You get ≈",
     approx: (money: string) => `≈ ${money}`,
     unknown: (symbol: string) => `— ${symbol}`,
   },
@@ -56,31 +59,24 @@ export const t = {
       "currency-api": "Currency API",
       "open.er-api.com": "ExchangeRate-API",
     } as Partial<Record<string, string>>,
-    // Always for the viewer: "better" means they get more than at the market rate.
-    market: "Market rate",
-    better: (percent: string) => `${percent} better rate`,
-    worse: (percent: string) => `${percent} worse rate`,
   },
 
   board: {
+    howItWorks: "How it works",
     filters: "Filters",
     alerts: "Alerts",
     alertsNew: "New",
     alertsFor: (tab: string) => `Alerts for ${tab}`,
     alertsState: { off: "Off", on: "On" },
-    alertsHint:
-      "The bot messages you about each new request in this tab, and crosses the message out " +
-      "once the request is gone. Turn it off any time.",
+    alertsHint: "A bot message for each new request here.",
     sort: {
       date: "Date",
       amount: "Amount",
-      rate: "Rate",
     } satisfies Record<BoardSort, string>,
     // What comes first, on the button that flips the order.
     order: {
       date: { desc: "Newest first", asc: "Oldest first" },
       amount: { desc: "Largest first", asc: "Smallest first" },
-      rate: { desc: "Best first", asc: "Worst first" },
     } satisfies Record<BoardSort, Record<SortOrder, string>>,
     sortBy: "Sort by",
     clear: "Clear",
@@ -92,6 +88,8 @@ export const t = {
     needsAction: (count: number) =>
       count === 1 ? "1 thing needs your attention" : `${count} things need your attention`,
     profile: "Profile",
+    confirmTitle: (count: number) =>
+      count === 1 ? "Did you get the money?" : `Did you get the money? ${count} deals are waiting`,
     take: "Take request",
     counterOffer: "Counter offer",
   },
@@ -113,11 +111,10 @@ export const t = {
     timeLeft: "Time left",
     until: (time: string) => `until ${time}`,
     status: "Status",
-    own: "It's on the board. The bot will message you when someone takes it or sends a counter offer.",
     ownPending: "Someone is waiting for your answer in My deals.",
     expiresSoon: "It leaves the board soon. Extend it to keep it up.",
     edit: "Edit",
-    editLocked: "Someone is waiting for your answer, so the terms can't change until you answer.",
+    editLocked: "Answer the person waiting before you edit.",
     counterOffers: "Counter offers",
     counterFrom: (money: string) => `From ${money}`,
     counterOff: "Whole amount only",
@@ -131,23 +128,16 @@ export const t = {
       completed: "You completed this deal.",
     } satisfies Record<DealStatus, string>,
     /** After cancelling their offer, with offers left to send. */
-    cancelledResend: (left: number) =>
-      `You cancelled your offer. You can send a new one: ${offersLeft(left)} on this request.`,
-    offersUsedUp: "You cancelled your offers on this request, and can't send another: 3 is the most.",
+    cancelledResend: (left: number) => `You cancelled your offer. ${offersLeft(left)}.`,
+    offersUsedUp: "You've used all 3 offers on this request.",
     notOpen: "This request is no longer on the board.",
     removed: "An admin took this request off the board.",
     take: "Take request",
     counterOffer: "Counter offer",
-    takeConfirm: (get: string, pay: string) =>
-      `You get ${get} and pay ${pay}.\n\n` +
-      "The author gets a message. If they accept, you'll see each other's contact and payment details.",
+    takeConfirm: (get: string, pay: string) => `Take this request?\n\nYou get ${get} and pay ${pay}.`,
     openDeal: "Open my deal",
-    usernameRequired:
-      "You need a Telegram username to take a request: it's how the author contacts you. " +
-      "Set one in Telegram Settings, then reopen the app.",
-    profileRequired:
-      "Fill in your name, university and year of enrollment to take a request. " +
-      "The author sees them, as you see theirs.",
+    usernameRequired: "You need a Telegram username: set one in Telegram Settings, then reopen the app.",
+    profileRequired: "Fill in your profile to take a request.",
     banned: "Your account can't take requests.",
     report: "Report this request",
   },
@@ -168,33 +158,37 @@ export const t = {
     needsAnswer: "Waiting for your answer",
     needsConfirm: "Confirm you got the money",
     them: "With",
-    theirDeals: "Their record",
+    noProfile: "No profile",
+    details: "Deal details",
+    wholeRequest: "Whole request",
     started: "Started",
+    acceptedAt: "Accepted",
+    rateLocked: "Locked when accepted",
     banner: {
       authorPending: {
         title: "Someone wants to take your request",
-        body: "Accept to swap Telegram contacts and payment details.",
+        body: "Accept to swap contacts and payment details.",
       },
       authorCounter: {
         title: "Someone sent a counter offer",
         body: (part: string, whole: string) =>
-          `They want ${part} of the ${whole} you pay. Accept to swap contacts; the rest stays on the board.`,
+          `They offer ${part} of the ${whole} you're buying.`,
       },
       responderPending: {
         title: "Waiting for the author",
-        body: "The bot will message you when they accept. Until then, you can cancel your offer.",
+        body: "The bot will message you when they accept.",
       },
       accepted: {
         title: "Deal accepted",
-        body: "Message them to agree on the details, then pay each other directly.",
+        body: "Message them, then pay each other directly.",
       },
       waitingForThem: {
         title: "Waiting for them",
-        body: "You confirmed their payment. Now they need to confirm yours.",
+        body: "They still need to confirm your payment.",
       },
       otherConfirmed: {
         title: "They got your money",
-        body: "Confirm below once theirs is in your account.",
+        body: "Confirm once theirs is in your account.",
       },
       completed: { title: "Deal completed", body: "You both confirmed receiving the money." },
       declinedAuthor: { title: "Declined", body: "You declined this person." },
@@ -204,14 +198,11 @@ export const t = {
       expired: { title: "Request expired", body: "It expired before an answer." },
       offerCancelledResponder: {
         title: "Offer cancelled",
-        body: (left: number) =>
-          left > 0
-            ? `You cancelled it before the author answered. You can send a new one: ${offersLeft(left)}.`
-            : "You cancelled it before the author answered. You've used all 3 offers on this request.",
+        body: (left: number) => (left > 0 ? `You can send a new one: ${offersLeft(left)}.` : "No offers left on this request."),
       },
       offerCancelledAuthor: {
         title: "Offer withdrawn",
-        body: "They cancelled their offer before you answered. Your request stays on the board.",
+        body: "Your request stays on the board.",
       },
       removed: { title: "Removed by an admin", body: "An admin took this request off the board." },
     },
@@ -236,8 +227,9 @@ export const t = {
         ? `You can send a new one afterwards: ${offersLeft(left)} on this request.`
         : "This is your 3rd offer on this request, so you can't send another."),
     newOffer: "Send a new offer",
-    contact: "Message on Telegram",
-    confirm: "I received the money",
+    message: "Message",
+    confirm: "Received payment",
+    confirmed: "You confirmed",
     confirmQuestion:
       "Only confirm once their money is in your account. This can't be undone.",
     payTo: (money: string) => `Send ${money} to`,
@@ -245,16 +237,13 @@ export const t = {
       `They haven't added where they receive ${currency} yet. Ask them in chat.`,
     copy: "Copy",
     copied: "Copied",
-    report: "Report a problem",
-    reported:
-      "You reported this deal, and an admin will review it. It stays open until you both confirm.",
+    reportShort: "Report",
+    reportedShort: "Reported",
+    reported: "You reported this deal. An admin will review it.",
   },
 
   counter: {
     title: "Counter offer",
-    intro:
-      "Ask for part of this request. If the author accepts, you exchange that part, " +
-      "and the rest stays on the board for others.",
     yourOffer: "Your offer",
     range: (min: string, max: string) => `From ${min} up to ${max}.`,
     submit: "Send counter offer",
@@ -270,10 +259,8 @@ export const t = {
   report: {
     title: "Report",
     titleDeal: "Report a problem",
-    introRequest: "Tell an admin what's wrong with this request. The author isn't told who reported it.",
-    introDeal:
-      "Tell an admin what went wrong. The deal stays open until you both confirm. " +
-      "Admins can ban users, but can't move or return money.",
+    introRequest: "The author won't know it was you.",
+    introDeal: "An admin will review it. Admins can ban users, but can't move or return money.",
     reason: "What's wrong?",
     categories: {
       scam: "Scam or fraud",
@@ -398,7 +385,7 @@ export const t = {
       "Anyone who had taken one was declined.",
     empty: "No deals",
     emptyCancelled: "No cancelled requests",
-    authorPays: (money: string, currency: string) => `Author pays ${money} for ${currency}`,
+    authorBuys: (money: string, currency: string) => `Author buys ${money} for ${currency}`,
     closedAt: (time: string) => `Closed ${time}`,
     // `who` is the author or admin, e.g. "@aida".
     closedBy: {
@@ -436,14 +423,13 @@ export const t = {
   },
 
   receiveHint: {
-    missing: (currency: string) =>
-      `Add where you receive ${currency}, so the other person knows where to pay you.`,
+    missing: (currency: string) => `Add where you receive ${currency}, so they know where to pay you.`,
     open: "Add details",
   },
 
   profile: {
     you: "About you",
-    youHint: "Shown on your requests and deals. You need it to post or take a request.",
+    youHint: "Shown on your requests and deals.",
     firstName: "First name",
     firstNamePlaceholder: "e.g. Adil",
     lastName: "Last name",
@@ -473,6 +459,7 @@ export const t = {
     save: "Save",
     saved: "Saved",
     more: "More",
+    guide: "How it works",
     about: "About & support",
     admin: "Admin: reports",
     boardRequests: "Admin: board requests",
@@ -504,60 +491,80 @@ export const t = {
     title: "New request",
     editTitle: "Edit request",
     amountPlaceholder: "0",
-    rate: "Rate",
-    rateChoice: {
-      market: "Market",
-      ask: "Ask more",
-      offer: "Offer more",
-    } satisfies Record<"market" | "ask" | "offer", string>,
-    rateHint: {
-      market: "Follows the market rate as it moves.",
-      ask: "You get more, but it may take longer to find someone.",
-      offer: "The other person gets a better rate, so it's taken sooner.",
-    } satisfies Record<"market" | "ask" | "offer", string>,
-    percentLabel: "By how much",
-    percentPlaceholder: "1.5",
-    rateNow: (rate: string) => `Now ${rate}`,
+    rateNow: (rate: string) => `Market rate: ${rate}`,
     duration: "Keep on the board",
     days: (days: number) => (days === 1 ? "1 day" : `${days} days`),
-    durationHint: "It leaves the board early once you accept someone for all of it, or cancel it.",
     counter: "Counter offers",
-    counterHint:
-      "Let people take just part of your request: set the smallest part you'd accept. " +
-      "Leave it empty to deal only in the whole amount.",
+    counterHint: "Let people take just part of it.",
     counterLabel: "Smallest part",
-    counterPlaceholder: "Optional",
+    counterPlaceholder: "Smallest part (optional)",
     counterRange: (min: string, max: string) => `People can ask for ${min} up to ${max}.`,
     kztBank: "Preferred KZT bank",
-    kztBankHint: "Optional. Shown on your request, so people can see which bank you'd rather use for KZT.",
-    kztBankPlaceholder: "e.g. Kaspi",
+    kztBankPlaceholder: "Optional, e.g. Kaspi",
     kztBankRemember: "Remember for my next requests",
     submit: "Post request",
     save: "Save changes",
     errors: {
       amount: "Enter an amount.",
       amountTooLarge: "That amount is too large.",
-      percent: "Enter a percentage.",
-      percentRange: (max: number) => `At most ${max}%.`,
-      counterAboveAmount: "At most the amount you pay.",
+      counterAboveAmount: "At most the amount you get.",
       kztBank: "Use letters, digits and spaces only: no links or emoji.",
     },
-    usernameRequired:
-      "You need a Telegram username to post a request: it's how the other person contacts you. " +
-      "Set one in Telegram Settings, then reopen the app.",
-    profileRequired:
-      "Fill in your name, university and year of enrollment to post a request. " +
-      "They're shown on it, so people know who they're dealing with.",
+    usernameRequired: "You need a Telegram username: set one in Telegram Settings, then reopen the app.",
+    profileRequired: "Fill in your profile to post a request.",
     banned: "Your account can't post requests.",
-    disclaimer: "The app never handles money: you pay each other directly, at your own risk.",
   },
 
   created: {
     title: "Request posted",
     body: "The bot will message you when someone takes it.",
     matches: "Matches you can take now",
-    noMatches: "No matches yet. People looking for it will see yours on the board.",
+    noMatches: "No matches yet.",
     done: "Done",
+  },
+
+  guide: {
+    title: "How it works",
+    sections: [
+      {
+        title: "The basics",
+        points: [
+          "A free board for KZT ↔ KRW exchanges between students.",
+          "The app never touches money: you pay each other directly.",
+          "You need a Telegram username and a filled-in profile.",
+        ],
+      },
+      {
+        title: "Posting",
+        points: [
+          "What you get is fixed. What you pay (≈) follows the market rate until you accept someone.",
+          "Allow counter offers to let people take just part of it.",
+          "It stays up 1 or 3 days. You can extend it.",
+        ],
+      },
+      {
+        title: "Taking",
+        points: [
+          "Take the whole request, or send a counter offer for part of it.",
+          "Up to 3 offers per request. Once declined, you can't try again.",
+        ],
+      },
+      {
+        title: "Deals",
+        points: [
+          "Once accepted, you see each other's contact and where to pay.",
+          "Tap Received payment when their money arrives.",
+          "Accepted deals can't be cancelled. Problem? Tap Report.",
+        ],
+      },
+      {
+        title: "Alerts & privacy",
+        points: [
+          "Turn on alerts in a Board tab to hear about new requests.",
+          "Your payment details are shown only to the other side of an accepted deal.",
+        ],
+      },
+    ],
   },
 
   time: {

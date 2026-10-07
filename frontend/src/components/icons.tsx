@@ -115,10 +115,29 @@ export function FlagIcon() {
   );
 }
 
+/** A speech bubble: message someone on Telegram. */
+export function ChatIcon() {
+  return (
+    <Icon>
+      <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />
+    </Icon>
+  );
+}
+
 export function HeartIcon() {
   return (
     <Icon>
       <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z" />
+    </Icon>
+  );
+}
+
+/** An "i" in a circle: an explanation, e.g. "How it works". */
+export function InfoIcon() {
+  return (
+    <Icon>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5M12 8h.01" />
     </Icon>
   );
 }

@@ -30,6 +30,8 @@ async def test_migrations_are_applied_once(db: Database) -> None:
             12,
             13,
             14,
+            15,
+            16,
         ]
 
 
@@ -217,5 +219,65 @@ async def test_migration_012_rebuilds_deals(tmp_path: Path) -> None:
         )
         async with database.conn.execute("PRAGMA foreign_keys") as cursor:
             assert (await cursor.fetchone())[0] == 1
+    finally:
+        await database.close()
+
+
+async def test_migration_016_converts_amounts_to_the_bought_currency(tmp_path: Path) -> None:
+    before = tmp_path / "before"
+    before.mkdir()
+    for path in sorted(MIGRATIONS_DIR.glob("0*.sql")):
+        if int(path.name[:3]) < 16:
+            (before / path.name).write_text(path.read_text())
+    database = Database(tmp_path / "test.db")
+    await database.connect()
+    try:
+        await database.migrate(before)
+        now = "2026-01-01T00:00:00+00:00"
+        conn = database.conn
+        await conn.execute("INSERT INTO reference_rate VALUES (1, 2.5, 'test', ?)", (now,))
+        for telegram_id in (1, 2):
+            await conn.execute(
+                "INSERT INTO users (telegram_id, created_at, updated_at) VALUES (?, ?, ?)",
+                (telegram_id, now, now),
+            )
+        # Amounts in what the author gave: 10,000 ₸ (at 2% above the market rate, 2.55) and
+        # 50,000 ₩ (at the market rate, 2.5), with a counter offer minimum of 25,000 ₩.
+        await conn.execute(
+            "INSERT INTO requests (id, user_id, direction, amount, rate_type, rate_value, "
+            "status, created_at, updated_at, expires_at) "
+            "VALUES (1, 1, 'KZT_KRW', 10000, 'market', 2, 'in_progress', ?, ?, ?)",
+            (now, now, now),
+        )
+        await conn.execute(
+            "INSERT INTO requests (id, user_id, direction, amount, rate_type, rate_value, "
+            "min_counter_amount, status, created_at, updated_at, expires_at) "
+            "VALUES (2, 1, 'KRW_KZT', 50000, 'market', 0, 25000, 'open', ?, ?, ?)",
+            (now, now, now),
+        )
+        await conn.execute(
+            "INSERT INTO deals (id, request_id, author_id, responder_id, status, amount, "
+            "request_amount, created_at, updated_at) "
+            "VALUES (1, 1, 1, 2, 'accepted', 10000, 10000, ?, ?), "
+            "(2, 2, 1, 2, 'pending', 30000, 50000, ?, ?)",
+            (now, now, now, now),
+        )
+        await conn.commit()
+
+        assert await database.migrate() == [16]
+        async with conn.execute(
+            "SELECT id, amount, min_counter_amount FROM requests ORDER BY id"
+        ) as cursor:
+            assert [tuple(row) for row in await cursor.fetchall()] == [
+                (1, 25500, None),  # 10,000 ₸ x 2.55
+                (2, 20000, 10000),  # 50,000 ₩ / 2.5
+            ]
+        async with conn.execute(
+            "SELECT id, amount, request_amount, rate FROM deals ORDER BY id"
+        ) as cursor:
+            rows = [tuple(row) for row in await cursor.fetchall()]
+        assert rows[0][:3] == (1, 25500, 25500)
+        assert rows[0][3] == pytest.approx(2.55)  # locked: it was accepted
+        assert rows[1] == (2, 12000, 20000, None)  # pending: not locked
     finally:
         await database.close()

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, BOARD_PAGE_SIZE, errorCode } from "../api";
-import { BellIcon, DealsIcon, FiltersIcon, ProfileIcon, SortOrderIcon } from "../components/icons";
+import { BellIcon, DealsIcon, FiltersIcon, InfoIcon, ProfileIcon, SortOrderIcon } from "../components/icons";
 import { RequestCard } from "../components/RequestCard";
 import { Collapse, Empty, ErrorBox, RefreshButton, Segmented, SkeletonList, useTabEnter } from "../components/ui";
 import { formatKstShort, formatRate, formatRatePair, formatSide } from "../format";
@@ -12,8 +12,10 @@ import { SLOW_POLL_MS, usePolling } from "../polling";
 import { alert, confirm, haptic, openLink, useMainButton } from "../telegram";
 import {
   alertsOn,
+  awaitsMyConfirmation,
   BOARD_SORTS,
   type BoardFilters,
+  type BoardSort,
   boardDirection,
   canRespond,
   type Currency,
@@ -24,6 +26,7 @@ import {
   mayRespond,
   needsMyAction,
   type Rate,
+  type SortOrder,
   takesCounterOffers,
   viewerSides,
 } from "../types";
@@ -41,11 +44,15 @@ interface Results {
   items: ExchangeRequest[];
 }
 
+// The order a sort starts in when picked: oldest requests first, so they get taken before they
+// expire; largest first by amount.
+const DEFAULT_ORDER: Record<BoardSort, SortOrder> = { date: "asc", amount: "desc" };
+
 // Opens on Buy KRW: most people on the board are in Korea and need won.
 const DEFAULT_FILTERS: BoardFilters = {
   direction: boardDirection("KRW"),
   sort: "date",
-  order: "desc",
+  order: DEFAULT_ORDER.date,
 };
 
 function RateCard(props: { rate: Rate | null }) {
@@ -186,6 +193,8 @@ export function Board(props: { active: boolean }) {
   // Deals waiting on the viewer (the bot messages only about new and accepted deals), and
   // their requests about to leave the board.
   const [actionCount, setActionCount] = useState(0);
+  // Accepted deals the viewer should confirm receiving the money on (also in actionCount).
+  const [toConfirm, setToConfirm] = useState<number[]>([]);
   const [panel, setPanel] = useState<Panel | null>(null);
   // The request being taken from its card.
   const [taking, setTaking] = useState<number | null>(null);
@@ -217,8 +226,10 @@ export function Board(props: { active: boolean }) {
   const loadBadge = useCallback(
     () =>
       loadMyLists().then(
-        ({ deals, requests }) =>
-          setActionCount(deals.filter(needsMyAction).length + requests.filter((r) => expiresSoon(r)).length),
+        ({ deals, requests }) => {
+          setActionCount(deals.filter(needsMyAction).length + requests.filter((r) => expiresSoon(r)).length);
+          setToConfirm(deals.filter((deal) => awaitsMyConfirmation(deal)).map((deal) => deal.id));
+        },
         () => undefined, // keep the last count
       ),
     [],
@@ -289,8 +300,11 @@ export function Board(props: { active: boolean }) {
 
   const clearSort = () => setFilters((f) => ({ ...f, sort: DEFAULT_FILTERS.sort, order: DEFAULT_FILTERS.order }));
 
+  // A new request buys what the open tab gets.
   useMainButton(
-    props.active ? { text: t.board.newRequest, onClick: () => nav.push({ name: "new" }) } : null,
+    props.active
+      ? { text: t.board.newRequest, onClick: () => nav.push({ name: "new", buy: giveCurrency(filters.direction) }) }
+      : null,
   );
 
   const togglePanel = (next: Panel) => setPanel(panel === next ? null : next);
@@ -335,6 +349,20 @@ export function Board(props: { active: boolean }) {
           <span>{t.board.profile}</span>
         </button>
       </div>
+
+      {toConfirm.length > 0 && (
+        <button
+          type="button"
+          className="confirm-notice"
+          onClick={() => {
+            const [only, ...rest] = toConfirm;
+            nav.push(only !== undefined && rest.length === 0 ? { name: "deal", id: only } : { name: "deals" });
+          }}
+        >
+          <span className="count-badge">{toConfirm.length}</span>
+          <span className="confirm-notice-title">{t.board.confirmTitle(toConfirm.length)}</span>
+        </button>
+      )}
 
       <RateCard rate={rate} />
 
@@ -394,7 +422,7 @@ export function Board(props: { active: boolean }) {
               label={t.board.sortBy}
               options={BOARD_SORTS.map((sort) => ({ value: sort, label: t.board.sort[sort] }))}
               value={filters.sort}
-              onChange={(sort) => setFilters((f) => ({ ...f, sort }))}
+              onChange={(sort) => setFilters((f) => ({ ...f, sort, order: DEFAULT_ORDER[sort] }))}
             />
           </div>
           <Collapse open={sorted}>
@@ -432,6 +460,13 @@ export function Board(props: { active: boolean }) {
             </button>
           )}
         </div>
+      )}
+
+      {results && (
+        <button type="button" className="secondary-button small guide-button" onClick={() => nav.push({ name: "guide" })}>
+          <InfoIcon />
+          {t.board.howItWorks}
+        </button>
       )}
     </div>
   );

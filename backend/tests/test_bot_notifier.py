@@ -20,12 +20,12 @@ def make_deal(
     direction: str = "KZT_KRW",
     other_profile: Profile | None = None,
     amount: int = 150_000,
+    rate: float | None = None,
 ) -> DealOut:
     request = RequestOut(
         id=7,
         direction=direction,  # type: ignore[arg-type]
         amount=150_000,
-        rate_value=0,
         effective_rate=2.7,
         min_counter_amount=None,
         kzt_bank=None,
@@ -57,6 +57,8 @@ def make_deal(
         request=request,
         created_at="2026-01-01T00:00:00+00:00",
         updated_at="2026-01-01T00:00:00+00:00",
+        accepted_at=None,
+        rate=rate,
     )
 
 
@@ -81,7 +83,8 @@ async def test_deal_requested_message() -> None:
     [(chat_id, text, markup)] = bot.sent
     assert chat_id == 1
     assert text.startswith("🔔 Adil Sultanov, UNIST, 2022 wants to take your request: ")
-    assert "buy KRW 🇰🇷 for 150,000 ₸" in text
+    # The amount is what the author buys; what they pay follows the rate until accepted.
+    assert "you get 150,000 ₩ 🇰🇷 and pay ≈ 55,556 ₸ 🇰🇿." in text
     assert "3 completed deals" in text
     [[button]] = markup.inline_keyboard
     assert button.web_app.url == "https://example.test?startapp=deal_42"
@@ -94,7 +97,8 @@ async def test_counter_offer_message() -> None:
     await notifier.aclose()
     [(_, text, _)] = bot.sent
     assert text.startswith(
-        "🔔 Someone sent a counter offer: 50,000 ₸ of the 150,000 ₸ you're exchanging for KRW 🇰🇷."
+        "🔔 Someone sent a counter offer: you get 50,000 ₩ 🇰🇷 and pay ≈ 18,519 ₸ 🇰🇿 "
+        "(part of the 150,000 ₩ you're buying)."
     )
 
 
@@ -111,21 +115,45 @@ async def test_deal_requested_without_a_profile() -> None:
 async def test_deal_accepted_message() -> None:
     bot = FakeBot()
     notifier = notifier_with(bot)
-    notifier.deal_accepted(2, make_deal("responder", "KRW_KZT"))
+    notifier.deal_accepted(2, make_deal("responder", "KRW_KZT", rate=2.7))
     await notifier.aclose()
 
     [(chat_id, text, _)] = bot.sent
     assert chat_id == 2
-    assert "you get 150,000 ₩ 🇰🇷 and pay in KZT 🇰🇿" in text
+    # Locked at acceptance: both amounts are exact.
+    assert "you get 405,000 ₩ 🇰🇷 and pay 150,000 ₸ 🇰🇿." in text
+
+
+async def test_payment_reminder_messages() -> None:
+    bot = FakeBot()
+    notifier = notifier_with(bot)
+    notifier.payment_reminder(1, make_deal("author", rate=2.7))
+    notifier.payment_reminder(
+        2, make_deal("responder", rate=2.7).model_copy(update={"other_confirmed": True})
+    )
+    await notifier.aclose()
+
+    [(author, neither, markup), (responder, other_confirmed, _)] = sorted(bot.sent)
+    assert author == 1 and responder == 2
+    assert neither.startswith(
+        "⏰ Your deal isn't finished yet: you get 150,000 ₩ 🇰🇷 and pay 55,556 ₸ 🇰🇿."
+    )
+    assert "tap “Received payment”" in neither
+    assert other_confirmed.startswith(
+        "⏰ They confirmed receiving your payment (you get 55,556 ₸ 🇰🇿 and pay 150,000 ₩ 🇰🇷)."
+    )
+    assert "report a problem" in other_confirmed
+    [[button]] = markup.inline_keyboard
+    assert button.web_app.url == "https://example.test?startapp=deal_42"
 
 
 async def test_counter_offer_accepted_message() -> None:
     bot = FakeBot()
     notifier = notifier_with(bot)
-    notifier.deal_accepted(2, make_deal("responder", "KRW_KZT", amount=40_000))
+    notifier.deal_accepted(2, make_deal("responder", "KRW_KZT", amount=40_000, rate=2.7))
     await notifier.aclose()
     [(_, text, _)] = bot.sent
-    assert "you get 40,000 ₩ 🇰🇷 and pay in KZT 🇰🇿" in text
+    assert "you get 108,000 ₩ 🇰🇷 and pay 40,000 ₸ 🇰🇿." in text
 
 
 async def test_no_button_without_https() -> None:

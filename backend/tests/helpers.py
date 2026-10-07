@@ -53,7 +53,6 @@ NO_USERNAME = {"id": 4, "first_name": "Nurlan"}
 VALID = {
     "direction": "KZT_KRW",
     "amount": 100_000,
-    "rate_value": 1.5,
     "duration_days": 3,
 }
 

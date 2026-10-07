@@ -7,7 +7,7 @@ import { t } from "../i18n";
 import { useMe } from "../me";
 import { useTabList } from "../tabList";
 import { confirm, haptic } from "../telegram";
-import { type CancelledRequest, getCurrency, giveCurrency, type ListedDeal } from "../types";
+import { amountCurrency, type CancelledRequest, giveCurrency, type ListedDeal } from "../types";
 
 type Tab = "active" | "finished" | "cancelled";
 
@@ -28,7 +28,7 @@ function DealCard(props: { deal: ListedDeal; busy: boolean; onDelete: (() => voi
         <span className="hint small">{formatKst(deal.updated_at)}</span>
       </div>
       <p className="small">
-        {t.admin.request(request.id)} · {formatMoney(request.amount, giveCurrency(request.direction))} ·{" "}
+        {t.admin.request(request.id)} · {formatMoney(request.amount, amountCurrency(request.direction))} ·{" "}
         {requestStatus(request)}
         {deal.status === "accepted" && (
           <>
@@ -71,9 +71,9 @@ function CancelledCard(props: { request: CancelledRequest }) {
       <p className="small">
         <strong>{closedBy(request)}</strong>
         <br />
-        {t.allDeals.authorPays(
-          formatMoney(request.amount, giveCurrency(request.direction)),
-          getCurrency(request.direction),
+        {t.allDeals.authorBuys(
+          formatMoney(request.amount, amountCurrency(request.direction)),
+          giveCurrency(request.direction),
         )}
         {request.open_reports > 0 && (
           <>

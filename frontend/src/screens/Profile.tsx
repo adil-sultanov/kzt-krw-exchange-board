@@ -255,6 +255,10 @@ export function Profile(props: { active: boolean }) {
 
       <Section title={t.profile.more}>
         <div className="menu">
+          <button type="button" className="menu-row" onClick={() => nav.push({ name: "guide" })}>
+            {t.profile.guide}
+            <span className="menu-chevron" aria-hidden="true">›</span>
+          </button>
           <button type="button" className="menu-row" onClick={() => nav.push({ name: "about" })}>
             {t.profile.about}
             <span className="menu-chevron" aria-hidden="true">›</span>

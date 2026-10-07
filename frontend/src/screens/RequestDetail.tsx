@@ -8,13 +8,11 @@ import { UsernameTag } from "../components/UsernameTag";
 import { ErrorBox, Loading, Notice, Row } from "../components/ui";
 import { askExtendDays } from "../extend";
 import {
-  describeRateGain,
   formatKst,
   formatMoney,
   formatProfile,
   formatRatePair,
   formatSide,
-  rateTone,
   requestStatus,
   timeLeft,
 } from "../format";
@@ -24,15 +22,14 @@ import { useNav, useReactivated } from "../nav";
 import { SLOW_POLL_MS, usePolling } from "../polling";
 import { confirm, haptic, type MainButtonConfig, useMainButton } from "../telegram";
 import {
+  amountCurrency,
   canRespond,
   type ExchangeRequest,
   expiresSoon,
   extendOptions,
-  giveCurrency,
   hasProfile,
   mayRespond,
   takesCounterOffers,
-  viewerRateGain,
   viewerSides,
 } from "../types";
 
@@ -154,7 +151,6 @@ export function RequestDetail(props: { id: number; active: boolean }) {
   if (!request) return <div className="screen"><Loading /></div>;
 
   const { get } = viewerSides(request);
-  const gain = viewerRateGain(request);
   const open = request.status === "open";
   const left = open ? timeLeft(request.expires_at) : null;
   const pending = request.pending_count ?? 0;
@@ -185,8 +181,8 @@ export function RequestDetail(props: { id: number; active: boolean }) {
         <Notice>{t.detail.responded[request.my_deal_status]}</Notice>
       ) : !open ? (
         <Notice tone="warning">{request.removed_by_admin ? t.detail.removed : t.detail.notOpen}</Notice>
-      ) : request.is_own ? (
-        <Notice>{pending > 0 ? t.detail.ownPending : t.detail.own}</Notice>
+      ) : request.is_own && pending > 0 ? (
+        <Notice>{t.detail.ownPending}</Notice>
       ) : null}
       {ownOpen && expiresSoon(request) && <Notice tone="warning">{t.detail.expiresSoon}</Notice>}
       {blocked && <Notice tone="warning">{blocked}</Notice>}
@@ -198,7 +194,6 @@ export function RequestDetail(props: { id: number; active: boolean }) {
       <div className="detail">
         <Row label={t.detail.rate}>
           {request.effective_rate !== null && <span>{formatRatePair(request.effective_rate)}</span>}
-          <span className={`rate-tag ${rateTone(gain)}`}>{describeRateGain(gain)}</span>
         </Row>
         {request.kzt_bank && <Row label={t.detail.kztBank}>{request.kzt_bank}</Row>}
         {!request.is_own && (
@@ -211,7 +206,7 @@ export function RequestDetail(props: { id: number; active: boolean }) {
         {open && (
           <Row label={t.detail.counterOffers}>
             {takesCounterOffers(request) && request.min_counter_amount !== null
-              ? t.detail.counterFrom(formatMoney(request.min_counter_amount, giveCurrency(request.direction)))
+              ? t.detail.counterFrom(formatMoney(request.min_counter_amount, amountCurrency(request.direction)))
               : t.detail.counterOff}
           </Row>
         )}
