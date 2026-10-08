@@ -8,7 +8,17 @@ from typing import Any, Literal
 import aiosqlite
 
 from app.db import Database, utc_iso, utc_now
-from app.models import BoardFilters, Profile, RequestCreate, RequestOut, RequestUpdate, User
+from app.models import (
+    AmountSide,
+    BoardFilters,
+    Currency,
+    Direction,
+    Profile,
+    RequestCreate,
+    RequestOut,
+    RequestUpdate,
+    User,
+)
 from app.services.errors import (
     ConflictError,
     InvalidInputError,
@@ -40,9 +50,28 @@ COUNTS_AS_RESPONSE = "NOT (partial = 1 AND status IN ('accepted', 'completed'))"
 # they cancelled. Only cancelling frees them to send another; see deals.take_request.
 MAX_OFFERS_PER_REQUEST = 3
 
+
+def amount_currency_sql(request: str = "r", side: str | None = None) -> str:
+    """SQL for the currency the amounts of request `request` (an alias) are in, or, with `side`
+    (an `amount_side` expression), those of a deal on it: a deal's amounts are in its request's
+    currency when it was made.
+    """
+    return (
+        f"CASE WHEN ({request}.direction = 'KZT_KRW') = "
+        f"({side or request + '.amount_side'} = 'buy') THEN 'KRW' ELSE 'KZT' END"
+    )
+
+
+def amount_side(direction: Direction, currency: Currency) -> AmountSide:
+    """Whether an amount in `currency` is what a request's author buys or what they give."""
+    bought = "KRW" if direction == "KZT_KRW" else "KZT"
+    return "buy" if currency == bought else "sell"
+
+
 # Columns for RequestOut. :ref is the reference rate (NULL if unknown), :viewer the caller.
 _SELECT = f"""
-SELECT r.id, r.direction, r.amount, r.min_counter_amount, r.kzt_bank,
+SELECT r.id, r.direction, r.amount, {amount_currency_sql()} AS amount_currency,
+       r.min_counter_amount, r.kzt_bank,
        r.status, {REMOVED_BY_ADMIN} AS removed_by_admin, r.created_at, r.expires_at,
        u.completed_deals AS author_completed_deals, u.username AS author_username,
        u.profile_first_name, u.profile_last_name, u.university, u.enrollment_year,
@@ -72,10 +101,9 @@ r.status = 'open' AND r.expires_at > :now AND r.user_id != :viewer AND u.is_bann
 # Each key's descending order; ascending flips it. Ties go newest first either way.
 _BOARD_ORDER = {
     "date": "r.id",
-    # Within a tab, the (fixed) amount you'd pay. Across both, amounts in different currencies
-    # don't compare, so a KRW amount (a KZT_KRW request's) counts as KZT at the request's own
+    # Amounts are fixed in either currency, so a KRW amount counts as KZT at the request's own
     # rate (unknown without a reference rate: those come last).
-    "amount": "CASE WHEN :direction IS NOT NULL OR r.direction = 'KRW_KZT' THEN r.amount"
+    "amount": f"CASE {amount_currency_sql()} WHEN 'KZT' THEN r.amount"
     " ELSE r.amount / (:ref * (1 + r.rate_value / 100.0)) END",
 }
 
@@ -139,15 +167,18 @@ async def create_request(
             raise RateLimitedError("rate_limited")
         cursor = await conn.execute(
             """
-            INSERT INTO requests (user_id, direction, amount, rate_type, rate_value,
-                                  min_counter_amount, kzt_bank, created_at, updated_at,
-                                  expires_at)
-            VALUES (?, ?, ?, 'market', 0, ?, ?, ?, ?, ?)
+            INSERT INTO requests (user_id, direction, amount, amount_side, rate_type,
+                                  rate_value, min_counter_amount, kzt_bank, created_at,
+                                  updated_at, expires_at)
+            VALUES (?, ?, ?, ?, 'market', 0, ?, ?, ?, ?, ?)
             """,
             (
                 user.telegram_id,
                 data.direction,
                 data.amount,
+                "buy"
+                if data.amount_currency is None
+                else amount_side(data.direction, data.amount_currency),
                 data.min_counter_amount,
                 data.kzt_bank,
                 now,
@@ -256,8 +287,9 @@ async def close_open_request(
 async def update_request(
     db: Database, user: User, request_id: int, data: RequestUpdate
 ) -> RequestOut:
-    """The author edits the amount, smallest counter offer or preferred KZT bank of their open
-    request, or extends it. The rate isn't theirs to change: it's always the market rate.
+    """The author edits the amount (and the currency it's fixed in), smallest counter offer or
+    preferred KZT bank of their open request, or extends it. The rate isn't theirs to change:
+    it's always the market rate.
 
     Changing the terms is refused while anyone is waiting for an answer: they took the
     request as it was. Extending doesn't change the terms, so it's always allowed.
@@ -268,8 +300,8 @@ async def update_request(
     now = utc_iso(now_dt)
     async with db.transaction() as conn:
         async with conn.execute(
-            "SELECT user_id, status, expires_at, amount, min_counter_amount, "
-            "kzt_bank FROM requests WHERE id = ?",
+            "SELECT user_id, direction, status, expires_at, amount, amount_side, "
+            "min_counter_amount, kzt_bank FROM requests WHERE id = ?",
             (request_id,),
         ) as cursor:
             request = await cursor.fetchone()
@@ -283,6 +315,10 @@ async def update_request(
         changes: dict[str, Any] = {}
         if data.amount is not None and data.amount != request["amount"]:
             changes["amount"] = data.amount
+        if data.amount_currency is not None:
+            side = amount_side(request["direction"], data.amount_currency)
+            if side != request["amount_side"]:
+                changes["amount_side"] = side
         if (
             "min_counter_amount" in data.model_fields_set
             and data.min_counter_amount != request["min_counter_amount"]
@@ -388,10 +424,9 @@ async def list_board(db: Database, viewer_id: int, filters: BoardFilters) -> lis
     return [_to_out(row, now) for row in rows]
 
 
-def _kzt_value(direction: str, amount: int, rate: float | None) -> float | None:
-    """Size of a request in KZT, to compare requests in opposite directions. Its amount is in
-    the currency its author buys: KZT for KRW_KZT, KRW for KZT_KRW."""
-    if direction == "KRW_KZT":
+def _kzt_value(currency: Currency, amount: int, rate: float | None) -> float | None:
+    """Size of a request in KZT, to compare requests in opposite directions."""
+    if currency == "KZT":
         return float(amount)
     return amount / rate if rate else None
 
@@ -411,14 +446,16 @@ async def find_matches(
         "ref": ref,
         "now": now,
         "opposite": "KRW_KZT" if request.direction == "KZT_KRW" else "KZT_KRW",
-        "target": _kzt_value(request.direction, request.amount, request.effective_rate or ref),
+        "target": _kzt_value(
+            request.amount_currency, request.amount, request.effective_rate or ref
+        ),
         "limit": limit,
     }
     # distance is NULL for every row when :target is NULL, which leaves newest first.
     sql = f"""
     SELECT m.*,
-           ABS(CASE m.direction
-                   WHEN 'KRW_KZT' THEN m.amount
+           ABS(CASE m.amount_currency
+                   WHEN 'KZT' THEN m.amount
                    ELSE m.amount / COALESCE(m.effective_rate, :ref)
                END - :target) AS distance
     FROM ({_SELECT} WHERE ({_VISIBLE_ON_BOARD.strip()}) AND r.direction = :opposite) AS m

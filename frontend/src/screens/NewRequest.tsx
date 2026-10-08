@@ -26,7 +26,10 @@ import {
   type RequestTerms,
 } from "../types";
 
-/** The side whose amount the viewer typed; the other is converted from it at the market rate. */
+/**
+ * The side whose amount the viewer typed last: the request's amount is fixed in it, and the other
+ * side is converted from it at the market rate.
+ */
 type TypedSide = "pay" | "get";
 
 interface FormErrors {
@@ -37,6 +40,7 @@ interface FormErrors {
 
 interface FormValues {
   buy: Currency;
+  typed: TypedSide;
   amountText: string;
   minCounterText: string;
   kztBankText: string;
@@ -46,6 +50,7 @@ interface FormValues {
 function formValues(terms: RequestTerms): FormValues {
   return {
     buy: getCurrency(terms.direction),
+    typed: terms.amount_currency === getCurrency(terms.direction) ? "get" : "pay",
     amountText: formatAmountInput(String(terms.amount)),
     minCounterText: formatAmountInput(String(terms.min_counter_amount ?? "")),
     kztBankText: terms.kzt_bank ?? "",
@@ -73,8 +78,8 @@ export function NewRequest(props: {
     return terms ? formValues(terms) : null;
   });
   const [buy, setBuy] = useState<Currency>(initial?.buy ?? props.buy ?? "KRW");
-  // The amount the author gets is the request's (fixed) amount, so that's what they type first.
-  const [typed, setTyped] = useState<TypedSide>("get");
+  // What the author gets is typed first, unless the request was fixed in what they pay.
+  const [typed, setTyped] = useState<TypedSide>(initial?.typed ?? "get");
   const [amountText, setAmountText] = useState(initial?.amountText ?? "");
   // Empty: counter offers are off.
   const [minCounterText, setMinCounterText] = useState(initial?.minCounterText ?? "");
@@ -96,11 +101,12 @@ export function NewRequest(props: {
   const typedAmount = parseAmount(amountText);
   const converted = (value: number | null, from: Currency) =>
     value !== null && rate !== null ? Math.round(convert(value, from, rate)) : null;
-  // The request's amount is always what the author gets: fixed, while what they pay follows
-  // the rate. Typing what they pay works it out at today's rate.
-  const amount = typed === "get" ? typedAmount : converted(typedAmount, pay);
-  const pays = typed === "pay" ? typedAmount : converted(amount, buy);
-  // In what the author gets, like the amount. formatAmountInput keeps it a positive integer.
+  // The request's amount is what the author typed last, fixed in that currency; the other side
+  // follows the rate until a deal is accepted.
+  const amount = typedAmount;
+  const amountCurrency = typed === "get" ? buy : pay;
+  const otherAmount = converted(amount, amountCurrency);
+  // In the amount's currency. formatAmountInput keeps it a positive integer.
   const minCounter = parseAmount(minCounterText);
   const kztBank = cleanKztBank(kztBankText);
 
@@ -125,6 +131,7 @@ export function NewRequest(props: {
       if (edit) {
         await api.updateRequest(edit.id, {
           amount,
+          amount_currency: amountCurrency,
           min_counter_amount: minCounter,
           kzt_bank: kztBank.value,
         });
@@ -135,6 +142,7 @@ export function NewRequest(props: {
       const body: RequestCreate = {
         direction,
         amount,
+        amount_currency: amountCurrency,
         duration_days: duration,
         min_counter_amount: minCounter,
         kzt_bank: kztBank.value,
@@ -177,15 +185,15 @@ export function NewRequest(props: {
   }
 
   const shown = showErrors ? errors : {};
+  const label = (side: TypedSide) =>
+    side === typed ? t.side[side] : side === "pay" ? t.side.payApprox : t.side.getApprox;
   const amountInput = (side: TypedSide) => {
-    const value = side === typed ? amountText : formatAmountInput(String((side === "pay" ? pays : amount) ?? ""));
+    const value = side === typed ? amountText : formatAmountInput(String(otherAmount ?? ""));
     return (
       <AmountInput
-        label={side === "pay" ? t.side.payApprox : t.side.get}
+        label={label(side)}
         value={value}
         invalid={Boolean(shown.amount) && side === typed}
-        // Without a market rate, only the amount the author gets can be entered.
-        disabled={side === "pay" && rate === null}
         onChange={(text) => {
           setTyped(side);
           setAmountText(text);
@@ -213,12 +221,12 @@ export function NewRequest(props: {
 
       <ExchangeBox
         pay={
-          <ExchangeRow label={t.side.payApprox} currency={pay}>
+          <ExchangeRow label={label("pay")} currency={pay}>
             {amountInput("pay")}
           </ExchangeRow>
         }
         get={
-          <ExchangeRow label={t.side.get} currency={buy} emphasis>
+          <ExchangeRow label={label("get")} currency={buy} emphasis>
             {amountInput("get")}
           </ExchangeRow>
         }
@@ -263,11 +271,11 @@ export function NewRequest(props: {
             value={minCounterText}
             onChange={(event) => setMinCounterText(formatAmountInput(event.target.value))}
           />
-          <span className="input-suffix">{SYMBOL[buy]}</span>
+          <span className="input-suffix">{SYMBOL[amountCurrency]}</span>
         </span>
         {shown.minCounter && <p className="field-error">{shown.minCounter}</p>}
         {minCounter !== null && amount !== null && !errors.minCounter && (
-          <p className="hint small">{t.form.counterRange(formatMoney(minCounter, buy), formatMoney(amount, buy))}</p>
+          <p className="hint small">{t.form.counterRange(formatMoney(minCounter, amountCurrency), formatMoney(amount, amountCurrency))}</p>
         )}
       </Section>
 

@@ -137,11 +137,13 @@ async def test_no_alert_once_off_the_board(db: Database) -> None:
 # --- Texts ---
 
 
-def make_alert(direction: str, rate: float | None = 3.7) -> Alert:
+def make_alert(direction: str, rate: float | None = 3.7, currency: str | None = None) -> Alert:
+    """An alert for 500,000 in `currency`, by default what its author buys."""
     return Alert(
         request_id=7,
         direction=direction,  # type: ignore[arg-type]
         amount=500_000,
+        amount_currency=currency or ("KZT" if direction == "KRW_KZT" else "KRW"),  # type: ignore[arg-type]
         effective_rate=rate,
         recipients=[],
     )
@@ -153,6 +155,15 @@ def test_alert_text() -> None:
     # KZT_KRW: they pay 500,000 ₩ and get KZT.
     assert texts.request_alert(make_alert("KZT_KRW")) == "Pay 500,000 ₩ → Get ≈ 135,135 ₸"
     assert texts.request_alert(make_alert("KZT_KRW", rate=None)) == "Pay 500,000 ₩, get KZT ₸"
+    # Fixed in what its author gives: whoever takes it gets that, and pays ≈ the rest.
+    assert (
+        texts.request_alert(make_alert("KRW_KZT", currency="KRW"))
+        == "Pay ≈ 135,135 ₸ → Get 500,000 ₩"
+    )
+    assert (
+        texts.request_alert(make_alert("KRW_KZT", rate=None, currency="KRW"))
+        == "Pay in KZT ₸, get 500,000 ₩"
+    )
 
 
 def test_crossed_out_text_is_escaped() -> None:

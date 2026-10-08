@@ -2,18 +2,19 @@ import { useState } from "react";
 import { api, errorCode } from "../api";
 import { displayName, Person } from "../components/AdminPerson";
 import { Empty, ErrorBox, Segmented, SkeletonList, TitleWithRefresh, useTabEnter } from "../components/ui";
-import { formatKst, formatMoney, requestStatus } from "../format";
+import { formatAuthorTerms, formatKst, requestStatus } from "../format";
 import { t } from "../i18n";
 import { useMe } from "../me";
 import { useTabList } from "../tabList";
 import { confirm, haptic } from "../telegram";
-import { type AdminReport, type AdminUser, amountCurrency, giveCurrency } from "../types";
+import type { AdminReport, AdminUser } from "../types";
 
 type Tab = "open" | "resolved";
 
 function ReportCard(props: { report: AdminReport; busy: boolean; onAction: (action: () => Promise<unknown>) => void }) {
   const { report, busy, onAction } = props;
   const { request, deal, reported } = report;
+  const terms = formatAuthorTerms(request);
   const me = useMe();
   const roleOf = (user: AdminUser) =>
     deal ? (user.telegram_id === request.author_id ? t.admin.author : t.admin.responder) : null;
@@ -37,7 +38,7 @@ function ReportCard(props: { report: AdminReport; busy: boolean; onAction: (acti
       </div>
       {report.note && <p className="admin-note">{report.note}</p>}
       <p className="small">
-        {t.admin.request(formatMoney(request.amount, amountCurrency(request.direction)), giveCurrency(request.direction))}{" "}
+        {t.admin.request(terms.buys, terms.pays)}{" "}
         · {requestStatus(request)}
         {deal && (
           <>

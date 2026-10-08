@@ -268,6 +268,24 @@ def test_board_sorting(client: TestClient, settings: Settings) -> None:
     ).json() == {"detail": "invalid_input"}
 
 
+def test_amount_is_fixed_in_either_currency(client: TestClient, settings: Settings) -> None:
+    # By default in what the author buys (KRW for KZT_KRW), else in what they give.
+    bought = create(client, BEK, amount=300_000)
+    assert bought["amount_currency"] == "KRW"
+    given = create(client, BEK, amount=100_000, amount_currency="KZT")
+    assert (given["amount"], given["amount_currency"]) == (100_000, "KZT")
+    same = create(client, BEK, direction="KRW_KZT", amount=50_000, amount_currency="KZT")
+    assert same["amount_currency"] == "KZT"
+    assert post(client, BEK, amount_currency="USD").status_code == 422
+
+    # Sorting by amount compares them in KZT: 300,000 ₩ ≈ 111,111 ₸.
+    sql(settings, "INSERT INTO reference_rate VALUES (1, 2.7, 'test', '2026-01-01T00:00:00+00:00')")
+    kzt_krw = {"direction": "KZT_KRW", "sort": "amount"}
+    assert board_ids(client, AIDA, **kzt_krw) == [bought["id"], given["id"]]
+    sql(settings, "UPDATE requests SET amount = 120000 WHERE id = ?", (given["id"],))
+    assert board_ids(client, AIDA, **kzt_krw) == [given["id"], bought["id"]]
+
+
 def test_board_pagination(client: TestClient) -> None:
     ids = [create(client, BEK)["id"] for _ in range(3)]
     assert board_ids(client, AIDA, limit=2) == ids[::-1][:2]
@@ -397,6 +415,24 @@ def test_edit_amount(client: TestClient) -> None:
     assert client.get(f"/api/requests/{request_id}", headers=auth_as(BEK)).json()["amount"] == (
         250_000
     )
+
+
+def test_edit_the_currency_the_amount_is_fixed_in(client: TestClient) -> None:
+    request_id = create(client, AIDA, min_counter_amount=50_000)["id"]
+    body = {"amount": 40_000, "amount_currency": "KZT", "min_counter_amount": 10_000}
+    response = edit(client, AIDA, request_id, **body)
+    assert response.status_code == 200, response.json()
+    request = response.json()
+    assert (request["amount"], request["amount_currency"], request["min_counter_amount"]) == (
+        40_000,
+        "KZT",
+        10_000,
+    )
+    # The minimum is in the amount's currency, so it comes with it.
+    assert edit(client, AIDA, request_id, amount=1, amount_currency="KRW").status_code == 422
+    assert edit(client, AIDA, request_id, amount_currency="KRW").status_code == 422
+    # Left out, the currency stays.
+    assert edit(client, AIDA, request_id, amount=30_000).json()["amount_currency"] == "KZT"
 
 
 def test_edit_preferred_kzt_bank(client: TestClient) -> None:

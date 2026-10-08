@@ -10,11 +10,11 @@ import { useMe } from "../me";
 import { useNav } from "../nav";
 import { haptic, useMainButton } from "../telegram";
 import {
-  amountCurrency,
   canRespond,
   convert,
   type Currency,
   type ExchangeRequest,
+  getCurrency,
   giveCurrency,
   mayRespond,
   takesCounterOffers,
@@ -24,15 +24,18 @@ import {
 type TypedSide = "pay" | "get";
 
 /**
- * Asks for part of someone else's request. What the viewer gets is in the request's currency:
- * at least the author's minimum, at most the whole amount. Either side can be typed.
+ * Asks for part of someone else's request. The offer is in the request's amount currency (what
+ * the viewer pays or gets): at least the author's minimum, at most the whole amount. Either side
+ * can be typed.
  */
 export function CounterOffer(props: { request: ExchangeRequest; active: boolean }) {
   const me = useMe();
   const nav = useNav();
   const [request, setRequest] = useState(props.request);
-  // The offer is a part of the request's amount, which is what the viewer pays: typed first.
-  const [typed, setTyped] = useState<TypedSide>("pay");
+  // The offer is a part of the request's amount, so that side is typed first.
+  const [typed, setTyped] = useState<TypedSide>(() =>
+    props.request.amount_currency === getCurrency(props.request.direction) ? "pay" : "get",
+  );
   const [amountText, setAmountText] = useState("");
   const [showErrors, setShowErrors] = useState(false);
   const [sending, setSending] = useState(false);
@@ -46,21 +49,24 @@ export function CounterOffer(props: { request: ExchangeRequest; active: boolean 
   }, [reload]);
 
   const get = giveCurrency(request.direction);
-  const pay = amountCurrency(request.direction);
+  const pay = getCurrency(request.direction);
+  // The offer is in the request's amount currency (fixed); the other side follows the rate until
+  // the author accepts.
+  const fixed = request.amount_currency;
+  const fixedSide: TypedSide = fixed === pay ? "pay" : "get";
+  const other = fixed === pay ? get : pay;
   const rate = request.effective_rate;
   const typedAmount = parseAmount(amountText);
   const converted = (value: number | null, from: Currency) =>
     value !== null && rate !== null ? Math.round(convert(value, from, rate)) : null;
-  // The offer is always what the viewer pays, in the request's currency (what its author gets);
-  // what they get follows the rate until the author accepts.
-  const amount = typed === "pay" ? typedAmount : converted(typedAmount, get);
-  const gets = typed === "get" ? typedAmount : converted(amount, pay);
+  const amount = typed === fixedSide ? typedAmount : converted(typedAmount, other);
+  const otherAmount = typed === fixedSide ? converted(amount, fixed) : typedAmount;
   const minimum = request.min_counter_amount ?? request.amount;
 
   let invalid: string | null = null;
   if (amount === null || amount <= 0) invalid = t.counter.errors.amount;
-  else if (amount < minimum) invalid = t.counter.errors.belowMinimum(formatMoney(minimum, pay));
-  else if (amount > request.amount) invalid = t.counter.errors.aboveAmount(formatMoney(request.amount, pay));
+  else if (amount < minimum) invalid = t.counter.errors.belowMinimum(formatMoney(minimum, fixed));
+  else if (amount > request.amount) invalid = t.counter.errors.aboveAmount(formatMoney(request.amount, fixed));
 
   const submit = async () => {
     if (invalid !== null || amount === null) {
@@ -100,13 +106,15 @@ export function CounterOffer(props: { request: ExchangeRequest; active: boolean 
       : null,
   );
 
+  const label = (side: TypedSide) =>
+    side === fixedSide ? t.side[side] : side === "pay" ? t.side.payApprox : t.side.getApprox;
   const input = (side: TypedSide) => (
     <AmountInput
-      label={side === "pay" ? t.side.pay : t.side.getApprox}
-      value={side === typed ? amountText : formatAmountInput(String((side === "pay" ? amount : gets) ?? ""))}
+      label={label(side)}
+      value={side === typed ? amountText : formatAmountInput(String((side === fixedSide ? amount : otherAmount) ?? ""))}
       invalid={showErrors && invalid !== null && side === typed}
-      // Without a market rate, only the amount the viewer pays can be entered.
-      disabled={side === "get" && rate === null}
+      // Without a market rate, only the request's amount currency can be entered.
+      disabled={side !== fixedSide && rate === null}
       onChange={(text) => {
         setTyped(side);
         setAmountText(text);
@@ -128,12 +136,12 @@ export function CounterOffer(props: { request: ExchangeRequest; active: boolean 
           <h2 className="section-title">{t.counter.yourOffer}</h2>
           <ExchangeBox
             pay={
-              <ExchangeRow label={t.side.pay} currency={pay}>
+              <ExchangeRow label={label("pay")} currency={pay}>
                 {input("pay")}
               </ExchangeRow>
             }
             get={
-              <ExchangeRow label={t.side.getApprox} currency={get} emphasis>
+              <ExchangeRow label={label("get")} currency={get} emphasis>
                 {input("get")}
               </ExchangeRow>
             }
@@ -142,7 +150,7 @@ export function CounterOffer(props: { request: ExchangeRequest; active: boolean 
             <p className="field-error">{invalid}</p>
           ) : (
             <p className="hint small section-note">
-              {t.counter.range(formatMoney(minimum, pay), formatMoney(request.amount, pay))}
+              {t.counter.range(formatMoney(minimum, fixed), formatMoney(request.amount, fixed))}
             </p>
           )}
         </section>

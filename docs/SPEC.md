@@ -4,13 +4,17 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
 
 ## Screens (Mini App)
 - Every screen speaks from the viewer's side: a request shows **You pay** / **You get** (for its
-  author, or for whoever takes it). A request's amount is what its author **buys** (`requests.amount`, in
-  KRW for `KZT_KRW`, in KZT for `KRW_KZT`): fixed, so it's what the author gets and what whoever
-  takes it pays. The other side is converted at the request's rate and marked "≈", moving with
-  the market until a deal is accepted: accepting locks the rate (`deals.rate`), and from then
-  on both of the deal's amounts are exact. New request shows this under the amounts. Requests
-  posted before migration 016 had their amount in what the author gave; it was converted at
-  that day's rate (and accepted deals locked at it).
+  author, or for whoever takes it). A request's amount (`requests.amount`) is fixed in whichever
+  currency its author typed last on New request: what they **buy** (`amount_side` `buy`; KRW for
+  `KZT_KRW`, KZT for `KRW_KZT`) or what they **sell** (`sell`). So typing 10,000 ₸ last fixes
+  10,000 ₸, whichever side that is. The API gives it as `amount_currency`. The other side is
+  converted at the request's rate and marked "≈", moving with the market until a deal is
+  accepted: accepting locks the rate (`deals.rate`), and from then on both of the deal's amounts
+  are exact. The smallest counter offer and the request's deals' amounts are in the same
+  currency; each deal keeps it (`deals.amount_side`), since an edit can change the request's.
+  Requests posted before migration 019 are all fixed in what their author buys; before
+  migration 016 they had their amount in what the author gave; it was converted at that day's
+  rate (and accepted deals locked at it).
 - Screens keep explanations out of the way: short labels and status lines, a hint only where
   something is missing or blocked. How things work is on **How it works** (see below).
 - Every request and deal shows the other side's **profile tag**: "Adil Sultanov, UNIST, 2022"
@@ -21,7 +25,7 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   card. Hidden when the author has no username.
 - **Board** — open requests in two tabs by what the viewer would buy by taking one ("Buy KRW
   🇰🇷", the default, lists `KRW_KZT` requests; "Buy KZT 🇰🇿" lists `KZT_KRW`). **Filters**
-  (highlighted while not the default) sorts by date or amount they'd get (no rate sort: every
+  (highlighted while not the default) sorts by date or amount (compared in KZT; no rate sort: every
   request is at the market rate); an arrow toggle flips the order. Picking a sort starts it in
   its default order: oldest first for date (the Board's default, so older requests are taken
   first), largest first for amount.
@@ -50,14 +54,14 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   removed reads "An admin took this request off the board" (status "Removed by an admin").
 - **New request** — form: what the author buys ("Buy KRW" posts `KZT_KRW`, "Buy KZT" posts
   `KRW_KZT`; from the Board it starts on the open tab's currency), the amount they get or the amount they pay (either can be typed, what they get
-  first; the other is converted at the market rate, and the request stores what they get,
-  rounded; the paid side reads "You pay ≈"), with the market rate under them. There's no rate to choose:
+  first; the one typed last is the request's fixed amount, and the other is converted at the
+  market rate and reads "You pay ≈" / "You get ≈"), with the market rate under them. There's no rate to choose:
   every request is at the reference (market) rate (`rate_value` 0), and the app never compares
   a request's rate with the market. Requests posted before that may carry a ±% offset, which
   still applies to their rate (`effective_rate`) until they're gone, but isn't sent to the app.
   **Counter offers** (optional): the smallest part
-  of the amount they get that they'd accept from a counter offer, a positive whole number up to
-  that amount; left empty, counter offers are off.
+  of the fixed amount (in its currency) they'd accept from a counter offer, a positive whole
+  number up to that amount; left empty, counter offers are off.
   **Preferred KZT bank** (optional free text, max 40 chars: letters, digits, spaces and
   `-'’.&()/,+`, e.g. "Kaspi, Halyk"; shown on the request) with a **Remember for my next
   requests** checkbox: New request (not Post again or Edit) starts with the remembered bank
@@ -67,7 +71,8 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   (where to pay comes from the receiving details once a deal is accepted).
   Show matching opposite requests right after creation.
 - **My requests** (no separate screen: they're on My deals and the request screen):
-  - **Edit** changes the amount, rate, smallest counter offer or preferred KZT bank (the
+  - **Edit** changes the amount (and which side it's fixed in, as on New request), smallest
+    counter offer or preferred KZT bank (the
     direction and expiry stay; the minimum can't end up above the amount: `counter_minimum_too_large`). It's refused
     (`request_has_responders`) while anyone's deal on it is pending, since they took the old
     terms; they're answered in My deals.
@@ -77,8 +82,8 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   - Requests that expired in the last 24 h are listed with **Post again**: New request
     prefilled with the same terms, subject to the usual limits.
 - **Counter offer** — from the Board card or the request: the request's card, then **Your
-  offer**: what the viewer pays and gets for part of it (either can be typed; the other is
-  converted at the request's rate), "From <minimum> up to <amount>." Anything outside that
+  offer**: what the viewer pays and gets for part of it (either can be typed; the offer is in the
+  request's amount currency, and the other side is converted at the request's rate), "From <minimum> up to <amount>." Anything outside that
   range is refused before sending (and by the backend: `counter_below_minimum`,
   `counter_above_amount`, or `counter_offers_off`). MainButton **Send counter offer** creates a
   pending deal and opens it.
@@ -108,7 +113,7 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   **About & support** and (admins only) **Admin: reports**, **Admin: users**, **Admin: board
   requests** and **Admin: all deals**. The owner also gets an *Owner* section with **Admins**.
 - **How it works** — a few very short points per topic (people skip long instructions): the
-  basics (free, never handles money, what you need to take part), posting (fixed amount, ≈
+  basics (free, never handles money, what you need to take part), posting (the amount typed last is fixed, ≈
   side and the rate lock, counter offers, duration), taking (offers and their limits), deals
   (contacts, Received payment, no cancelling, Report), alerts & privacy. Static text in
   `i18n.ts`; from Profile and from New request (a small rounded button with an info icon).
@@ -156,8 +161,8 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   (red dot on a deal accepted over a day ago and not finished; counter offers say so) and how
   long ago it was accepted or last changed; both sides as rows (initial, name, @username, role
   *Author* / *Taker*, university and year, completed deals, Banned / open-report / Admin tags),
-  each with what they pay (the taker the fixed amount, the author the other side at the rate,
-  "≈" until accepted) and, on an accepted deal, whether they confirmed receiving the money;
+  each with what they pay (one of them the fixed amount, the other side at the rate, "≈" until
+  accepted) and, on an accepted deal, whether they confirmed receiving the money;
   then the rate (locked, or now) and when it started. Tapping a person opens their page in
   Admin: users. The owner gets **Delete deal** (with a confirm popup) under active and
   completed deals. A request taken off the board early (status `closed`) shows who did it and
@@ -234,7 +239,7 @@ matches are in-app too.
 - Posting a request alerts everyone with that tab's alerts on, except its author and banned
   users, and only members of the group (checked as for the API). The message reads from the
   taker's side, with an **Open request** button (`?startapp=req_<id>`):
-  "Pay 500,000 ₸ → Get ≈ 1,850,000 ₩".
+  "Pay 500,000 ₸ → Get ≈ 1,850,000 ₩" (the "≈" on whichever side isn't fixed).
   Never the author's name or username.
 - Once the request leaves the board (accepted for all of what's left, cancelled, removed by an
   admin, closed by a ban, or expired), every alert about it is edited: the text struck through,
@@ -301,15 +306,16 @@ matches are in-app too.
 
 ## Counter offers
 - A request takes counter offers when its author set a minimum (`requests.min_counter_amount`,
-  in the request's currency, what the author buys, at most its amount) and that minimum is
+  in the request's amount currency, at most its amount) and that minimum is
   below what's left of it.
   Every request posted before counter offers existed has none.
-- A counter offer is a pending deal whose `deals.amount` is part of the request, what the
-  responder pays (and the author gets): at least the minimum, at most the request's amount (asking for all of it is
+- A counter offer is a pending deal whose `deals.amount` is part of the request, in its amount
+  currency: at least the minimum, at most the request's amount (asking for all of it is
   the same as taking it). A deal from **Take request** is for the request's whole amount.
   Either way it counts as the person's response to the request (Deal flow, rule 7).
 - Nothing changes on the board until the author answers, in My deals as for any taker; the
-  deal screen reads "Someone sent a counter offer: they offer X of the Y you're buying".
+  deal screen reads "Someone sent a counter offer: they offer X of the Y you're buying" (or
+  "selling", when the amount is fixed in what the author gives).
 - **Accepting** a counter offer (one transaction): the deal → `accepted` (contacts and
   receiving details as usual), and the request stays `open` with its `amount` reduced by the
   deal's. Pending deals for more than what's left are declined; the others stay pending (one
@@ -395,12 +401,14 @@ All routes require valid initData.
   even an empty one, marks the Alerts panel seen)
 - `GET  /api/rate`
 - `GET  /api/requests` (filters as query params)
-- `POST /api/requests` (`min_counter_amount` optional: null turns counter offers off;
+- `POST /api/requests` (`amount_currency` optional: the currency `amount` is fixed in, by
+  default what the author buys; `min_counter_amount` optional, in it: null turns counter offers off;
   `kzt_bank` optional; `remember_kzt_bank`: true remembers `kzt_bank` for the next request,
   false forgets the remembered one, left out leaves it)
 - `GET  /api/requests/{id}` (with the viewer's latest response, `my_deal_id` /
   `my_deal_status`, and `offers_left`: how many more they may send; null on their own)
-- `PATCH /api/requests/{id}` (author only, `open` only: `amount` /
+- `PATCH /api/requests/{id}` (author only, `open` only: `amount` (with `amount_currency`, which
+  needs `min_counter_amount` too) /
   `min_counter_amount` (null turns them off) / `kzt_bank` (null or empty removes it) to edit, `extend_days` (1 or 3) to extend)
 - `POST /api/requests/{id}/close` ("Cancel request"; author only, `open` requests only)
 - `GET  /api/my/requests` (the caller's requests on the board, then those expired in the last

@@ -22,7 +22,6 @@ import { useNav, useReactivated } from "../nav";
 import { SLOW_POLL_MS, usePolling } from "../polling";
 import { confirm, haptic, type MainButtonConfig, useMainButton } from "../telegram";
 import {
-  amountCurrency,
   canRespond,
   type ExchangeRequest,
   expiresSoon,
@@ -206,7 +205,7 @@ export function RequestDetail(props: { id: number; active: boolean }) {
         {open && (
           <Row label={t.detail.counterOffers}>
             {takesCounterOffers(request) && request.min_counter_amount !== null
-              ? t.detail.counterFrom(formatMoney(request.min_counter_amount, amountCurrency(request.direction)))
+              ? t.detail.counterFrom(formatMoney(request.min_counter_amount, request.amount_currency))
               : t.detail.counterOff}
           </Row>
         )}

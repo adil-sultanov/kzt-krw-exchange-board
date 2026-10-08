@@ -35,7 +35,7 @@ from app.models import (
 from app.services.errors import ConflictError, NotFoundError, PermissionDeniedError
 from app.services.notifications import Notifier
 from app.services.rates import get_reference_rate
-from app.services.requests import REMOVED_BY_ADMIN, close_open_request
+from app.services.requests import REMOVED_BY_ADMIN, amount_currency_sql, close_open_request
 
 REPORTS_LIMIT = 100
 ALL_DEALS_LIMIT = 100
@@ -50,6 +50,7 @@ _SELECT_REPORTS = f"""
 SELECT rp.id, rp.category, rp.reason AS note, rp.created_at, rp.resolved, rp.resolved_at,
        rp.reporter_id, rp.reported_id, rp.request_id, rp.deal_id,
        r.user_id AS author_id, r.direction, COALESCE(d.amount, r.amount) AS amount,
+       {amount_currency_sql("r", "COALESCE(d.amount_side, r.amount_side)")} AS amount_currency,
        r.status AS request_status,
        {REMOVED_BY_ADMIN} AS removed_by_admin,
        d.status AS deal_status, d.partial, d.author_confirmed, d.responder_confirmed
@@ -129,6 +130,7 @@ def _report_out(row: aiosqlite.Row, users: dict[int, AdminUserOut]) -> AdminRepo
             author_id=row["author_id"],
             direction=row["direction"],
             amount=row["amount"],
+            amount_currency=row["amount_currency"],
             status=row["request_status"],
             removed_by_admin=row["removed_by_admin"],
         ),
@@ -277,7 +279,8 @@ WHERE u.telegram_id = :id
 """
 
 _SELECT_USER_REQUESTS = f"""
-SELECT r.id, r.direction, r.amount, r.status, {REMOVED_BY_ADMIN} AS removed_by_admin,
+SELECT r.id, r.direction, r.amount, {amount_currency_sql()} AS amount_currency, r.status,
+       {REMOVED_BY_ADMIN} AS removed_by_admin,
        r.created_at, r.updated_at, r.expires_at
 FROM requests r
 WHERE r.user_id = ?
@@ -313,8 +316,9 @@ async def get_user(db: Database, actor: User, user_id: int) -> AdminUserDetailOu
 
 # --- Board requests ---
 
-_SELECT_BOARD_REQUESTS = """
-SELECT r.id, r.user_id, r.direction, r.amount, r.created_at, r.expires_at,
+_SELECT_BOARD_REQUESTS = f"""
+SELECT r.id, r.user_id, r.direction, r.amount, {amount_currency_sql()} AS amount_currency,
+       r.created_at, r.expires_at,
        :ref * (1 + r.rate_value / 100.0) AS effective_rate,
        (SELECT COUNT(*) FROM reports rp WHERE rp.request_id = r.id AND rp.resolved = 0)
            AS open_reports
@@ -356,6 +360,7 @@ async def list_board_requests(db: Database, actor: User) -> list[AdminBoardReque
             id=row["id"],
             direction=row["direction"],
             amount=row["amount"],
+            amount_currency=row["amount_currency"],
             effective_rate=row["effective_rate"],
             created_at=row["created_at"],
             expires_at=row["expires_at"],
@@ -470,7 +475,8 @@ SELECT d.id, d.status, d.partial, d.author_confirmed, d.responder_confirmed, d.c
        d.updated_at, d.accepted_at, d.author_id, d.responder_id, d.request_id,
        COALESCE(d.rate, :ref * (1 + r.rate_value / 100.0)) AS rate,
        d.rate IS NOT NULL AS rate_locked,
-       r.direction, d.amount, r.status AS request_status, {REMOVED_BY_ADMIN} AS removed_by_admin
+       r.direction, d.amount, {amount_currency_sql("r", "d.amount_side")} AS amount_currency,
+       r.status AS request_status, {REMOVED_BY_ADMIN} AS removed_by_admin
 FROM deals d
 JOIN requests r ON r.id = d.request_id
 WHERE {{where}}
@@ -514,6 +520,7 @@ async def _select_deals(
                 author_id=row["author_id"],
                 direction=row["direction"],
                 amount=row["amount"],
+                amount_currency=row["amount_currency"],
                 status=row["request_status"],
                 removed_by_admin=row["removed_by_admin"],
             ),
@@ -534,8 +541,9 @@ async def list_deals(db: Database, actor: User, *, state: DealListState) -> list
     return await _select_deals(db, where, order, ALL_DEALS_LIMIT)
 
 
-_SELECT_CANCELLED = """
-SELECT r.id, r.user_id, r.direction, r.amount, r.created_at,
+_SELECT_CANCELLED = f"""
+SELECT r.id, r.user_id, r.direction, r.amount, {amount_currency_sql()} AS amount_currency,
+       r.created_at,
        r.updated_at AS closed_at, r.close_reason, r.closed_by,
        (SELECT COUNT(*) FROM reports rp WHERE rp.request_id = r.id AND rp.resolved = 0)
            AS open_reports
@@ -576,6 +584,7 @@ async def list_cancelled_requests(db: Database, actor: User) -> list[CancelledRe
             id=row["id"],
             direction=row["direction"],
             amount=row["amount"],
+            amount_currency=row["amount_currency"],
             created_at=row["created_at"],
             closed_at=row["closed_at"],
             close_reason=row["close_reason"],

@@ -105,8 +105,9 @@ export interface Rate {
 export interface ExchangeRequest {
   id: number;
   direction: Direction;
-  /** In the currency the author buys (see `amountCurrency`): what they get is fixed. */
+  /** Fixed, in `amount_currency`: what the author gets or pays (see `authorSides`). */
   amount: number;
+  amount_currency: Currency;
   /** KRW per 1 KZT at the current reference rate (null while none is available). */
   effective_rate: number | null;
   /**
@@ -114,7 +115,7 @@ export interface ExchangeRequest {
    * acceptance, when `effective_rate` is that rate and both amounts are exact.
    */
   rate_locked?: boolean;
-  /** The smallest counter offer the author accepts, in `amount`'s currency (null: they don't). */
+  /** The smallest counter offer the author accepts, in `amount_currency` (null: they don't). */
   min_counter_amount: number | null;
   /** The bank the author would rather use for the KZT side, e.g. "Kaspi" (null: no preference). */
   kzt_bank: string | null;
@@ -143,10 +144,12 @@ export interface Deal {
   status: DealStatus;
   role: DealRole;
   /**
-   * What the deal is for, in the request's currency: all of it, or the part a counter offer
-   * asked for. `partial`: less than the whole request, whose rest stays on the board once accepted.
+   * What the deal is for, in `amount_currency` (its request's when the deal was made): all of it,
+   * or the part a counter offer asked for. `partial`: less than the whole request, whose rest
+   * stays on the board once accepted.
    */
   amount: number;
+  amount_currency: Currency;
   partial: boolean;
   /**
    * The whole request the deal is part of: what's on the board now while it's pending, else what
@@ -218,6 +221,7 @@ export interface CancelledRequest {
   id: number;
   direction: Direction;
   amount: number;
+  amount_currency: Currency;
   created_at: string;
   closed_at: string;
   /** Null for requests closed before this was recorded. */
@@ -235,6 +239,7 @@ export interface AdminBoardRequest {
   id: number;
   direction: Direction;
   amount: number;
+  amount_currency: Currency;
   effective_rate: number | null;
   created_at: string;
   expires_at: string;
@@ -250,6 +255,7 @@ export interface AdminRequest {
   author_id: number;
   direction: Direction;
   amount: number;
+  amount_currency: Currency;
   status: RequestStatus;
   removed_by_admin: boolean;
 }
@@ -307,17 +313,10 @@ export interface ListedDeal {
   responder: AdminUser;
 }
 
-/** What each side of a deal pays: the responder the (fixed) amount, the author the other currency at the rate. */
+/** What each side of a deal pays: one of them the (fixed) amount, the other the other currency at the rate. */
 export function listedDealSides(deal: ListedDeal): { author: Side; responder: Side } {
-  const currency = amountCurrency(deal.request.direction);
-  return {
-    author: {
-      currency: giveCurrency(deal.request.direction),
-      amount: deal.rate === null ? null : Math.round(convert(deal.request.amount, currency, deal.rate)),
-      approx: !deal.rate_locked,
-    },
-    responder: { currency, amount: deal.request.amount, approx: false },
-  };
+  const { pay, get } = authorSides(deal.request, deal.rate, deal.rate_locked);
+  return { author: pay, responder: get };
 }
 
 /** Admin: users lists everyone, those with open reports about them, or banned users. */
@@ -342,6 +341,7 @@ export interface AdminUserRequest {
   id: number;
   direction: Direction;
   amount: number;
+  amount_currency: Currency;
   status: RequestStatus;
   removed_by_admin: boolean;
   created_at: string;
@@ -378,6 +378,8 @@ export interface Contact {
 export interface RequestCreate {
   direction: Direction;
   amount: number;
+  /** The side the amount is fixed in: what the author typed last. */
+  amount_currency: Currency;
   duration_days: DurationDays;
   /** The smallest counter offer to accept (at most `amount`); null turns counter offers off. */
   min_counter_amount: number | null;
@@ -390,9 +392,11 @@ export interface RequestCreate {
 /**
  * The author's changes to their open request. `extend_days` moves the expiry to that many days
  * from now; `min_counter_amount: null` turns counter offers off, `kzt_bank: null` removes the bank.
+ * `amount_currency` comes with `amount` and `min_counter_amount`, which are in it.
  */
 export interface RequestUpdate {
   amount?: number;
+  amount_currency?: Currency;
   min_counter_amount?: number | null;
   kzt_bank?: string | null;
   extend_days?: DurationDays;
@@ -401,7 +405,7 @@ export interface RequestUpdate {
 /** A request's terms, e.g. to post an expired one again. */
 export type RequestTerms = Pick<
   ExchangeRequest,
-  "direction" | "amount" | "min_counter_amount" | "kzt_bank"
+  "direction" | "amount" | "amount_currency" | "min_counter_amount" | "kzt_bank"
 >;
 
 /**
@@ -434,17 +438,12 @@ export function getCurrency(direction: Direction): Currency {
   return direction === "KZT_KRW" ? "KRW" : "KZT";
 }
 
-/**
- * The currency a request's `amount` is in (and its counter offer minimum, and its deals'
- * amounts): what its author buys. That side is fixed; the other follows the market rate until
- * a deal is accepted.
- */
-export function amountCurrency(direction: Direction): Currency {
-  return getCurrency(direction);
+export function otherCurrency(currency: Currency): Currency {
+  return currency === "KZT" ? "KRW" : "KZT";
 }
 
 // The UI always speaks from the viewer's side: what *you* pay and get. The author of a
-// request gets its `amount`; whoever takes it pays that amount.
+// request gets what whoever takes it pays, and the other way round.
 
 /** Requests on the Board that get the viewer `currency` when they take one. */
 export function boardDirection(currency: Currency): Direction {
@@ -469,20 +468,29 @@ export interface Side {
   approx: boolean;
 }
 
+/** A request's direction and its fixed amount: enough to tell what its author pays and gets. */
+export type AmountTerms = Pick<ExchangeRequest, "direction" | "amount" | "amount_currency">;
+
 /**
- * What the viewer pays and gets: as its author, or by taking it. The amount (what the author
- * gets, so what a taker pays) is fixed; the other side is converted at the rate.
+ * What a request's author pays and gets. The amount is fixed, in whichever currency they typed
+ * last when posting it; the other side is converted at `rate` (null: unknown), "≈" until `locked`.
  */
-export function viewerSides(request: ExchangeRequest): { pay: Side; get: Side } {
-  const currency = amountCurrency(request.direction);
-  const fixed: Side = { currency, amount: request.amount, approx: false };
+export function authorSides(terms: AmountTerms, rate: number | null, locked: boolean): { pay: Side; get: Side } {
+  const fixed: Side = { currency: terms.amount_currency, amount: terms.amount, approx: false };
   const converted: Side = {
-    currency: giveCurrency(request.direction),
-    amount:
-      request.effective_rate === null ? null : Math.round(convert(request.amount, currency, request.effective_rate)),
-    approx: !request.rate_locked,
+    currency: otherCurrency(terms.amount_currency),
+    amount: rate === null ? null : Math.round(convert(terms.amount, terms.amount_currency, rate)),
+    approx: !locked,
   };
-  return request.is_own ? { pay: converted, get: fixed } : { pay: fixed, get: converted };
+  return fixed.currency === getCurrency(terms.direction)
+    ? { pay: converted, get: fixed }
+    : { pay: fixed, get: converted };
+}
+
+/** What the viewer pays and gets: as its author, or by taking it. */
+export function viewerSides(request: ExchangeRequest): { pay: Side; get: Side } {
+  const { pay, get } = authorSides(request, request.effective_rate, Boolean(request.rate_locked));
+  return request.is_own ? { pay, get } : { pay: get, get: pay };
 }
 
 /**
@@ -509,12 +517,14 @@ export function takesCounterOffers(request: ExchangeRequest): boolean {
  * at the deal's locked rate once accepted.
  */
 export function dealTerms(deal: Deal): ExchangeRequest {
-  return { ...lockedRate(deal), amount: deal.amount };
+  return { ...lockedRate(deal), amount: deal.amount, amount_currency: deal.amount_currency };
 }
 
 /** For a counter offer, the whole request it's part of (see `Deal.request_amount`); else null. */
 export function dealWhole(deal: Deal): ExchangeRequest | null {
-  return deal.partial ? { ...lockedRate(deal), amount: deal.request_amount } : null;
+  return deal.partial
+    ? { ...lockedRate(deal), amount: deal.request_amount, amount_currency: deal.amount_currency }
+    : null;
 }
 
 function lockedRate(deal: Deal): ExchangeRequest {

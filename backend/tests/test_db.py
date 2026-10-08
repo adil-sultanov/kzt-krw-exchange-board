@@ -34,6 +34,7 @@ async def test_migrations_are_applied_once(db: Database) -> None:
             16,
             17,
             18,
+            19,
         ]
 
 
@@ -322,7 +323,7 @@ async def test_migration_018_turns_alerts_on_for_users_new_to_the_app(tmp_path: 
         )
         await conn.commit()
 
-        assert await database.migrate() == [18]
+        assert (await database.migrate())[:1] == [18]
         async with conn.execute(
             "SELECT telegram_id FROM users WHERE alerts_buy_krw = 1 AND alerts_buy_kzt = 1"
         ) as cursor:

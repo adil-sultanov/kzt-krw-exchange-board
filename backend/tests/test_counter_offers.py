@@ -242,6 +242,35 @@ def test_counter_offers_show_the_whole_request(client: TestClient) -> None:
     assert get(client, NURA, f"deals/{rest}")["request_amount"] == 50_000
 
 
+def test_counter_offers_on_an_amount_fixed_in_what_the_author_gives(
+    client: TestClient,
+) -> None:
+    request_id = create(
+        client, AIDA, amount=100_000, amount_currency="KZT", min_counter_amount=20_000
+    )["id"]
+    part = countered(client, BEK, request_id, 30_000)
+    assert counter(client, DANA, request_id, 10_000).json() == {"detail": "counter_below_minimum"}
+    deal = get(client, BEK, f"deals/{part}")
+    assert (deal["amount"], deal["amount_currency"]) == (30_000, "KZT")
+    act(client, AIDA, part, "accept")
+    request = get(client, AIDA, f"requests/{request_id}")
+    assert (request["amount"], request["amount_currency"]) == (70_000, "KZT")
+
+    # Fixing the rest in KRW instead leaves the accepted counter offer in KZT.
+    body = {"amount": 200_000, "amount_currency": "KRW", "min_counter_amount": None}
+    response = client.patch(f"/api/requests/{request_id}", json=body, headers=auth_as(AIDA))
+    assert response.json()["amount_currency"] == "KRW"
+    deal = get(client, BEK, f"deals/{part}")
+    assert (deal["amount"], deal["amount_currency"], deal["request_amount"]) == (
+        30_000,
+        "KZT",
+        100_000,
+    )
+    rest = taken(client, DANA, request_id)
+    deal = get(client, DANA, f"deals/{rest}")
+    assert (deal["amount"], deal["amount_currency"]) == (200_000, "KRW")
+
+
 def test_responding_again_after_a_counter_offer(client: TestClient) -> None:
     request_id = with_counters(client)
     part = countered(client, BEK, request_id, 30_000)

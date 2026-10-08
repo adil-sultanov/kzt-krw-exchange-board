@@ -1,6 +1,6 @@
-import { formatKstShort, formatMoney, formatRatePair, timeAgo } from "../format";
+import { formatAuthorTerms, formatKstShort, formatRatePair, timeAgo } from "../format";
 import { t } from "../i18n";
-import { amountCurrency, type CancelledRequest, giveCurrency, type ListedDeal, listedDealSides } from "../types";
+import { type CancelledRequest, type ListedDeal, listedDealSides } from "../types";
 import { AdminParty, displayName } from "./AdminPerson";
 import type { StatusTone } from "./RequestCard";
 
@@ -88,6 +88,7 @@ function closedBy(request: CancelledRequest): string {
 export function RemovedRequestCard(props: { request: CancelledRequest }) {
   const { request } = props;
   const byAdmin = request.closed_by !== null && request.close_reason !== "author";
+  const terms = formatAuthorTerms(request);
   return (
     <div className="card admin-card">
       <div className="admin-card-head">
@@ -95,10 +96,7 @@ export function RemovedRequestCard(props: { request: CancelledRequest }) {
         <span className="admin-card-time">{timeAgo(request.closed_at)}</span>
       </div>
       <span className="admin-card-terms">
-        {t.allDeals.wanted(
-          formatMoney(request.amount, amountCurrency(request.direction)),
-          giveCurrency(request.direction),
-        )}
+        {t.allDeals.wanted(terms.buys, terms.pays)}
       </span>
       {request.open_reports > 0 && (
         <span className="flag danger admin-card-flag">{t.admin.reportsOnRequest(request.open_reports)}</span>

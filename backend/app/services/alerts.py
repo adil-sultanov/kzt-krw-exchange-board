@@ -11,8 +11,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from app.db import Database, utc_iso, utc_now
-from app.models import AlertsUpdate, Direction, User
+from app.models import AlertsUpdate, Currency, Direction, User
 from app.services.rates import get_reference_rate
+from app.services.requests import amount_currency_sql
 
 # The users column for each direction's tab, by what whoever takes the request gets.
 _COLUMN: dict[Direction, str] = {"KRW_KZT": "alerts_buy_krw", "KZT_KRW": "alerts_buy_kzt"}
@@ -27,8 +28,9 @@ class Alert:
 
     request_id: int
     direction: Direction
-    # In the request's currency (what its author buys): what whoever takes it pays.
+    # Fixed, in `amount_currency` (what its author buys or gives).
     amount: int
+    amount_currency: Currency
     # KRW per 1 KZT at the current reference rate (None while none is available).
     effective_rate: float | None
     # Who has alerts on for its tab: not its author, and nobody banned.
@@ -67,7 +69,8 @@ async def load_alert(db: Database, request_id: int) -> Alert | None:
     """The alert about a request, or None once it's no longer on the board."""
     params = {"id": request_id, "now": utc_iso(datetime.now(UTC))}
     async with db.conn.execute(
-        "SELECT r.user_id, r.direction, r.amount, r.rate_value FROM requests r "
+        f"SELECT r.user_id, r.direction, r.amount, {amount_currency_sql()} AS amount_currency, "
+        "r.rate_value FROM requests r "
         f"JOIN users u ON u.telegram_id = r.user_id WHERE r.id = :id AND {_ON_BOARD}",
         params,
     ) as cursor:
@@ -86,6 +89,7 @@ async def load_alert(db: Database, request_id: int) -> Alert | None:
         request_id=request_id,
         direction=request["direction"],
         amount=request["amount"],
+        amount_currency=request["amount_currency"],
         effective_rate=rate.rate * (1 + request["rate_value"] / 100) if rate else None,
         recipients=recipients,
     )

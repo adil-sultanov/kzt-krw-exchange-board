@@ -22,11 +22,15 @@ def make_deal(
     other_profile: Profile | None = None,
     amount: int = 150_000,
     rate: float | None = None,
+    currency: str | None = None,
 ) -> DealOut:
+    """A deal on a request for 150,000 in `currency`, by default what its author buys."""
+    currency = currency or ("KRW" if direction == "KZT_KRW" else "KZT")
     request = RequestOut(
         id=7,
         direction=direction,  # type: ignore[arg-type]
         amount=150_000,
+        amount_currency=currency,  # type: ignore[arg-type]
         effective_rate=2.7,
         min_counter_amount=None,
         kzt_bank=None,
@@ -48,6 +52,7 @@ def make_deal(
         status="pending",
         role=role,  # type: ignore[arg-type]
         amount=amount,
+        amount_currency=currency,  # type: ignore[arg-type]
         partial=amount < request.amount,
         request_amount=request.amount,
         other_completed_deals=3,
@@ -101,6 +106,21 @@ async def test_counter_offer_message() -> None:
         "🔔 Someone sent a counter offer: you get 50,000 ₩ 🇰🇷 and pay ≈ 18,519 ₸ 🇰🇿 "
         "(part of the 150,000 ₩ you're buying)."
     )
+
+
+async def test_messages_with_the_amount_fixed_in_what_the_author_gives() -> None:
+    bot = FakeBot()
+    notifier = notifier_with(bot)
+    # A KZT_KRW request fixed at 150,000 ₸ (what its author pays); a counter offer for 50,000 ₸.
+    notifier.deal_requested(1, make_deal(currency="KZT", amount=50_000))
+    notifier.deal_accepted(2, make_deal("responder", currency="KZT", rate=2.7))
+    await notifier.aclose()
+    [(_, requested, _), (_, accepted, _)] = sorted(bot.sent)
+    assert requested.startswith(
+        "🔔 Someone sent a counter offer: you get ≈ 135,000 ₩ 🇰🇷 and pay 50,000 ₸ 🇰🇿 "
+        "(part of the 150,000 ₸ you're selling)."
+    )
+    assert "you get 150,000 ₸ 🇰🇿 and pay 405,000 ₩ 🇰🇷." in accepted
 
 
 async def test_deal_requested_without_a_profile() -> None:

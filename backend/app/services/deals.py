@@ -49,6 +49,7 @@ from app.services.rates import get_reference_rate
 from app.services.requests import (
     COUNTS_AS_RESPONSE,
     MAX_OFFERS_PER_REQUEST,
+    amount_currency_sql,
     get_requests_by_ids,
 )
 
@@ -75,8 +76,9 @@ WHERE d.id = ?
 """
 
 # Columns for DealOut, except `request`. :viewer is the caller.
-_SELECT_DEALS = """
-SELECT d.id, d.status, d.amount, d.partial, d.request_amount, d.request_id, d.created_at,
+_SELECT_DEALS = f"""
+SELECT d.id, d.status, d.amount, {amount_currency_sql("r", "d.amount_side")} AS amount_currency,
+       d.partial, d.request_amount, d.request_id, d.created_at,
        d.updated_at, d.accepted_at, d.rate,
        CASE WHEN d.author_id = :viewer THEN 'author' ELSE 'responder' END AS role,
        CASE WHEN d.author_id = :viewer THEN d.author_confirmed
@@ -88,6 +90,7 @@ SELECT d.id, d.status, d.amount, d.partial, d.request_amount, d.request_id, d.cr
        o.completed_deals AS other_completed_deals,
        o.profile_first_name, o.profile_last_name, o.university, o.enrollment_year
 FROM deals d
+JOIN requests r ON r.id = d.request_id
 JOIN users o ON o.telegram_id =
     CASE WHEN d.author_id = :viewer THEN d.responder_id ELSE d.author_id END
 WHERE (d.author_id = :viewer OR d.responder_id = :viewer)
@@ -134,7 +137,7 @@ async def _username(conn: aiosqlite.Connection, telegram_id: int) -> str | None:
 
 def gives_currency(direction: Direction, role: DealRole) -> Currency:
     """The currency this side of a deal pays. The author of a KZT_KRW request gives KZT (and
-    buys KRW, the currency its amount is in)."""
+    buys KRW)."""
     author_gives: Currency = "KZT" if direction == "KZT_KRW" else "KRW"
     if role == "author":
         return author_gives
@@ -222,7 +225,7 @@ async def take_request(
     db: Database, user: User, request_id: int, notifier: Notifier, amount: int | None = None
 ) -> DealOut:
     """Create a pending deal on someone else's open request, with the caller as responder:
-    for all of it, or for `amount` of it (a counter offer, in the request's currency), which
+    for all of it, or for `amount` of it (a counter offer, in the request's amount currency), which
     must be at least the author's minimum and at most the request's amount.
 
     The caller's earlier responses to it must all have been cancelled (none pending or
@@ -271,8 +274,9 @@ async def take_request(
         cursor = await conn.execute(
             """
             INSERT INTO deals (request_id, author_id, responder_id, amount, partial,
-                               request_amount, created_at, updated_at)
-            SELECT id, user_id, :responder, :amount, :amount < amount, amount, :now, :now
+                               request_amount, amount_side, created_at, updated_at)
+            SELECT id, user_id, :responder, :amount, :amount < amount, amount, amount_side,
+                   :now, :now
             FROM requests
             WHERE id = :id AND status = 'open' AND expires_at > :now AND amount >= :amount
             """,

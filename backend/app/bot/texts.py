@@ -59,7 +59,7 @@ def _profile(profile: Profile | None) -> str | None:
 
 
 def _author_currencies(direction: Direction) -> tuple[Currency, Currency]:
-    """(gives, buys) for the author of a request; its amount is in what they buy."""
+    """(gives, buys) for the author of a request."""
     return ("KZT", "KRW") if direction == "KZT_KRW" else ("KRW", "KZT")
 
 
@@ -68,29 +68,35 @@ def _convert(amount: int, from_currency: Currency, rate: float) -> int:
     return round(amount * rate if from_currency == "KZT" else amount / rate)
 
 
+def _other(currency: Currency) -> Currency:
+    return "KRW" if currency == "KZT" else "KZT"
+
+
 def _deal_terms(deal: DealOut) -> str:
     """ "you get 500,000 ₩ 🇰🇷 and pay 169,568 ₸ 🇰🇿", from the viewer's side. The deal's amount
     is fixed; the other side's is exact once the rate is locked (accepted), ≈ before that."""
     gives, buys = _author_currencies(deal.request.direction)
-    fixed = f"{_money(deal.amount, buys)} {FLAG[buys]}"
+    fixed, other = deal.amount_currency, _other(deal.amount_currency)
+    sides = {fixed: f"{_money(deal.amount, fixed)} {FLAG[fixed]}"}
     rate = deal.rate or deal.request.effective_rate
     if rate:
         approx = "" if deal.rate else "≈ "
-        other = f"{approx}{_money(_convert(deal.amount, buys, rate), gives)} {FLAG[gives]}"
-    else:
-        other = None
-    if deal.role == "author":
-        return f"you get {fixed} and pay {other or f'in {gives} {FLAG[gives]}'}"
-    return f"you get {other or f'{gives} {FLAG[gives]}'} and pay {fixed}"
+        sides[other] = f"{approx}{_money(_convert(deal.amount, fixed, rate), other)} {FLAG[other]}"
+    get, pay = (buys, gives) if deal.role == "author" else (gives, buys)
+    return (
+        f"you get {sides.get(get, f'{get} {FLAG[get]}')} "
+        f"and pay {sides.get(pay, f'in {pay} {FLAG[pay]}')}"
+    )
 
 
 def deal_requested(deal: DealOut) -> str:
     """To the author. `deal` is as they see it, so `other_*` is the person who took it."""
     _, buys = _author_currencies(deal.request.direction)
+    verb = "buying" if deal.amount_currency == buys else "selling"
     who = _profile(deal.other_profile)
     wants = (
         f"sent a counter offer: {_deal_terms(deal)} "
-        f"(part of the {_money(deal.request.amount, buys)} you're buying)"
+        f"(part of the {_money(deal.request_amount, deal.amount_currency)} you're {verb})"
         if deal.partial
         else f"wants to take your request: {_deal_terms(deal)}"
     )
@@ -128,13 +134,16 @@ def payment_reminder(deal: DealOut) -> str:
 
 def request_alert(alert: Alert) -> str:
     """A new request, from the side of whoever takes it, e.g. "Pay 500,000 ₩ → Get ≈ 169,568 ₸"."""
-    # The amount is what the author buys, so whoever takes it pays that, and gets the rest.
+    # Whoever takes it gets what the author gives, and pays what they buy.
     gets, pays = _author_currencies(alert.direction)
-    pay = _money(alert.amount, pays)
+    fixed, other = alert.amount_currency, _other(alert.amount_currency)
+    sides = {fixed: _money(alert.amount, fixed)}
     rate = alert.effective_rate
     if rate:
-        return f"Pay {pay} → Get ≈ {_money(_convert(alert.amount, pays, rate), gets)}"
-    return f"Pay {pay}, get {gets} {SYMBOL[gets]}"
+        sides[other] = f"≈ {_money(_convert(alert.amount, fixed, rate), other)}"
+        return f"Pay {sides[pays]} → Get {sides[gets]}"
+    pay = sides.get(pays, f"in {pays} {SYMBOL[pays]}")
+    return f"Pay {pay}, get {sides.get(gets, f'{gets} {SYMBOL[gets]}')}"
 
 
 def alert_gone(text: str) -> str:

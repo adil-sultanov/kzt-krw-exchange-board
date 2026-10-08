@@ -6,11 +6,11 @@ import { CheckIcon, DealsIcon, ListIcon } from "../components/icons";
 import type { StatusTone } from "../components/RequestCard";
 import { CopyButton, ErrorBox, FoldableGroup, Loading, Notice, RefreshButton, Row } from "../components/ui";
 import { UsernameTag } from "../components/UsernameTag";
-import { formatKst, formatKstShort, formatMoney, requestStatus, timeAgo, timeLeft } from "../format";
+import { formatAuthorTerms, formatKst, formatKstShort, requestStatus, timeAgo, timeLeft } from "../format";
 import { t } from "../i18n";
 import { useReactivated } from "../nav";
 import { confirm, haptic, openTelegramLink } from "../telegram";
-import { type AdminUserDetail, type AdminUserRequest, amountCurrency, giveCurrency } from "../types";
+import type { AdminUserDetail, AdminUserRequest } from "../types";
 
 function requestTone(request: AdminUserRequest): StatusTone {
   return request.status === "closed" || request.status === "expired" ? "muted" : "active";
@@ -20,6 +20,7 @@ function requestTone(request: AdminUserRequest): StatusTone {
 function RequestRow(props: { request: AdminUserRequest }) {
   const { request } = props;
   const left = request.status === "open" ? timeLeft(request.expires_at) : null;
+  const terms = formatAuthorTerms(request);
   return (
     <div className="card admin-card">
       <div className="admin-card-head">
@@ -27,10 +28,7 @@ function RequestRow(props: { request: AdminUserRequest }) {
         <span className="admin-card-time">{timeAgo(request.updated_at)}</span>
       </div>
       <span className="admin-card-terms">
-        {t.adminUsers.request(
-          formatMoney(request.amount, amountCurrency(request.direction)),
-          giveCurrency(request.direction),
-        )}
+        {t.adminUsers.request(terms.buys, terms.pays)}
       </span>
       <span className="card-meta">
         <span>{t.adminUsers.posted(formatKstShort(request.created_at))}</span>

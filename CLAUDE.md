@@ -36,8 +36,9 @@ All rights reserved (see `LICENSE`); author @moonpie24. Keep `TERMS.md` / `PRIVA
 when stored data or behavior changes.
 
 ## Conventions
-- Rate = KRW per 1 KZT. Amount = integer, in the currency the author **buys** (KRW for
-  `KZT_KRW`): that side is fixed, the other follows the rate until a deal is accepted, which
+- Rate = KRW per 1 KZT. Amount = integer, fixed in whichever currency the author typed last
+  (`requests.amount_side`: what they **buy**, KRW for `KZT_KRW`, or what they **sell**; deals
+  keep their own copy), the other side follows the rate until a deal is accepted, which
   locks it (`deals.rate`). Requests are always at the reference (market) rate: no offsets,
   fixed rates, notes or payment methods (`rate_value` is 0 for new requests; older ones may
   carry an offset).

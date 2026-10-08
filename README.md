@@ -15,9 +15,10 @@ reposting, and there was no way to tell who had reliably completed exchanges bef
 
 - **Board** of open requests ("Buy KRW" / "Buy KZT"), sortable by date or amount
 - **Live market rate** (Wise's mid-market rate, refreshed every 15 min; ExchangeRate-API and
-  Currency API as fallbacks): every request is at the reference rate; the amount you buy is fixed,
-  what you pay moves with the rate until you accept someone, which locks it
-- **Post a request** by typing what you pay *or* what you get; it expires after 1 or 3 days.
+  Currency API as fallbacks): every request is at the reference rate; the amount you typed is fixed,
+  the other side moves with the rate until you accept someone, which locks it
+- **Post a request** by typing what you pay *or* what you get (the one typed last is fixed); it
+  expires after 1 or 3 days.
   Optionally name the bank you'd rather use for KZT ("Kaspi"), remembered for next time
 - **Deals**: take a request → the author accepts (right from My deals, or on the deal) → both
   see each other's contact. Until the author answers, you can cancel your offer

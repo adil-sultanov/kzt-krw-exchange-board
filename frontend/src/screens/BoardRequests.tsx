@@ -2,22 +2,18 @@ import { useState } from "react";
 import { api, errorCode } from "../api";
 import { Person } from "../components/AdminPerson";
 import { Empty, ErrorBox, SkeletonList, TitleWithRefresh } from "../components/ui";
-import { formatKstShort, formatMoney, formatRatePair, formatSide, timeLeft } from "../format";
+import { formatKstShort, formatRatePair, formatSide, timeLeft } from "../format";
 import { t } from "../i18n";
 import { useTabList } from "../tabList";
 import { confirm, haptic } from "../telegram";
-import { type AdminBoardRequest, amountCurrency, convert, giveCurrency } from "../types";
+import { type AdminBoardRequest, authorSides } from "../types";
 
 function RequestCard(props: { request: AdminBoardRequest; busy: boolean; onRemove: () => void }) {
   const { request, busy } = props;
-  // The author gets the (fixed) amount, and pays the other currency at the rate.
-  const currency = amountCurrency(request.direction);
-  const get = formatMoney(request.amount, currency);
-  const pay = formatSide({
-    currency: giveCurrency(request.direction),
-    amount: request.effective_rate === null ? null : convert(request.amount, currency, request.effective_rate),
-    approx: true,
-  });
+  // One side is the (fixed) amount, the other is converted at the rate.
+  const sides = authorSides(request, request.effective_rate, false);
+  const get = formatSide(sides.get);
+  const pay = formatSide(sides.pay);
   const left = timeLeft(request.expires_at);
   return (
     <div className="card">

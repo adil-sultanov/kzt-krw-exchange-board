@@ -1,5 +1,5 @@
 import { t } from "./i18n";
-import type { Currency, Profile, RequestStatus, Side } from "./types";
+import { type AmountTerms, authorSides, type Currency, type Profile, type RequestStatus, type Side } from "./types";
 
 export const SYMBOL: Record<Currency, string> = { KZT: "₸", KRW: "₩" };
 
@@ -35,6 +35,16 @@ export function formatSide(side: Side): string {
   if (side.amount === null) return t.side.unknown(SYMBOL[side.currency]);
   const money = formatMoney(side.amount, side.currency);
   return side.approx ? t.side.approx(money) : money;
+}
+
+/**
+ * What a request's author buys and pays, the fixed amount as money and the other side as just its
+ * currency: { buys: "100,000 ₩", pays: "KZT" }.
+ */
+export function formatAuthorTerms(terms: AmountTerms): { buys: string; pays: string } {
+  const { pay, get } = authorSides(terms, null, false);
+  const show = (side: Side) => (side.amount === null ? side.currency : formatMoney(side.amount, side.currency));
+  return { buys: show(get), pays: show(pay) };
 }
 
 /** A request's status, telling an admin's removal apart from its author cancelling it. */

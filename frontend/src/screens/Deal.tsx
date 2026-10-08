@@ -18,13 +18,13 @@ import { useNav, useReactivated } from "../nav";
 import { FAST_POLL_MS, usePolling } from "../polling";
 import { confirm, haptic, type MainButtonConfig, openTelegramLink, useMainButton } from "../telegram";
 import {
-  amountCurrency,
   canCancelOffer,
   canRespond,
   type Contact,
   type Deal,
   dealTerms,
   dealWhole,
+  getCurrency,
   isActiveDeal,
   viewerSides,
 } from "../types";
@@ -35,7 +35,7 @@ type Busy = DealAction | "contact" | null;
 export function acceptQuestion(deal: Deal): string {
   if (!deal.partial) return t.deal.acceptConfirm;
   const left = deal.request.amount - deal.amount;
-  return t.deal.acceptCounterConfirm(formatMoney(left, amountCurrency(deal.request.direction)));
+  return t.deal.acceptCounterConfirm(formatMoney(left, deal.amount_currency));
 }
 /** `action` asks something of the viewer, `neutral` is waiting or over. */
 type BannerTone = "action" | "neutral" | "success";
@@ -47,9 +47,13 @@ function banner(deal: Deal): { text: { title: string; body: string }; tone: Bann
     case "pending": {
       if (deal.role !== "author") return { text: b.responderPending, tone: "neutral" };
       if (!deal.partial) return { text: b.authorPending, tone: "action" };
-      // The request's amount is what's still on the board, all of which the author pays.
-      const currency = amountCurrency(deal.request.direction);
-      const body = b.authorCounter.body(formatMoney(deal.amount, currency), formatMoney(deal.request.amount, currency));
+      // The request's amount is what's still on the board, in the deal's currency while it's pending.
+      const currency = deal.amount_currency;
+      const body = b.authorCounter.body(
+        formatMoney(deal.amount, currency),
+        formatMoney(deal.request.amount, currency),
+        currency === getCurrency(deal.request.direction),
+      );
       return { text: { title: b.authorCounter.title, body }, tone: "action" };
     }
     case "accepted":

@@ -180,8 +180,8 @@ export const t = {
       },
       authorCounter: {
         title: "Someone sent a counter offer",
-        body: (part: string, whole: string) =>
-          `They offer ${part} of the ${whole} you're buying.`,
+        body: (part: string, whole: string, buying: boolean) =>
+          `They offer ${part} of the ${whole} you're ${buying ? "buying" : "selling"}.`,
       },
       responderPending: {
         title: "Waiting for the author",
@@ -324,7 +324,7 @@ export const t = {
     resolved: "Resolved",
     empty: "No open reports",
     emptyResolved: "No resolved reports yet",
-    request: (money: string, currency: string) => `Request: buys ${money} for ${currency}`,
+    request: (buys: string, pays: string) => `Request: buys ${buys} for ${pays}`,
     deal: (status: string) => `Deal: ${status}`,
     counterOffer: "Counter offer",
     from: "From",
@@ -420,7 +420,7 @@ export const t = {
     notReceived: "Not confirmed",
     rate: (pair: string, locked: boolean) => (locked ? `Locked at ${pair}` : `${pair} now`),
     started: (time: string) => `Started ${time}`,
-    wanted: (money: string, currency: string) => `Wanted ${money} for ${currency}`,
+    wanted: (buys: string, pays: string) => `Wanted ${buys} for ${pays}`,
     // `who` is the author or admin, e.g. "@aida".
     closedBy: {
       author: () => "Cancelled by its author",
@@ -485,7 +485,7 @@ export const t = {
     notFilled: "Not filled in",
     deals: "Recent deals",
     requests: "Recent requests",
-    request: (money: string, currency: string) => `Buys ${money} for ${currency}`,
+    request: (buys: string, pays: string) => `Buys ${buys} for ${pays}`,
     posted: (time: string) => `Posted ${time}`,
     message: (username: string) => `Message @${username}`,
     open: "User info",
@@ -635,7 +635,7 @@ export const t = {
       {
         title: "Posting",
         points: [
-          "What you get is fixed. What you pay (≈) follows the market rate until you accept someone.",
+          "The amount you type last (pay or get) is fixed. The other (≈) follows the market rate until you accept someone.",
           "Allow counter offers to let people take just part of it.",
           "It stays up 1 or 3 days. You can extend it.",
         ],

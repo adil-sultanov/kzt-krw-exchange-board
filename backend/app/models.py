@@ -217,6 +217,8 @@ SortOrder = Literal["desc", "asc"]
 # `cancelled`: its responder cancelled it while it was pending.
 DealStatus = Literal["pending", "accepted", "declined", "cancelled", "completed"]
 DealRole = Literal["author", "responder"]
+# Which side of its author's exchange a request's amount is: what they buy or what they give.
+AmountSide = Literal["buy", "sell"]
 
 MAX_AMOUNT = 100_000_000
 
@@ -229,12 +231,14 @@ class RequestCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     direction: Direction
-    # In the currency the author buys (KRW for KZT_KRW, KZT for KRW_KZT): what they get is
-    # fixed, and what they pay follows the market rate until a deal is accepted.
+    # Fixed, in `amount_currency` (the side the author typed last): the other side follows the
+    # market rate until a deal is accepted.
     amount: Amount
+    # Left out: the currency the author buys (KRW for KZT_KRW, KZT for KRW_KZT).
+    amount_currency: Currency | None = None
     # Always at the market rate: there's no offset to choose (`requests.rate_value` is 0).
     duration_days: DurationDays
-    # The smallest counter offer the author accepts, in the request's currency (at most the
+    # The smallest counter offer the author accepts, in `amount_currency` (at most the
     # amount). Null turns counter offers off.
     min_counter_amount: Amount | None = None
     # The bank the author would rather use for the KZT side ("Kaspi"); null or empty: none.
@@ -259,13 +263,15 @@ class RequestUpdate(BaseModel):
     """The author's changes to their open request. A field left out is unchanged.
 
     `extend_days` moves the expiry to that many days from now (it never shortens it).
-    `min_counter_amount` set to null turns counter offers off; `kzt_bank` set to null or empty
-    removes the preferred bank.
+    `amount_currency` (with `amount`) is the side it's fixed in; left out, it stays.
+    `min_counter_amount` (in the amount's currency) set to null turns counter offers off;
+    `kzt_bank` set to null or empty removes the preferred bank.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     amount: Amount | None = None
+    amount_currency: Currency | None = None
     min_counter_amount: Amount | None = None
     kzt_bank: str | None = None
     extend_days: DurationDays | None = None
@@ -277,6 +283,11 @@ class RequestUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _check(self) -> Self:
+        # The minimum is in the amount's currency, so it comes with any change to that.
+        if self.amount_currency is not None and (
+            self.amount is None or "min_counter_amount" not in self.model_fields_set
+        ):
+            raise ValueError("amount_currency without amount and min_counter_amount")
         if (
             self.amount is None
             and self.extend_days is None
@@ -293,8 +304,9 @@ class RequestOut(BaseModel):
 
     id: int
     direction: Direction
-    # In the currency the author buys (see RequestCreate).
+    # Fixed, in `amount_currency`: what the author buys or what they give (see RequestCreate).
     amount: int
+    amount_currency: Currency
     # KRW per 1 KZT at the current reference rate (null while none is available). Requests
     # posted before every request was at the market rate keep their offset here.
     effective_rate: float | None
@@ -346,7 +358,7 @@ class RateOut(BaseModel):
 
 
 class CounterOfferCreate(BaseModel):
-    """Part of someone else's request, in its currency (what the responder gets)."""
+    """Part of someone else's request, in its amount's currency."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -360,10 +372,11 @@ class DealOut(BaseModel):
     status: DealStatus
     # The viewer's side: 'author' posted the request, 'responder' took it.
     role: DealRole
-    # What the deal is for, in the request's currency (what the author buys): the whole
-    # request, or the part a counter offer asked for. `partial`: less than the whole request,
-    # whose rest stays on the board once it's accepted.
+    # What the deal is for, in `amount_currency` (its request's when the deal was made): the
+    # whole request, or the part a counter offer asked for. `partial`: less than the whole
+    # request, whose rest stays on the board once it's accepted.
     amount: int
+    amount_currency: Currency
     partial: bool
     # The whole request the deal is part of, in its currency: what's on the board now while the
     # deal is pending, else what it was when the deal was accepted (or declined).
@@ -477,6 +490,7 @@ class AdminUserRequestOut(BaseModel):
     id: int
     direction: Direction
     amount: int
+    amount_currency: Currency
     status: RequestStatus
     removed_by_admin: bool
     created_at: str
@@ -489,6 +503,7 @@ class AdminRequestOut(BaseModel):
     author_id: int
     direction: Direction
     amount: int
+    amount_currency: Currency
     status: RequestStatus
     removed_by_admin: bool
 
@@ -597,6 +612,7 @@ class CancelledRequestOut(BaseModel):
     id: int
     direction: Direction
     amount: int
+    amount_currency: Currency
     created_at: str
     closed_at: str
     # Null for requests closed before this was recorded.
@@ -616,6 +632,7 @@ class AdminBoardRequestOut(BaseModel):
     id: int
     direction: Direction
     amount: int
+    amount_currency: Currency
     effective_rate: float | None
     created_at: str
     expires_at: str
