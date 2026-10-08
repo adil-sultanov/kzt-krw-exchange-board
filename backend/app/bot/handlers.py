@@ -7,12 +7,14 @@ from aiogram.types import (
     ChatMemberUpdated,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    LinkPreviewOptions,
     Message,
     WebAppInfo,
 )
 
 from app.bot import texts
 from app.config import Settings
+from app.models import User
 from app.services.membership import Membership
 
 logger = logging.getLogger(__name__)
@@ -28,11 +30,16 @@ def open_app_keyboard(webapp_url: str) -> InlineKeyboardMarkup:
 
 
 @router.message(CommandStart())
-async def start(message: Message, settings: Settings, is_member: bool) -> None:
-    if not is_member:
+async def start(message: Message, settings: Settings, db_user: User | None) -> None:
+    if db_user is None:
         await message.answer(texts.NOT_MEMBER)
         return
-    await message.answer(texts.WELCOME, reply_markup=open_app_keyboard(settings.webapp_url))
+    await message.answer(
+        texts.welcome(db_user.alerts_buy_krw or db_user.alerts_buy_kzt),
+        parse_mode="HTML",
+        link_preview_options=LinkPreviewOptions(is_disabled=True),
+        reply_markup=open_app_keyboard(settings.webapp_url),
+    )
 
 
 @router.my_chat_member(F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}))

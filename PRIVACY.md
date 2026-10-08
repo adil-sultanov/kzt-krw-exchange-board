@@ -62,8 +62,9 @@ Your data is never sold or shared with third parties for advertising. There is n
 or tracking. The bot messages you when someone takes your request or sends a counter offer on it (the
 message shows their profile: name, university and year of enrollment), when your deal is
 accepted, and once if you haven't confirmed receiving the money 3 hours after your deal was
-accepted. If you turn alerts on for a Board tab (they're off unless you do), it also messages
-you about each new request there: only its amounts, never who posted it. If the bot
+accepted. If alerts are on for a Board tab, it also messages you about each new request there
+(they're on for both tabs if you start the bot before using the app, and off otherwise; you can
+turn them on or off any time in the Alerts panel on the Board): only its amounts, never who posted it. If the bot
 can't reach you (for example, you blocked it), your alerts are turned off. These
 messages never contain anyone's username. The Service runs inside Telegram, and
 [Telegram's privacy policy](https://telegram.org/privacy) applies to Telegram itself.

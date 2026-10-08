@@ -1,5 +1,6 @@
 from typing import Any
 
+from app.bot import texts
 from app.bot.notifier import BotNotifier, deal_url
 from app.models import DealOut, Profile, RequestOut
 
@@ -170,3 +171,11 @@ async def test_failed_send_is_swallowed(caplog: Any) -> None:
     await notifier.aclose()
     assert "deal 42: RuntimeError" in caplog.text
     assert "blocked" not in caplog.text
+
+
+def test_welcome_says_whether_alerts_are_on() -> None:
+    on, off = texts.welcome(True), texts.welcome(False)
+    assert "Turn off: <b>Alerts</b>" in on
+    assert "Turn on <b>Alerts</b>" in off
+    assert f'<a href="{texts.TERMS_URL}">Terms</a>' in on
+    assert "Terms:" not in on

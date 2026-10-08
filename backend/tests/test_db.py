@@ -33,6 +33,7 @@ async def test_migrations_are_applied_once(db: Database) -> None:
             15,
             16,
             17,
+            18,
         ]
 
 
@@ -281,5 +282,54 @@ async def test_migration_016_converts_amounts_to_the_bought_currency(tmp_path: P
         assert rows[0][:3] == (1, 25500, 25500)
         assert rows[0][3] == pytest.approx(2.55)  # locked: it was accepted
         assert rows[1] == (2, 12000, 20000, None)  # pending: not locked
+    finally:
+        await database.close()
+
+
+async def test_migration_018_turns_alerts_on_for_users_new_to_the_app(tmp_path: Path) -> None:
+    before = tmp_path / "before"
+    before.mkdir()
+    for path in sorted(MIGRATIONS_DIR.glob("0*.sql")):
+        if int(path.name[:3]) < 18:
+            (before / path.name).write_text(path.read_text())
+    database = Database(tmp_path / "test.db")
+    await database.connect()
+    try:
+        await database.migrate(before)
+        now = "2026-01-01T00:00:00+00:00"
+        conn = database.conn
+        # 1: only started the bot. 2: has a profile. 3: opened Alerts. 4: posted a request.
+        # 5: took one. 6: banned.
+        for telegram_id in range(1, 7):
+            await conn.execute(
+                "INSERT INTO users (telegram_id, created_at, updated_at) VALUES (?, ?, ?)",
+                (telegram_id, now, now),
+            )
+        await conn.execute("UPDATE users SET profile_first_name = 'Aida' WHERE telegram_id = 2")
+        await conn.execute("UPDATE users SET alerts_seen = 1 WHERE telegram_id = 3")
+        await conn.execute("UPDATE users SET is_banned = 1 WHERE telegram_id = 6")
+        await conn.execute(
+            "INSERT INTO requests (id, user_id, direction, amount, rate_type, rate_value, "
+            "status, created_at, updated_at, expires_at) "
+            "VALUES (1, 4, 'KZT_KRW', 10000, 'market', 0, 'open', ?, ?, ?)",
+            (now, now, now),
+        )
+        await conn.execute(
+            "INSERT INTO deals (id, request_id, author_id, responder_id, status, amount, "
+            "request_amount, created_at, updated_at) "
+            "VALUES (1, 1, 4, 5, 'pending', 10000, 10000, ?, ?)",
+            (now, now),
+        )
+        await conn.commit()
+
+        assert await database.migrate() == [18]
+        async with conn.execute(
+            "SELECT telegram_id FROM users WHERE alerts_buy_krw = 1 AND alerts_buy_kzt = 1"
+        ) as cursor:
+            assert [row[0] for row in await cursor.fetchall()] == [1]
+        async with conn.execute(
+            "SELECT COUNT(*) FROM users WHERE alerts_buy_krw = 1 OR alerts_buy_kzt = 1"
+        ) as cursor:
+            assert (await cursor.fetchone())[0] == 1
     finally:
         await database.close()

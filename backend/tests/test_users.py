@@ -6,7 +6,7 @@ from aiogram.types import User as AiogramUser
 from app.bot.middleware import UserRefreshMiddleware
 from app.config import Settings
 from app.db import Database
-from app.models import TelegramUser
+from app.models import TelegramUser, User
 from app.services.membership import Membership
 from app.services.users import upsert_user
 
@@ -108,6 +108,36 @@ async def test_bot_middleware_refreshes_user(db: Database, settings: Settings) -
     assert await username_of(db, 5) == "bek_new"
 
 
+async def alerts_of(db: Database, telegram_id: int) -> tuple[bool, bool]:
+    async with db.conn.execute(
+        "SELECT alerts_buy_krw, alerts_buy_kzt FROM users WHERE telegram_id = ?", (telegram_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row is not None
+    return bool(row[0]), bool(row[1])
+
+
+async def test_bot_first_turns_alerts_on(db: Database, settings: Settings) -> None:
+    data = await run_middleware(db, settings, "private", Membership(None, None))
+    assert await alerts_of(db, 5) == (True, True)
+    user = data["db_user"]
+    assert isinstance(user, User) and user.alerts_buy_krw and user.alerts_buy_kzt
+
+
+async def test_app_first_leaves_alerts_off(db: Database, settings: Settings) -> None:
+    await upsert_user(db, TelegramUser(id=5, first_name="Bek"), config_admin=False)
+    await run_middleware(db, settings, "private", Membership(None, None))
+    assert await alerts_of(db, 5) == (False, False)
+
+
+async def test_bot_keeps_alerts_turned_off(db: Database, settings: Settings) -> None:
+    await run_middleware(db, settings, "private", Membership(None, None))
+    await db.conn.execute("UPDATE users SET alerts_buy_krw = 0 WHERE telegram_id = 5")
+    await db.conn.commit()
+    await run_middleware(db, settings, "private", Membership(None, None))
+    assert await alerts_of(db, 5) == (False, True)
+
+
 async def test_bot_middleware_ignores_group_updates(db: Database, settings: Settings) -> None:
     data = await run_middleware(db, settings, "supergroup", Membership(None, None))
     assert data["is_member"] is False
@@ -118,6 +148,7 @@ async def test_bot_middleware_ignores_group_updates(db: Database, settings: Sett
 async def test_bot_middleware_skips_non_members(db: Database, settings: Settings) -> None:
     data = await run_middleware(db, settings, "private", fixed_lookup(False))
     assert data["is_member"] is False
+    assert data["db_user"] is None
     async with db.conn.execute("SELECT COUNT(*) FROM users") as cursor:
         assert (await cursor.fetchone())[0] == 0
     data = await run_middleware(db, settings, "private", fixed_lookup(True))

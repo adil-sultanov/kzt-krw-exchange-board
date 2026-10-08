@@ -11,7 +11,8 @@ Schema source of truth: `backend/app/migrations/`.
   (`GROUP_ID`): the bot never posts in, or stores anything from, the group.
 - The bot sends only: "someone took your request" (to the author), "your deal was accepted"
   (to the responder), one "did you get the money?" reminder per side of an accepted deal 3 h
-  after acceptance (if they haven't confirmed), opt-in alerts about new requests (crossed out once the request leaves
+  after acceptance (if they haven't confirmed), alerts about new requests (per Board tab; on by
+  default only for those whose first contact is the bot; crossed out once the request leaves
   the board), and its `/start` reply. Every other update is in-app only.
 - Users identified only by `telegram_id`. `username` is a nullable, non-unique cache refreshed
   on every API request/bot update; never store usernames elsewhere. Username and a full profile

@@ -29,7 +29,7 @@ reposting, and there was no way to tell who had reliably completed exchanges bef
 - **Bot notifications** when someone takes your request (or sends a counter offer), when
   your deal is accepted, and one reminder to confirm receiving the money if you haven't 3 h
   after acceptance (plus a red badge and notice on the Board)
-- **Alerts** (opt-in, per Board tab): a one-line bot message for each new request ("Pay
+- **Alerts** (per Board tab; on by default for those who start the bot before using the app): a one-line bot message for each new request ("Pay
   500,000 ₸ → Get ≈ 1,850,000 ₩") with a button to open it, crossed out once it's gone; sent at a
   steady pace under Telegram's rate limit
 - **Matches** going the other way, shown after posting

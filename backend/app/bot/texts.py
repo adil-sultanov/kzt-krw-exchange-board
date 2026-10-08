@@ -8,13 +8,22 @@ from app.services.alerts import Alert
 AUTHOR = "@moonpie24"
 TERMS_URL = "https://github.com/adil-sultanov/kzt-krw-exchange-board/blob/main/TERMS.md"
 
-WELCOME = (
-    "A free noticeboard for students exchanging KZT ↔ KRW.\n\n"
-    "Post a request or take one from the board. Payments are made directly between users; "
-    "the app never handles money.\n\n"
-    f"Made by {AUTHOR}\n"
-    f"Terms: {TERMS_URL}"
-)
+
+def welcome(alerts_on: bool) -> str:
+    """The /start reply (HTML), with whether they get alerts about new requests."""
+    alerts = (
+        "🔔 Alerts are on: you'll get each new request here. Turn off: <b>Alerts</b> on the Board."
+        if alerts_on
+        else "🔔 Want each new request here? Turn on <b>Alerts</b> on the Board."
+    )
+    return (
+        "Free KZT ↔ KRW noticeboard for students. Post a request or take one; "
+        "payments go directly between users, the app never handles money.\n\n"
+        f"{alerts}\n\n"
+        f'By {AUTHOR} · <a href="{TERMS_URL}">Terms</a>'
+    )
+
+
 NOT_MEMBER = (
     "This board is only for members of our group chat. "
     "Ask a member to add you, then send /start again."

@@ -1,5 +1,6 @@
-"""Alerts: the bot messages people about new requests in the Board tabs they turned alerts on
-for (off by default), and crosses those messages out once the request leaves the board.
+"""Alerts: the bot messages people about new requests in the Board tabs they have alerts on
+for (off by default; on for both tabs for those whose first contact is the bot, see
+services/users.py), and crosses those messages out once the request leaves the board.
 
 Sending runs in the background after the request's transaction commits (see
 app/bot/alerts.py); this module decides who gets what and keeps track of what was sent.

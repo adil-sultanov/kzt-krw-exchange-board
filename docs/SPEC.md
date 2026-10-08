@@ -200,9 +200,11 @@ for navigation where natural. Deep links into a screen use the Mini App `startap
 parameter (e.g. `req_123`, `deal_45`).
 
 ## Bot messages
-The bot answers `/start` (in private chats only) with a button that opens the Mini App, or
+The bot answers `/start` (in private chats only) with a button that opens the Mini App (the
+reply says whether their alerts are on and that **Alerts** on the Board changes them, and ends
+with the author and a **Terms** link, no link preview), or
 without one for non-members of the group (see Group members only), sets the chat menu button, and
-sends alerts to those who turned them on (see Alerts), and exactly three notifications, each
+sends alerts to those who have them on (see Alerts), and exactly three notifications, each
 with an **Open deal** button (a `web_app` button whose URL carries `?startapp=deal_<id>`):
 - to the author, when someone takes their request or sends a counter offer on it (the
   responder's profile tag, amount, and for a counter offer the part of it they asked for,
@@ -223,8 +225,11 @@ app, on the deal screen and in My deals, with the badge on the Board. Expiry not
 matches are in-app too.
 
 ## Alerts
-- Per Board tab, off by default (`users.alerts_buy_krw` covers `KRW_KZT` requests,
-  `alerts_buy_kzt` covers `KZT_KRW`). Turned on and off in the Alerts panel, any time.
+- Per Board tab (`users.alerts_buy_krw` covers `KRW_KZT` requests, `alerts_buy_kzt` covers
+  `KZT_KRW`). Off by default, except for someone whose first contact is the bot (their user row
+  is created by a bot update, not the app): both start on. Migration 018 turned both on for
+  existing users with no sign of using the app (no profile, Alerts panel never opened, no
+  requests or deals). Turned on and off in the Alerts panel, any time.
   `users.alerts_seen` records that the panel was opened (the "new" dot).
 - Posting a request alerts everyone with that tab's alerts on, except its author and banned
   users, and only members of the group (checked as for the API). The message reads from the

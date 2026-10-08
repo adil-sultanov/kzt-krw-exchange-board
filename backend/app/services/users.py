@@ -9,7 +9,9 @@ from app.models import MeUpdate, TelegramUser, User
 LAST_SEEN_INTERVAL = timedelta(minutes=5)
 
 
-async def upsert_user(db: Database, tg_user: TelegramUser, *, config_admin: bool) -> User:
+async def upsert_user(
+    db: Database, tg_user: TelegramUser, *, config_admin: bool, from_bot: bool = False
+) -> User:
     """Create or refresh a user from verified Telegram data.
 
     Called on every API request and bot update. Usernames are a cache: if another
@@ -18,6 +20,9 @@ async def upsert_user(db: Database, tg_user: TelegramUser, *, config_admin: bool
 
     `config_admin`: whether ADMIN_IDS / OWNER_ID make them an admin. Admins the owner added
     in the app (`admin_granted`) stay admins either way.
+
+    `from_bot`: the update came from the bot, not the app. Someone whose first contact is the
+    bot starts with alerts on for both Board tabs (anyone else starts with them off).
 
     Also records when they were last seen (see LAST_SEEN_INTERVAL), without touching
     `updated_at`.
@@ -58,8 +63,9 @@ async def upsert_user(db: Database, tg_user: TelegramUser, *, config_admin: bool
         # The WHERE clause skips the write (and the updated_at bump) when nothing changed.
         await conn.execute(
             """
-            INSERT INTO users (telegram_id, username, first_name, is_admin, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO users (telegram_id, username, first_name, is_admin,
+                alerts_buy_krw, alerts_buy_kzt, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (telegram_id) DO UPDATE SET
                 username = excluded.username,
                 first_name = excluded.first_name,
@@ -69,7 +75,16 @@ async def upsert_user(db: Database, tg_user: TelegramUser, *, config_admin: bool
                 OR first_name IS NOT excluded.first_name
                 OR is_admin IS NOT MAX(excluded.is_admin, admin_granted)
             """,
-            (tg_user.id, username, tg_user.first_name, int(config_admin), now_iso, now_iso),
+            (
+                tg_user.id,
+                username,
+                tg_user.first_name,
+                int(config_admin),
+                int(from_bot),
+                int(from_bot),
+                now_iso,
+                now_iso,
+            ),
         )
         await conn.execute(
             "UPDATE users SET last_seen_at = ? WHERE telegram_id = ?", (now_iso, tg_user.id)
