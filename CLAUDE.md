@@ -17,8 +17,9 @@ Schema source of truth: `backend/app/migrations/`.
   on every API request/bot update; never store usernames elsewhere. Username and a full profile
   (`users.profile_{first,last}_name`, `university`, `enrollment_year`) required to post/take.
 - Admins = `ADMIN_IDS` + `OWNER_ID` (`Settings.is_admin`) + those the owner adds in the app
-  (`users.admin_granted`). Any admin can take any request off the board (Board requests) and see
-  All deals (incl. cancelled requests); only the owner edits the About page, manages admins and
+  (`users.admin_granted`). Any admin can take any request off the board (Board requests), see
+  All deals (incl. cancelled requests) and look up any user (Admin: users; never their receiving
+  details, only whether they're set); only the owner edits the About page, manages admins and
   deletes deals.
 - Validate initData (`Authorization: tma <initData>`) on every API route; never trust client
   user IDs. Check authorization on every mutation and bot callback. Never log initData/tokens/user records.

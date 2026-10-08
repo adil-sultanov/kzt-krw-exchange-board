@@ -105,8 +105,8 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
   university and year of enrollment (see Profiles), with a preview of the tag; receiving
   details per currency (KZT, KRW): bank and account holder, and account / card / phone number
   (max 100 chars each). One MainButton **Save** for all of it. Then links to **How it works**,
-  **About & support** and (admins only) **Admin: reports**, **Admin: board requests** and **Admin: all
-  deals**. The owner also gets an *Owner* section with **Admins**.
+  **About & support** and (admins only) **Admin: reports**, **Admin: users**, **Admin: board
+  requests** and **Admin: all deals**. The owner also gets an *Owner* section with **Admins**.
 - **How it works** — a few very short points per topic (people skip long instructions): the
   basics (free, never handles money, what you need to take part), posting (fixed amount, ≈
   side and the rate lock, counter offers, duration), taking (offers and their limits), deals
@@ -146,15 +146,40 @@ Detailed behavior. CLAUDE.md holds the always-on rules; the schema lives in `bac
 - **Admins** (owner only) — everyone with admin rights: the owner, `ADMIN_IDS`, and those added
   in the app (only these have **Remove admin**). Add one by Telegram username (with or without
   the @; MainButton **Add admin**): it must belong to someone who has used the app or the bot.
-- **Admin: all deals** (admins only) — Active (pending / accepted, least recently changed
-  first, so stale ones lead) / Finished (completed / declined / cancelled offers, newest first) / Cancelled tabs,
-  up to 100 each. Deals: the deal and its request (with the deal's amount; counter offers are
-  tagged), who confirmed payment, both sides (as on reports), and (owner only) **Delete deal** (with a confirm popup). Cancelled: requests taken
-  off the board early (status `closed`), most recently closed first: who did it and how
-  (cancelled by its author; removed by an admin; closed by a ban; closed when the owner deleted
-  its accepted deal; or "not recorded" for ones closed before migration 010), when, what the
-  author paid, open reports, the author, the admin who closed it, and the people who had taken
-  it (their deals were declined; a deleted deal's taker isn't listed).
+- **Admin: all deals** (admins only) — tabs with counts, all loaded at once: **Active**
+  (groups *In progress*, then *Waiting for the author's answer*; least recently changed first,
+  so stale ones lead), **Completed** (groups *Last 7 days* and *Earlier*, newest first) and
+  **Cancelled** (groups *Requests taken off the board* and *Declined or withdrawn offers*,
+  newest first), up to 100 deals each. Every group folds under its row, like My deals'
+  History (open at first; each choice remembered on the device). No
+  `#id` numbers anywhere on admin screens. A deal card, styled like My deals: a status pill
+  (red dot on a deal accepted over a day ago and not finished; counter offers say so) and how
+  long ago it was accepted or last changed; both sides as rows (initial, name, @username, role
+  *Author* / *Taker*, university and year, completed deals, Banned / open-report / Admin tags),
+  each with what they pay (the taker the fixed amount, the author the other side at the rate,
+  "≈" until accepted) and, on an accepted deal, whether they confirmed receiving the money;
+  then the rate (locked, or now) and when it started. Tapping a person opens their page in
+  Admin: users. The owner gets **Delete deal** (with a confirm popup) under active and
+  completed deals. A request taken off the board early (status `closed`) shows who did it and
+  how (cancelled by its author; removed by an admin; closed by a ban; closed when the owner
+  deleted its accepted deal; or "not recorded" for ones closed before migration 010), when,
+  what the author wanted, open reports, the author, the admin who closed it, and the people
+  who had taken it (their deals were declined; a deleted deal's taker isn't listed).
+- **Admin: users** (admins only) — everyone who has used the app or the bot, most recently
+  seen first (up to 200; search to find others): counts on top (users, seen this week,
+  reported), a search box (part of a name, @username or university, any case, or a whole
+  Telegram ID) and All / Reported (open reports about them) / Banned tabs. Each row, like the
+  Profile's menu: initial, name, @username, university and year, completed deals, tags, and
+  when last seen (`users.last_seen_at`, refreshed at most every 5 minutes on any API request or
+  bot update). Tapping one opens their page, laid out like Profile: name, @username, Profile
+  complete / Banned / Admin pills, a notice if banned or without a username; counts (on the
+  board, active deals, completed); *Account* (Telegram ID with Copy, Telegram name, username,
+  joined, last seen, alerts, whether they added KZT / KRW receiving details — never the
+  details — reports about them and reports they sent); *Profile* (the four fields); their 20
+  latest deals (as in All deals) and 10 latest requests, each folding under its row as in All
+  deals; **Message @username** and **Ban** /
+  **Unban** (with a confirm popup; not for admins). Reports and Board requests link each
+  person to their page (**User info**).
 - The Board's **My deals** link shows a red badge with the number of things waiting on the
   viewer: a pending responder to answer, a payment to confirm (once the other side has
   confirmed theirs, or 3 h after the deal was accepted), or one of their requests leaving the
@@ -314,7 +339,7 @@ so double taps and races between two open copies of the app are harmless.
   They can be edited or cleared at any time (clearing doesn't touch existing requests or deals).
 - Shown to others as a tag, "First Last, University, Year" (whatever parts are filled in): to
   every member on the author's requests, and to the other side on each deal. Admins see it
-  next to the Telegram details on reports, board requests and All deals.
+  next to the Telegram details on reports, board requests, All deals and Admin: users.
 - Names: letters, spaces and `-'’.`, max 40 chars; the first letter of each word (and after a
   hyphen) is capitalized on save. University: letters, digits, spaces and `-'’.&()`, max 60.
   No commas (they separate the tag's parts), links or emoji. Year: 2000 to next year.
@@ -392,7 +417,8 @@ All routes require valid initData.
 - Admin only: `GET /api/admin/reports?resolved=false|true`, `POST /api/admin/reports/{id}/resolve`,
   `POST /api/admin/users/{id}/ban` | `/unban`, `GET /api/admin/requests` (board requests),
   `POST /api/admin/requests/{id}/remove`, `GET /api/admin/requests/cancelled`,
-  `GET /api/admin/deals?active=true|false`
+  `GET /api/admin/deals?state=active|completed|cancelled`, `GET /api/admin/users?q=&show=all|reported|banned`
+  (`{users, total, seen_this_week, reported, banned}`), `GET /api/admin/users/{id}`
 - Owner only: `PUT /api/admin/about` (`{donate_note, donate_options: [{label, value}]}`),
   `GET /api/admin/admins`, `POST /api/admin/admins` (`{username}`), `DELETE /api/admin/admins/{id}`,
   `DELETE /api/admin/deals/{id}`

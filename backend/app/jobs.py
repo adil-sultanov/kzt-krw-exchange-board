@@ -12,7 +12,7 @@ from app.services.notifications import Notifier
 from app.services.rates import refresh_reference_rate
 from app.services.requests import expire_due
 
-RATE_REFRESH_MINUTES = 60
+RATE_REFRESH_MINUTES = 15
 EXPIRY_MINUTES = 5
 REMINDER_MINUTES = 5
 CLEANUP_HOURS = 24

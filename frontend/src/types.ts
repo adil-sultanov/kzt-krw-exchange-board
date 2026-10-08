@@ -281,19 +281,89 @@ export interface AdminEntry extends AdminUser {
   source: AdminSource;
 }
 
+/** The tabs of All deals: pending or accepted; completed; declined or cancelled by their sender. */
+export type DealListState = "active" | "completed" | "cancelled";
+
 /** Any deal, as admins see it in All deals. The request's `amount` is the deal's. */
 export interface ListedDeal {
   id: number;
   status: DealStatus;
   /** A counter offer for part of the request. */
   partial: boolean;
+  /** Whether each side confirmed receiving the other's payment. */
   author_confirmed: boolean;
   responder_confirmed: boolean;
   created_at: string;
   updated_at: string;
+  accepted_at: string | null;
+  /**
+   * KRW per 1 KZT: locked when the deal was accepted (`rate_locked`), else its request's rate
+   * now (null while no reference rate is known).
+   */
+  rate: number | null;
+  rate_locked: boolean;
   request: AdminRequest;
   author: AdminUser;
   responder: AdminUser;
+}
+
+/** What each side of a deal pays: the responder the (fixed) amount, the author the other currency at the rate. */
+export function listedDealSides(deal: ListedDeal): { author: Side; responder: Side } {
+  const currency = amountCurrency(deal.request.direction);
+  return {
+    author: {
+      currency: giveCurrency(deal.request.direction),
+      amount: deal.rate === null ? null : Math.round(convert(deal.request.amount, currency, deal.rate)),
+      approx: !deal.rate_locked,
+    },
+    responder: { currency, amount: deal.request.amount, approx: false },
+  };
+}
+
+/** Admin: users lists everyone, those with open reports about them, or banned users. */
+export type UserListFilter = "all" | "reported" | "banned";
+
+export interface AdminUserListItem extends AdminUser {
+  created_at: string;
+  /** When they last used the app or the bot, to within a few minutes. */
+  last_seen_at: string | null;
+}
+
+/** The users matching a search, most recently seen first, and counts over everyone. */
+export interface AdminUsers {
+  users: AdminUserListItem[];
+  total: number;
+  seen_this_week: number;
+  reported: number;
+  banned: number;
+}
+
+export interface AdminUserRequest {
+  id: number;
+  direction: Direction;
+  amount: number;
+  status: RequestStatus;
+  removed_by_admin: boolean;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
+}
+
+/** A user's page in Admin: users. Never their receiving details: only whether they added them. */
+export interface AdminUserDetail extends AdminUserListItem {
+  alerts_buy_krw: boolean;
+  alerts_buy_kzt: boolean;
+  has_receive_kzt: boolean;
+  has_receive_krw: boolean;
+  /** Their requests on the board now, and their deals pending or accepted. */
+  open_requests: number;
+  active_deals: number;
+  /** Reports about them (open or not), and reports they sent. */
+  reports_total: number;
+  reports_sent: number;
+  /** The latest ones, newest first. */
+  requests: AdminUserRequest[];
+  deals: ListedDeal[];
 }
 
 export interface Contact {

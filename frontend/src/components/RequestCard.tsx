@@ -50,7 +50,8 @@ export function RequestCard(props: {
   const { request } = props;
   const fallback: CardStatus | null = request.my_deal_status
     ? {
-        text: t.dealStatus[request.my_deal_status],
+        // On its own, "Waiting for the author" doesn't say the offer is the viewer's.
+        text: request.my_deal_status === "pending" ? t.card.myOfferPending : t.dealStatus[request.my_deal_status],
         tone: request.my_deal_status === "declined" || request.my_deal_status === "cancelled" ? "muted" : "active",
       }
     : null;

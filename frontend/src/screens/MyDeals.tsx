@@ -1,8 +1,8 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errorCode } from "../api";
 import { type CardStatus, RequestCard } from "../components/RequestCard";
-import { ChevronIcon } from "../components/icons";
-import { Collapse, Empty, ErrorBox, SkeletonList, TitleWithRefresh } from "../components/ui";
+import { CheckIcon, CrossIcon, DealsIcon } from "../components/icons";
+import { ErrorBox, FoldableGroup, Group, SkeletonList, TitleWithRefresh } from "../components/ui";
 import { askExtendDays } from "../extend";
 import { acceptQuestion } from "./Deal";
 import { timeLeft } from "../format";
@@ -10,7 +10,7 @@ import { t } from "../i18n";
 import { lastMyLists, loadMyLists, type MyLists } from "../myLists";
 import { useNav, useReactivated } from "../nav";
 import { FAST_POLL_MS, usePolling } from "../polling";
-import { confirm, haptic } from "../telegram";
+import { confirm, haptic, useMainButton } from "../telegram";
 import {
   canCancelOffer,
   type Deal,
@@ -62,12 +62,38 @@ function firstTaker(deals: Deal[], requestId: number): Deal | undefined {
 /** An active deal, or one of the viewer's requests on the board with whoever took it first. */
 type ActiveItem = { deal: Deal } | { request: ExchangeRequest; taker: Deal | undefined };
 
-function Group(props: { title: string; children: ReactNode }) {
+function itemNeedsMe(item: ActiveItem): boolean {
+  if ("deal" in item) return needsMyAction(item.deal);
+  return Boolean(item.taker) || expiresSoon(item.request);
+}
+
+/** At a glance, on top: what's under way, what waits on the viewer, what's done. */
+function Summary(props: { active: number; needsYou: number; completed: number }) {
+  const stat = (value: number, label: string, alert = false) => (
+    <div className={alert && value > 0 ? "deals-stat alert" : "deals-stat"}>
+      <span className="deals-stat-value">{value}</span>
+      <span className="deals-stat-label">{label}</span>
+    </div>
+  );
   return (
-    <section className="section">
-      <h2 className="section-title">{props.title}</h2>
-      <div className="list">{props.children}</div>
-    </section>
+    <div className="deals-summary">
+      {stat(props.active, t.myDeals.stats.active)}
+      {stat(props.needsYou, t.myDeals.stats.needsYou, true)}
+      {stat(props.completed, t.myDeals.stats.completed)}
+    </div>
+  );
+}
+
+/** Nothing yet: a card like the Profile's head, pointing to the MainButton ("Post a request"). */
+function EmptyDeals() {
+  return (
+    <div className="deals-empty">
+      <span className="hero-icon" aria-hidden="true">
+        <DealsIcon />
+      </span>
+      <p className="empty-title">{t.myDeals.empty}</p>
+      <p className="hint small">{t.myDeals.emptyHint}</p>
+    </div>
   );
 }
 
@@ -77,54 +103,14 @@ const FOLDED_KEYS = {
   declined: "myDeals.declinedFolded",
 } as const;
 
-function readFolded(key: string): boolean {
-  try {
-    return localStorage.getItem(key) === "1";
-  } catch {
-    return false;
-  }
-}
-
 /**
- * A group the viewer can hide and show by tapping its title, which shows how many it holds. The
- * choice is remembered under `storageKey`.
- */
-function FoldableGroup(props: { title: string; count: number; storageKey: string; children: ReactNode }) {
-  const [folded, setFolded] = useState(() => readFolded(props.storageKey));
-  const toggle = () => {
-    haptic("selection");
-    setFolded(!folded);
-    try {
-      localStorage.setItem(props.storageKey, folded ? "0" : "1");
-    } catch {
-      // Not remembered then; it still folds.
-    }
-  };
-  return (
-    <section className="section">
-      <button type="button" className="section-title section-toggle" aria-expanded={!folded} onClick={toggle}>
-        <span>
-          {props.title} · {props.count}
-        </span>
-        <span className="section-toggle-hint">
-          {folded ? t.myDeals.show : t.myDeals.hide}
-          <ChevronIcon open={!folded} />
-        </span>
-      </button>
-      <Collapse open={!folded}>
-        <div className="list">{props.children}</div>
-      </Collapse>
-    </section>
-  );
-}
-
-/**
- * Every deal the viewer is part of, on either side, and their requests on the board. Active
- * first: deals in progress (highlighted), then what's waiting on the viewer, then the rest.
- * Each request on the board shows up once, with Extend and Cancel: the deals of people who
- * took it are answered from it rather than listed apart; the viewer's own offers waiting for an
- * answer can be cancelled from theirs. Then completed deals, then declined and cancelled ones;
- * last, their requests that expired in the last day (which they can post again).
+ * Every deal the viewer is part of, on either side, and their requests on the board. On top, a
+ * summary (counts); then Active: deals in progress (highlighted), then what's waiting on the
+ * viewer, then the rest. Each request on the board shows up once, with Extend and Cancel: the
+ * deals of people who took it are answered from it rather than listed apart; the viewer's own
+ * offers waiting for an answer can be cancelled from theirs. Then their requests that expired
+ * in the last day (which they can post again); last, History: completed deals, then declined
+ * and cancelled ones, each folding under a row.
  */
 export function MyDeals(props: { active: boolean }) {
   const nav = useNav();
@@ -158,6 +144,9 @@ export function MyDeals(props: { active: boolean }) {
 
   useReactivated(props.active, load);
   usePolling(props.active, FAST_POLL_MS, () => fetchLists(true));
+
+  const empty = lists !== null && lists.deals.length === 0 && lists.requests.length === 0;
+  useMainButton(props.active && empty ? { text: t.myDeals.post, onClick: () => nav.push({ name: "new" }) } : null);
 
   /** Runs `action`, then `onDone` if it worked, and reloads the lists either way. */
   const runAction = async (key: string, action: () => Promise<unknown>, onDone?: () => void) => {
@@ -347,53 +336,81 @@ export function MyDeals(props: { active: boolean }) {
   ].sort((a, b) => rank(a) - rank(b));
 
   return (
-    <div className="screen">
+    <div className="screen deals-screen">
       <TitleWithRefresh title={t.myDeals.title} onRefresh={load} />
       {error && <ErrorBox code={error} onRetry={load} />}
       {actionError && <ErrorBox code={actionError} />}
       {!lists && !error && <SkeletonList count={2} />}
-      {lists && deals.length === 0 && lists.requests.length === 0 && (
-        <Empty title={t.myDeals.empty} hint={t.myDeals.emptyHint} />
-      )}
+      {empty && <EmptyDeals />}
 
       {lists && (active.length > 0 || deals.length > 0) && (
-        <Group title={t.myDeals.active}>
-          {active.length > 0 ? (
-            active.map((item) => ("deal" in item ? dealCard(item.deal) : requestCard(item.request, item.taker)))
-          ) : (
-            <p className="hint small section-note">{t.myDeals.noActive}</p>
-          )}
-        </Group>
-      )}
-      {completed.length > 0 && (
-        <FoldableGroup title={t.myDeals.completed} count={completed.length} storageKey={FOLDED_KEYS.completed}>
-          {completed.map(dealCard)}
-        </FoldableGroup>
-      )}
-      {declined.length > 0 && (
-        <FoldableGroup title={t.myDeals.declined} count={declined.length} storageKey={FOLDED_KEYS.declined}>
-          {declined.map(dealCard)}
-        </FoldableGroup>
+        <>
+          <Summary
+            active={active.length}
+            needsYou={active.filter(itemNeedsMe).length}
+            completed={completed.length}
+          />
+          <Group title={t.myDeals.active} count={active.length}>
+            {active.length > 0 ? (
+              <div className="list">
+                {active.map((item) =>
+                  "deal" in item ? dealCard(item.deal) : requestCard(item.request, item.taker),
+                )}
+              </div>
+            ) : (
+              <p className="deals-none hint small">{t.myDeals.noActive}</p>
+            )}
+          </Group>
+        </>
       )}
       {expired.length > 0 && (
-        <Group title={t.myDeals.expired}>
-          {expired.map((request) => (
-            <div key={request.id} className="card-stack">
-              <RequestCard
-                request={request}
-                status={{ text: t.status.expired, tone: "muted" }}
-                onOpen={() => nav.push({ name: "request", id: request.id })}
-              />
-              <button
-                type="button"
-                className="card-action neutral"
-                onClick={() => nav.push({ name: "new", prefill: request })}
-              >
-                {t.detail.postAgain}
-              </button>
-            </div>
-          ))}
+        <Group title={t.myDeals.expired} count={expired.length}>
+          <div className="list">
+            {expired.map((request) => (
+              <div key={request.id} className="card-stack">
+                <RequestCard
+                  request={request}
+                  status={{ text: t.status.expired, tone: "muted" }}
+                  onOpen={() => nav.push({ name: "request", id: request.id })}
+                />
+                <button
+                  type="button"
+                  className="card-action neutral"
+                  onClick={() => nav.push({ name: "new", prefill: request })}
+                >
+                  {t.detail.postAgain}
+                </button>
+              </div>
+            ))}
+          </div>
         </Group>
+      )}
+      {(completed.length > 0 || declined.length > 0) && (
+        <section className="section">
+          <h2 className="section-title">{t.myDeals.history}</h2>
+          {completed.length > 0 && (
+            <FoldableGroup
+              title={t.myDeals.completed}
+              count={completed.length}
+              icon={<CheckIcon />}
+              tone="positive"
+              storageKey={FOLDED_KEYS.completed}
+            >
+              {completed.map(dealCard)}
+            </FoldableGroup>
+          )}
+          {declined.length > 0 && (
+            <FoldableGroup
+              title={t.myDeals.declined}
+              count={declined.length}
+              icon={<CrossIcon />}
+              tone="muted"
+              storageKey={FOLDED_KEYS.declined}
+            >
+              {declined.map(dealCard)}
+            </FoldableGroup>
+          )}
+        </section>
       )}
     </div>
   );

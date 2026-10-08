@@ -6,12 +6,15 @@ import type {
   AdminEntry,
   AdminReport,
   AdminUser,
+  AdminUserDetail,
+  AdminUsers,
   AlertsUpdate,
   BoardFilters,
   CancelledRequest,
   Contact,
   CreatedRequest,
   Deal,
+  DealListState,
   ExchangeRequest,
   Me,
   MeUpdate,
@@ -21,6 +24,7 @@ import type {
   ReportTarget,
   RequestCreate,
   RequestUpdate,
+  UserListFilter,
 } from "./types";
 
 /** An API failure. `code` is the backend's machine code (see i18n.ts for messages). */
@@ -113,8 +117,12 @@ export const api = {
   admins: () => call<AdminEntry[]>("GET", "/admin/admins"),
   addAdmin: (username: string) => call<AdminEntry>("POST", "/admin/admins", { username }),
   removeAdmin: (userId: number) => call<null>("DELETE", `/admin/admins/${userId}`),
-  /** Active deals (stalest first) or finished ones (newest first). */
-  allDeals: (active: boolean) => call<ListedDeal[]>("GET", `/admin/deals?active=${active}`),
+  /** Active deals (stalest first), completed or cancelled ones (newest first). */
+  allDeals: (state: DealListState) => call<ListedDeal[]>("GET", `/admin/deals?state=${state}`),
+  /** Everyone who used the app or the bot, most recently seen first, narrowed by a search. */
+  adminUsers: (query: string, show: UserListFilter) =>
+    call<AdminUsers>("GET", `/admin/users?${new URLSearchParams({ q: query, show })}`),
+  adminUser: (id: number) => call<AdminUserDetail>("GET", `/admin/users/${id}`),
   /** Requests their author or an admin took off the board, most recent first. */
   cancelledRequests: () => call<CancelledRequest[]>("GET", "/admin/requests/cancelled"),
   /** Owner only. */

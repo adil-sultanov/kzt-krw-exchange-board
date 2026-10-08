@@ -141,3 +141,53 @@ export function InfoIcon() {
     </Icon>
   );
 }
+
+/** Lines of a list: requests on the board. */
+export function ListIcon() {
+  return (
+    <Icon>
+      <path d="M9 6h11M9 12h11M9 18h11" />
+      <path d="M4 6h.01M4 12h.01M4 18h.01" />
+    </Icon>
+  );
+}
+
+/** A shield: who has admin rights. */
+export function ShieldIcon() {
+  return (
+    <Icon>
+      <path d="M12 21s-7-3-7-9V5l7-2 7 2v7c0 6-7 9-7 9Z" />
+    </Icon>
+  );
+}
+
+/** A cross: declined or cancelled. */
+export function CrossIcon() {
+  return (
+    <Icon>
+      <path d="M18 6 6 18M6 6l12 12" />
+    </Icon>
+  );
+}
+
+/** Two people: the app's users. */
+export function UsersIcon() {
+  return (
+    <Icon>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5" />
+      <path d="M16 4.6a3.5 3.5 0 0 1 0 6.8" />
+      <path d="M18.5 14.8c1.7.8 2.7 2.5 3 5.2" />
+    </Icon>
+  );
+}
+
+/** A clock: waiting for an answer. */
+export function ClockIcon() {
+  return (
+    <Icon>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </Icon>
+  );
+}

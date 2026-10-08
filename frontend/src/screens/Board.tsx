@@ -23,6 +23,8 @@ import {
   type ExchangeRequest,
   expiresSoon,
   giveCurrency,
+  hasProfile,
+  isActiveDeal,
   mayRespond,
   needsMyAction,
   type Rate,
@@ -33,6 +35,7 @@ import {
 
 // By the `source` the backend stores with the rate.
 const RATE_SOURCE_URLS: Partial<Record<string, string>> = {
+  wise: "https://wise.com/currency-converter/kzt-to-krw-rate",
   "currency-api": "https://github.com/fawazahmed0/exchange-api",
   "open.er-api.com": "https://www.exchangerate-api.com",
 };
@@ -193,6 +196,8 @@ export function Board(props: { active: boolean }) {
   // Deals waiting on the viewer (the bot messages only about new and accepted deals), and
   // their requests about to leave the board.
   const [actionCount, setActionCount] = useState(0);
+  // Deals under way (taken, accepted): the My deals button shows them even when nothing waits on the viewer.
+  const [activeCount, setActiveCount] = useState(0);
   // Accepted deals the viewer should confirm receiving the money on (also in actionCount).
   const [toConfirm, setToConfirm] = useState<number[]>([]);
   const [panel, setPanel] = useState<Panel | null>(null);
@@ -228,6 +233,7 @@ export function Board(props: { active: boolean }) {
       loadMyLists().then(
         ({ deals, requests }) => {
           setActionCount(deals.filter(needsMyAction).length + requests.filter((r) => expiresSoon(r)).length);
+          setActiveCount(deals.filter(isActiveDeal).length);
           setToConfirm(deals.filter((deal) => awaitsMyConfirmation(deal)).map((deal) => deal.id));
         },
         () => undefined, // keep the last count
@@ -332,21 +338,46 @@ export function Board(props: { active: boolean }) {
     results ? CURRENCIES.indexOf(giveCurrency(results.filters.direction)) : 0,
   );
 
+  // Posting and taking need the whole profile: the Profile button flags it until it's filled in.
+  const profileMissing = !hasProfile(me);
+
   return (
     <div className="screen">
       <div className="nav-buttons">
-        <button type="button" className="nav-button" onClick={() => nav.push({ name: "deals" })}>
+        <button
+          type="button"
+          className={actionCount > 0 ? "nav-button attention" : activeCount > 0 ? "nav-button live" : "nav-button"}
+          onClick={() => nav.push({ name: "deals" })}
+        >
           <DealsIcon />
-          <span>{t.board.myDeals}</span>
-          {actionCount > 0 && (
-            <span className="count-badge" aria-label={t.board.needsAction(actionCount)}>
+          <span className="nav-label">
+            {t.board.myDeals}
+            {actionCount > 0 ? (
+              <span className="nav-sub">{t.board.actionNeeded}</span>
+            ) : (
+              activeCount > 0 && <span className="nav-sub">{t.board.activeDeals(activeCount)}</span>
+            )}
+          </span>
+          {actionCount > 0 ? (
+            <span className="count-badge pulse" aria-label={t.board.needsAction(actionCount)}>
               {actionCount}
             </span>
+          ) : (
+            activeCount > 0 && <span className="live-dot" aria-hidden="true" />
           )}
         </button>
-        <button type="button" className="nav-button" onClick={() => nav.push({ name: "profile" })}>
+        <button
+          type="button"
+          className={profileMissing ? "nav-button attention" : "nav-button"}
+          onClick={() => nav.push({ name: "profile" })}
+        >
           <ProfileIcon />
           <span>{t.board.profile}</span>
+          {profileMissing && (
+            <span className="count-badge" role="img" aria-label={t.board.profileIncomplete}>
+              !
+            </span>
+          )}
         </button>
       </div>
 

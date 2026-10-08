@@ -14,7 +14,8 @@ reposting, and there was no way to tell who had reliably completed exchanges bef
 ## Features
 
 - **Board** of open requests ("Buy KRW" / "Buy KZT"), sortable by date or amount
-- **Live market rate**: every request is at the reference rate; the amount you buy is fixed,
+- **Live market rate** (Wise's mid-market rate, refreshed every 15 min; ExchangeRate-API and
+  Currency API as fallbacks): every request is at the reference rate; the amount you buy is fixed,
   what you pay moves with the rate until you accept someone, which locks it
 - **Post a request** by typing what you pay *or* what you get; it expires after 1 or 3 days.
   Optionally name the bank you'd rather use for KZT ("Kaspi"), remembered for next time
@@ -33,7 +34,8 @@ reposting, and there was no way to tell who had reliably completed exchanges bef
   steady pace under Telegram's rate limit
 - **Matches** going the other way, shown after posting
 - **Trust**: completed-deal counts, reports, admin review and bans; admins see every request
-  on the board and can take any of them off it
+  on the board and can take any of them off it, every deal (active / completed / cancelled),
+  and every user (search, last seen, activity, ban / unban)
 - **Members only**: access is limited to one Telegram group chat
 
 It **never holds or moves money** and is **free**, with no fees. Users pay each other directly.

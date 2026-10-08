@@ -6,7 +6,7 @@ export const SYMBOL: Record<Currency, string> = { KZT: "₸", KRW: "₩" };
 const integer = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const rateFormat = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
-  maximumFractionDigits: 4,
+  maximumFractionDigits: 2,
 });
 const kstFormat = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Seoul",
@@ -54,7 +54,7 @@ export function formatRate(rate: number): string {
   return rateFormat.format(rate);
 }
 
-/** "1 ₸ = 2.7045 ₩". Rates are always KRW per 1 KZT. */
+/** "1 ₸ = 2.70 ₩". Rates are always KRW per 1 KZT. */
 export function formatRatePair(rate: number): string {
   return t.rate.pair(formatRate(rate));
 }
@@ -69,6 +69,17 @@ export function formatKstShort(iso: string, now: number = Date.now()): string {
   const date = new Date(iso);
   const today = kstDay.format(date) === kstDay.format(new Date(now));
   return t.time.kst((today ? kstTime : kstFormat).format(date));
+}
+
+/** How long ago, roughly: "just now", "5m ago", "3h ago", "2d ago"; past a month, the date. */
+export function timeAgo(iso: string, now: number = Date.now()): string {
+  const minutes = Math.floor((now - new Date(iso).getTime()) / 60_000);
+  if (minutes < 1) return t.time.justNow;
+  if (minutes < 60) return t.time.ago(t.time.minutes(minutes));
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t.time.ago(t.time.hours(hours));
+  const days = Math.floor(hours / 24);
+  return days <= 30 ? t.time.ago(t.time.days(days)) : formatKstShort(iso, now);
 }
 
 export function timeLeft(expiresAt: string, now: number = Date.now()): string | null {

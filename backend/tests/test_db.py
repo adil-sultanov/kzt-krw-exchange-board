@@ -32,6 +32,7 @@ async def test_migrations_are_applied_once(db: Database) -> None:
             14,
             15,
             16,
+            17,
         ]
 
 
@@ -264,7 +265,8 @@ async def test_migration_016_converts_amounts_to_the_bought_currency(tmp_path: P
         )
         await conn.commit()
 
-        assert await database.migrate() == [16]
+        # Migration 016 first (and any after it).
+        assert (await database.migrate())[:1] == [16]
         async with conn.execute(
             "SELECT id, amount, min_counter_amount FROM requests ORDER BY id"
         ) as cursor:

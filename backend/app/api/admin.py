@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Response, status
+from typing import Annotated
+
+from fastapi import APIRouter, Query, Response, status
 
 from app.api.deps import CurrentUser, DbDep, NotifierDep, SettingsDep
 from app.models import (
@@ -8,9 +10,13 @@ from app.models import (
     AdminBoardRequestOut,
     AdminOut,
     AdminReportOut,
+    AdminUserDetailOut,
     AdminUserOut,
+    AdminUsersOut,
     CancelledRequestOut,
+    DealListState,
     ListedDealOut,
+    UserListFilter,
 )
 from app.services import about, admin
 
@@ -28,6 +34,21 @@ async def list_reports(
 async def resolve_report(user: CurrentUser, db: DbDep, report_id: int) -> Response:
     await admin.resolve_report(db, user, report_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/users")
+async def list_users(
+    user: CurrentUser,
+    db: DbDep,
+    q: Annotated[str, Query(max_length=64)] = "",
+    show: UserListFilter = "all",
+) -> AdminUsersOut:
+    return await admin.list_users(db, user, query=q, show=show)
+
+
+@router.get("/users/{user_id}")
+async def get_user(user: CurrentUser, db: DbDep, user_id: int) -> AdminUserDetailOut:
+    return await admin.get_user(db, user, user_id)
 
 
 @router.post("/users/{user_id}/ban")
@@ -53,8 +74,10 @@ async def list_cancelled_requests(user: CurrentUser, db: DbDep) -> list[Cancelle
 
 
 @router.get("/deals")
-async def list_deals(user: CurrentUser, db: DbDep, active: bool = True) -> list[ListedDealOut]:
-    return await admin.list_deals(db, user, active=active)
+async def list_deals(
+    user: CurrentUser, db: DbDep, state: DealListState = "active"
+) -> list[ListedDealOut]:
+    return await admin.list_deals(db, user, state=state)
 
 
 @router.post("/requests/{request_id}/remove", status_code=status.HTTP_204_NO_CONTENT)

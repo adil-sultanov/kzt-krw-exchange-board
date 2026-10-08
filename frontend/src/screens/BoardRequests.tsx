@@ -22,12 +22,10 @@ function RequestCard(props: { request: AdminBoardRequest; busy: boolean; onRemov
   return (
     <div className="card">
       <div className="admin-head">
-        <strong>{t.admin.request(request.id)}</strong>
+        <strong>{t.boardRequests.exchange(pay, get)}</strong>
         <span className="hint small">{t.boardRequests.posted(formatKstShort(request.created_at))}</span>
       </div>
       <p className="small">
-        {t.boardRequests.exchange(pay, get)}
-        <br />
         <span className="hint">
           {[request.effective_rate !== null && formatRatePair(request.effective_rate), left && t.boardRequests.leaves(left)]
             .filter(Boolean)
@@ -65,7 +63,7 @@ export function BoardRequests(props: { active: boolean }) {
   const [busy, setBusy] = useState(false);
 
   const remove = async (request: AdminBoardRequest) => {
-    if (busy || !(await confirm(t.boardRequests.removeConfirm(request.id, request.responders.length)))) return;
+    if (busy || !(await confirm(t.boardRequests.removeConfirm(request.responders.length)))) return;
     setBusy(true);
     setActionError(null);
     try {

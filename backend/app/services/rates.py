@@ -16,6 +16,13 @@ logger = logging.getLogger(__name__)
 FETCH_TIMEOUT = 10.0
 
 
+def _parse_wise(data: Any) -> float:
+    # {"source": "KZT", "target": "KRW", "value": ..., "time": ...}
+    if data.get("source") != "KZT" or data.get("target") != "KRW":
+        raise ValueError("rate source returned an error")
+    return float(data["value"])
+
+
 def _parse_currency_api(data: Any) -> float:
     # {"date": "...", "kzt": {"krw": ..., ...}}
     return float(data["kzt"]["krw"])
@@ -35,9 +42,12 @@ class RateSource:
     parse: Callable[[Any], float]
 
 
-# Free and keyless, tried in order. fawazahmed0/currency-api is the closest to the rate Google
-# shows; its two URLs serve the same data. open.er-api.com is further off but independent.
+# Free and keyless, tried in order. Wise's live mid-market rate (the undocumented endpoint behind
+# its public rate pages) is the closest to the live rate Google shows. open.er-api.com updates
+# daily; fawazahmed0/currency-api (two URLs, same data) can lag a day behind.
 RATE_SOURCES = (
+    RateSource("wise", "https://wise.com/rates/live?source=KZT&target=KRW", _parse_wise),
+    RateSource("open.er-api.com", "https://open.er-api.com/v6/latest/KZT", _parse_er_api),
     RateSource(
         "currency-api",
         "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/kzt.json",
@@ -48,7 +58,6 @@ RATE_SOURCES = (
         "https://latest.currency-api.pages.dev/v1/currencies/kzt.json",
         _parse_currency_api,
     ),
-    RateSource("open.er-api.com", "https://open.er-api.com/v6/latest/KZT", _parse_er_api),
 )
 
 

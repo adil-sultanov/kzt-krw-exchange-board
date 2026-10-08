@@ -5,10 +5,12 @@ import type {
   BoardSort,
   CloseReason,
   Currency,
+  DealListState,
   DealStatus,
   ReportCategory,
   RequestStatus,
   SortOrder,
+  UserListFilter,
 } from "./types";
 
 /** "2 offers left". */
@@ -56,6 +58,7 @@ export const t = {
     unavailable: "Market rate unavailable right now.",
     // By the `source` the backend stores with the rate.
     attribution: {
+      wise: "Wise",
       "currency-api": "Currency API",
       "open.er-api.com": "ExchangeRate-API",
     } as Partial<Record<string, string>>,
@@ -87,7 +90,11 @@ export const t = {
     myDeals: "My deals",
     needsAction: (count: number) =>
       count === 1 ? "1 thing needs your attention" : `${count} things need your attention`,
+    // Under "My deals": something waits on the viewer, or (if not) how many deals are under way.
+    actionNeeded: "Action needed",
+    activeDeals: (count: number) => `${count} active`,
     profile: "Profile",
+    profileIncomplete: "Your profile isn't filled in yet",
     confirmTitle: (count: number) =>
       count === 1 ? "Did you get the money?" : `Did you get the money? ${count} deals are waiting`,
     take: "Take request",
@@ -101,6 +108,8 @@ export const t = {
     /** Under a counter offer's amounts: the request it's part of, from the viewer's side. */
     whole: (pay: string, get: string) => `Whole request: ${pay} → ${get}`,
     kztBank: "Preferred KZT bank:",
+    // The viewer's deal on a request on the board, still waiting: a take or a counter offer alike.
+    myOfferPending: "Your offer · waiting for the author",
   },
 
   detail: {
@@ -315,8 +324,8 @@ export const t = {
     resolved: "Resolved",
     empty: "No open reports",
     emptyResolved: "No resolved reports yet",
-    request: (id: number) => `Request #${id}`,
-    deal: (id: number) => `Deal #${id}`,
+    request: (money: string, currency: string) => `Request: buys ${money} for ${currency}`,
+    deal: (status: string) => `Deal: ${status}`,
     counterOffer: "Counter offer",
     from: "From",
     about: "About",
@@ -349,8 +358,8 @@ export const t = {
     author: "Author",
     waiting: (count: number) => `Waiting for the author's answer (${count})`,
     remove: "Remove from board",
-    removeConfirm: (id: number, waiting: number) =>
-      `Take request #${id} off the board?` +
+    removeConfirm: (waiting: number) =>
+      "Take this request off the board?" +
       (waiting > 0 ? ` ${waiting === 1 ? "The person" : `The ${waiting} people`} waiting are declined.` : "") +
       " Nobody gets a message; the author and anyone who took it see that an admin removed it.",
   },
@@ -375,34 +384,111 @@ export const t = {
 
   allDeals: {
     title: "All deals",
-    active: "Active",
-    finished: "Finished",
-    cancelled: "Cancelled",
-    activeHint: "Pending and accepted, least recently changed first.",
-    finishedHint: "Completed, declined and cancelled by their sender, newest first.",
-    cancelledHint:
-      "Requests taken off the board by their author or an admin, most recent first. " +
-      "Anyone who had taken one was declined.",
-    empty: "No deals",
-    emptyCancelled: "No cancelled requests",
-    authorBuys: (money: string, currency: string) => `Author buys ${money} for ${currency}`,
-    closedAt: (time: string) => `Closed ${time}`,
+    tabs: {
+      active: "Active",
+      completed: "Completed",
+      cancelled: "Cancelled",
+    } satisfies Record<DealListState, string>,
+    // Groups within the tabs.
+    inProgress: "In progress",
+    waiting: "Waiting for the author's answer",
+    removed: "Requests taken off the board",
+    declined: "Declined or withdrawn offers",
+    lastWeek: "Last 7 days",
+    earlier: "Earlier",
+    activeHint: "Oldest first: a red dot marks deals accepted over a day ago and not finished.",
+    completedHint: "Newest first. Finished deals are deleted 30 days after they end.",
+    emptyActive: "No active deals",
+    emptyCompleted: "No completed deals",
+    emptyCancelled: "Nothing cancelled",
+    // A deal's status, as admins see it (not from a side's point of view).
+    status: {
+      pending: "Waiting for the author",
+      accepted: "In progress",
+      declined: "Declined",
+      cancelled: "Withdrawn by the taker",
+      completed: "Completed",
+    } satisfies Record<DealStatus, string>,
+    counter: (status: string) => `${status} · counter offer`,
+    // On the head of a card, how long ago it last changed (or was accepted).
+    acceptedAgo: (ago: string) => `accepted ${ago}`,
+    author: "Author",
+    taker: "Taker",
+    pays: "pays",
+    // Whether this side confirmed receiving the other's payment.
+    received: "Received",
+    notReceived: "Not confirmed",
+    rate: (pair: string, locked: boolean) => (locked ? `Locked at ${pair}` : `${pair} now`),
+    started: (time: string) => `Started ${time}`,
+    wanted: (money: string, currency: string) => `Wanted ${money} for ${currency}`,
     // `who` is the author or admin, e.g. "@aida".
     closedBy: {
-      author: (who: string) => `Cancelled by its author, ${who}`,
-      admin: (who: string) => `Removed from the board by ${who}`,
+      author: () => "Cancelled by its author",
+      admin: (who: string) => `Removed by ${who}`,
       ban: (who: string) => `Closed when ${who} banned its author`,
-      deal_deleted: (who: string) => `Closed when ${who} deleted its accepted deal`,
+      deal_deleted: (who: string) => `Closed when ${who} deleted its deal`,
     } satisfies Record<CloseReason, (who: string) => string>,
     closedByAdmin: "Removed by an admin",
     closedUnknown: "Cancelled (who did it wasn't recorded)",
-    closer: "Closed by",
+    closer: "Closed it",
     takers: (count: number) => `Had taken it (${count})`,
     delete: "Delete deal",
-    deleteConfirm: (id: number, accepted: boolean) =>
-      `Delete deal #${id} for both sides? Nobody is notified.` +
+    deleteConfirm: (accepted: boolean) =>
+      "Delete this deal for both sides? Nobody is notified." +
       (accepted ? " Its request is cancelled, since no one else can take it." : "") +
       " Completed-deal counts don't change.",
+  },
+
+  adminUsers: {
+    title: "Users",
+    search: "Name, @username, university or ID",
+    show: {
+      all: "All",
+      reported: "Reported",
+      banned: "Banned",
+    } satisfies Record<UserListFilter, string>,
+    stats: {
+      total: "Users",
+      week: "Seen this week",
+      reported: "Reported",
+    },
+    empty: "No users",
+    emptySearch: "Nobody matches",
+    more: (shown: number) => `Showing the ${shown} most recently seen. Search to find others.`,
+    seen: (ago: string) => `seen ${ago}`,
+    neverSeen: "not seen yet",
+    // A user's page.
+    noUsername: "No Telegram username: they can't post or take requests until they set one.",
+    bannedNotice: "Banned: they can't post or take requests.",
+    activity: {
+      onBoard: "On the board",
+      active: "Active deals",
+      completed: "Completed",
+    },
+    account: "Account",
+    telegramId: "Telegram ID",
+    telegramName: "Telegram name",
+    username: "Username",
+    none: "None",
+    joined: "Joined",
+    lastSeen: "Last seen",
+    alerts: "Alerts",
+    alertsOff: "Off",
+    receiving: "Receiving details",
+    // Only whether they added them: admins never see the details.
+    receivingState: (kzt: boolean, krw: boolean) =>
+      `KZT ${kzt ? "added" : "missing"} · KRW ${krw ? "added" : "missing"}`,
+    reportsAbout: "Reports about them",
+    reportsAboutValue: (open: number, total: number) => (open > 0 ? `${open} open · ${total} in all` : String(total)),
+    reportsSent: "Reports they sent",
+    profile: "Profile",
+    notFilled: "Not filled in",
+    deals: "Recent deals",
+    requests: "Recent requests",
+    request: (money: string, currency: string) => `Buys ${money} for ${currency}`,
+    posted: (time: string) => `Posted ${time}`,
+    message: (username: string) => `Message @${username}`,
+    open: "User info",
   },
 
   refresh: "Refresh",
@@ -430,6 +516,11 @@ export const t = {
   profile: {
     you: "About you",
     youHint: "Shown on your requests and deals.",
+    complete: "Profile complete",
+    incomplete: "Profile incomplete",
+    incompleteHint: "Fill in the fields marked in red to post and take requests.",
+    usernameMissing: "To post and take requests you need a Telegram username: set one in Telegram Settings, then reopen the app.",
+    required: "required",
     firstName: "First name",
     firstNamePlaceholder: "e.g. Adil",
     lastName: "Last name",
@@ -438,10 +529,10 @@ export const t = {
     universityPlaceholder: "e.g. UNIST",
     year: "Year of enrollment",
     yearPlaceholder: "Choose",
-    preview: (tag: string) => `Others see: ${tag}`,
+    preview: "Others see",
     invalid: "Use letters only in names (and digits in the university), with no commas or emoji.",
     receiving: "Where you receive money",
-    receivingHint: "Shown only to the other side of an accepted deal.",
+    receivingHint: "Optional. Shown only to the other side of an accepted deal.",
     bank: "Bank and name",
     account: "Account, card or phone number",
     details: {
@@ -462,6 +553,7 @@ export const t = {
     guide: "How it works",
     about: "About & support",
     admin: "Admin: reports",
+    users: "Admin: users",
     boardRequests: "Admin: board requests",
     allDeals: "Admin: all deals",
     owner: "Owner",
@@ -482,9 +574,15 @@ export const t = {
     noActive: "No active deals right now.",
     completed: "Completed",
     declined: "Declined & cancelled",
+    history: "History",
     counter: (status: string) => `Counter offer · ${status}`,
-    show: "Show",
-    hide: "Hide",
+    post: "Post a request",
+    // The summary on top: counts of what's under way, what waits on the viewer, what's done.
+    stats: {
+      active: "Active",
+      needsYou: "Need you",
+      completed: "Completed",
+    },
   },
 
   form: {
@@ -543,6 +641,15 @@ export const t = {
         ],
       },
       {
+        title: "Market rate",
+        points: [
+          "Wise's live mid-market rate, refreshed every 15 minutes.",
+          "If Wise is unavailable: ExchangeRate-API, then Currency API.",
+          "It can differ a little from Google, which uses another data provider.",
+          "Shown to 2 decimals; amounts use the exact rate.",
+        ],
+      },
+      {
         title: "Taking",
         points: [
           "Take the whole request, or send a counter offer for part of it.",
@@ -572,6 +679,8 @@ export const t = {
     hours: (n: number) => `${n}h`,
     minutes: (n: number) => `${n}m`,
     kst: (formatted: string) => `${formatted} KST`,
+    ago: (span: string) => `${span} ago`,
+    justNow: "just now",
   },
 };
 

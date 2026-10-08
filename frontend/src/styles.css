@@ -11,11 +11,14 @@
   --section-bg: var(--tg-theme-section-bg-color, var(--bg));
   --section-title: var(--tg-theme-section-header-text-color, var(--hint));
   --separator: var(--tg-theme-section-separator-color, rgba(128, 128, 128, 0.2));
-  --accent: var(--tg-theme-accent-text-color, var(--link));
   --destructive: var(--tg-theme-destructive-text-color, #e53935);
   /* Telegram has no theme colors for these; both read well on light and dark. */
   --positive: #2fb14e;
   --warning: #e8870e;
+  /* Text and icons on a solid --positive / --destructive fill. */
+  --on-color: #ffffff;
+  /* Palette rules: --button fills and tints (solid, soft backgrounds, focus rings);
+     --link colors blue text and icons; soft tints are 12% of the hue, outlines 45%. */
   --radius: 14px;
   --radius-small: 10px;
   /* The bottom inset (home indicator), from the browser or Telegram (Bot API 8.0+). */
@@ -159,6 +162,7 @@ p {
 .secondary-button,
 .card-action,
 .menu-row,
+.history-row,
 .choice,
 .copy-button,
 .link-button,
@@ -182,6 +186,7 @@ p {
 .secondary-button:active:not(:disabled),
 .card-action:active:not(:disabled),
 .menu-row:active,
+.history-row:active,
 .choice:active,
 .copy-button:active,
 .link-button:active {
@@ -205,7 +210,54 @@ p {
 }
 
 .nav-button .icon {
-  color: var(--button);
+  color: var(--link);
+}
+
+/* Something to do behind this button (an unfilled profile): tinted red, with a "!" badge. */
+.nav-button.attention {
+  background: var(--section-bg);
+  background: color-mix(in srgb, var(--destructive) 12%, var(--section-bg));
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--destructive) 45%, transparent);
+}
+
+.nav-button.attention .icon {
+  color: var(--destructive);
+}
+
+/* Deals under way and nothing waiting on the viewer: tinted blue, with a live dot. */
+.nav-button.live {
+  background: var(--section-bg);
+  background: color-mix(in srgb, var(--button) 12%, var(--section-bg));
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--button) 45%, transparent);
+}
+
+/* "My deals" with a short line under it ("Action needed", "1 active"). */
+.nav-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.nav-sub {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--link);
+}
+
+.nav-button.attention .nav-sub {
+  color: var(--destructive);
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--button);
+  --pulse-color: var(--button);
+  animation: pulse-ring 2s ease-out infinite;
 }
 
 /* Count of deals waiting on the viewer, on the "My deals" button. */
@@ -214,7 +266,7 @@ p {
   padding: 0 6px;
   border-radius: 10px;
   background: var(--destructive);
-  color: #ffffff;
+  color: var(--on-color);
   font-size: 12px;
   font-weight: 700;
   line-height: 20px;
@@ -408,7 +460,7 @@ p {
 }
 
 .chip-button.on .icon {
-  color: var(--button);
+  color: var(--link);
 }
 
 .secondary-button {
@@ -721,16 +773,23 @@ p {
   box-shadow: inset 0 0 0 2px var(--button);
 }
 
+/* A pill, like the Profile's "Profile complete", tinted by its tone. */
 .card-status {
   display: flex;
   align-items: center;
+  align-self: flex-start;
   gap: 6px;
+  border-radius: 12px;
+  background: var(--secondary-bg);
+  background: color-mix(in srgb, var(--button) 12%, transparent);
+  color: var(--link);
+  padding: 3px 10px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--accent);
 }
 
 .card-status.action {
+  background: color-mix(in srgb, var(--destructive) 12%, transparent);
   color: var(--destructive);
 }
 
@@ -743,6 +802,7 @@ p {
 }
 
 .card-status.muted {
+  background: var(--secondary-bg);
   color: var(--hint);
 }
 
@@ -1014,7 +1074,7 @@ p {
   flex-shrink: 0;
   border-radius: 50%;
   box-shadow: inset 0 0 0 1.5px var(--separator);
-  color: #ffffff;
+  color: var(--on-color);
   transition:
     background-color 0.25s ease,
     box-shadow 0.25s ease;
@@ -1042,12 +1102,12 @@ p {
   padding: 11px 14px;
   font-size: 14px;
   background: var(--section-bg);
-  background: color-mix(in srgb, var(--button) 10%, var(--section-bg));
+  background: color-mix(in srgb, var(--button) 12%, var(--section-bg));
 }
 
 .notice.warning {
   background: var(--section-bg);
-  background: color-mix(in srgb, var(--warning) 14%, var(--section-bg));
+  background: color-mix(in srgb, var(--warning) 12%, var(--section-bg));
 }
 
 .notice.error {
@@ -1103,7 +1163,7 @@ p {
 }
 
 .banner.success {
-  background: color-mix(in srgb, var(--positive) 14%, var(--section-bg));
+  background: color-mix(in srgb, var(--positive) 12%, var(--section-bg));
 }
 
 .banner-title {
@@ -1191,7 +1251,7 @@ p {
   margin-bottom: 6px;
   border-radius: 50%;
   background: var(--positive);
-  color: #ffffff;
+  color: var(--on-color);
 }
 
 .success-icon .icon {
@@ -1224,7 +1284,7 @@ p {
 }
 
 .card-action.neutral {
-  color: var(--button);
+  color: var(--link);
 }
 
 .card-action.strong {
@@ -1278,12 +1338,12 @@ p {
 
 .answer-button.accept {
   background: var(--positive);
-  color: #ffffff;
+  color: var(--on-color);
 }
 
 .answer-button.decline {
   background: var(--destructive);
-  color: #ffffff;
+  color: var(--on-color);
 }
 
 .answer-button:active:not(:disabled) {
@@ -1486,16 +1546,16 @@ p {
 
 .dock-button.confirm {
   background: var(--positive);
-  color: #ffffff;
+  color: var(--on-color);
 }
 
 .dock-button.confirm:disabled {
-  background: color-mix(in srgb, var(--positive) 16%, var(--section-bg));
+  background: color-mix(in srgb, var(--positive) 12%, var(--section-bg));
   color: var(--positive);
 }
 
 .dock-button.report {
-  background: color-mix(in srgb, var(--destructive) 14%, var(--section-bg));
+  background: color-mix(in srgb, var(--destructive) 12%, var(--section-bg));
   box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--destructive) 45%, transparent);
   color: var(--destructive);
 }
@@ -1531,47 +1591,91 @@ html.has-dock body {
 
 .copy-button.copied {
   background: var(--positive);
+  color: var(--on-color);
 }
 
 /* --- Profile --- */
 
 .profile-head {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 4px 0;
-}
-
-.profile-name {
-  display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--radius);
+  background: var(--section-bg);
+  padding: 22px 16px 18px;
+  text-align: center;
 }
 
-.avatar {
+.profile-head .title {
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+
+.avatar,
+.hero-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
+  width: 76px;
+  height: 76px;
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--button);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--button) 60%, #ffffff),
+    var(--button) 70%
+  );
   color: var(--button-text);
-  font-size: 24px;
+  font-size: 32px;
   font-weight: 600;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--button) 30%, transparent);
+}
+
+/* Whether the profile (as saved) is complete, under the name. */
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 13px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.profile-head-hint {
+  max-width: 280px;
+  margin-top: 6px;
+}
+
+.status-pill .icon {
+  width: 15px;
+  height: 15px;
+  stroke-width: 3;
+}
+
+.status-pill.done {
+  color: var(--positive);
+  background: color-mix(in srgb, var(--positive) 12%, transparent);
+}
+
+.status-pill.missing {
+  color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 12%, transparent);
 }
 
 .details-group {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
 }
 
 .details-group + .details-group {
   border-top: 1px solid var(--separator);
-  padding-top: 14px;
+  padding-top: 16px;
 }
 
 /* Two short fields side by side, e.g. first and last name. */
@@ -1584,6 +1688,91 @@ html.has-dock body {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
+}
+
+.field-label {
+  transition: color 0.2s ease;
+}
+
+.field-required {
+  margin-left: 2px;
+  color: var(--destructive);
+  font-weight: 600;
+}
+
+/* A required field left empty: red label and border on a faint red fill. */
+.field.missing .field-label {
+  color: var(--destructive);
+}
+
+.field.missing .input {
+  border-color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 6%, var(--bg));
+}
+
+.field.missing .input:focus {
+  border-color: var(--button);
+}
+
+.field .input {
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+/* A select drawn like the text inputs, with its own chevron. */
+.select-wrap {
+  position: relative;
+  display: flex;
+}
+
+.select-wrap .input {
+  appearance: none;
+  -webkit-appearance: none;
+  /* As tall as the text inputs, text centered: without its native look a select sizes oddly. */
+  height: 46px;
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-right: 36px;
+  line-height: 44px;
+}
+
+.select-wrap .input.empty {
+  color: var(--hint);
+}
+
+.select-wrap .icon {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  margin-top: -8px;
+  color: var(--hint);
+  pointer-events: none;
+}
+
+/* How the profile reads on requests and deals. */
+.profile-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: var(--radius-small);
+  background: var(--secondary-bg);
+  padding: 10px 12px;
+}
+
+.profile-preview-tag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.profile-preview-tag .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--link);
 }
 
 .saved {
@@ -1626,26 +1815,62 @@ html.has-dock body {
 /* --- Profile menu --- */
 
 .menu {
+  display: flex;
+  flex-direction: column;
   background: var(--section-bg);
   border-radius: var(--radius);
-  padding: 0 16px;
+  padding: 0 14px;
+}
+
+/* Inside a section, whose padding already sets it in: the rows reach its edges top and bottom. */
+.section-body > .menu {
+  margin: -14px 0;
+  padding: 0;
 }
 
 .menu-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 12px;
   width: 100%;
   border: 0;
-  border-bottom: 1px solid var(--separator);
   background: none;
   color: var(--text);
-  padding: 14px 0;
+  padding: 0;
   font-size: 16px;
   text-align: left;
 }
 
-.menu-row:last-child {
+.menu-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--button) 12%, transparent);
+  color: var(--link);
+}
+
+.menu-icon .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* The separator starts after the icon, as in Telegram's settings. */
+.menu-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  min-height: 50px;
+  border-bottom: 1px solid var(--separator);
+}
+
+.menu-row:last-child .menu-label {
   border-bottom: 0;
 }
 
@@ -1655,25 +1880,154 @@ html.has-dock body {
   line-height: 1;
 }
 
-/* A section title that folds its section, e.g. Completed deals. */
-.section-toggle {
+/* --- My deals --- */
+
+/* How many a group holds, next to its title. */
+.section-count {
+  display: inline-block;
+  min-width: 20px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--separator);
+  background: color-mix(in srgb, var(--section-title) 16%, transparent);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  letter-spacing: 0;
+}
+
+/* Counts on top, in a card like the Profile's head: three columns between hairlines. */
+.deals-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-radius: var(--radius);
+  background: var(--section-bg);
+  padding: 14px 0;
+}
+
+.deals-stat {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
   align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 8px;
+  text-align: center;
+}
+
+.deals-stat + .deals-stat {
+  border-left: 1px solid var(--separator);
+}
+
+.deals-stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.deals-stat-label {
+  font-size: 12px;
+  color: var(--hint);
+}
+
+/* Something waits on the viewer: the count turns red, like a card's "action" status. */
+.deals-stat.alert .deals-stat-value {
+  color: var(--destructive);
+}
+
+/* No active deals, though there are past ones. */
+.deals-none {
+  border-radius: var(--radius);
+  background: var(--section-bg);
+  padding: 18px 16px;
+  text-align: center;
+}
+
+/* Nothing at all yet: a centered card like the Profile's head. */
+.deals-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--radius);
+  background: var(--section-bg);
+  padding: 28px 20px 24px;
+  text-align: center;
+}
+
+.deals-empty .hero-icon {
+  margin-bottom: 12px;
+}
+
+.deals-empty .hint {
+  max-width: 260px;
+}
+
+.hero-icon .icon {
+  width: 34px;
+  height: 34px;
+}
+
+/* History: Completed, and Declined & cancelled, each a row like the Profile's menu that folds
+   its cards away. */
+.history-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-group + .history-group {
+  margin-top: 2px;
+}
+
+.history-group > .collapse {
+  --collapse-gap: 8px;
+}
+
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 54px;
   border: 0;
-  background: none;
-  padding: 0;
-  font-family: inherit;
+  border-radius: var(--radius);
+  background: var(--section-bg);
+  color: var(--text);
+  padding: 0 14px;
+  font-size: 16px;
   text-align: left;
 }
 
-.section-toggle-hint {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  color: var(--link);
-  text-transform: none;
-  letter-spacing: 0;
+.history-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-count {
+  color: var(--hint);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-row > .icon.chevron {
+  width: 18px;
+  height: 18px;
+  margin-left: -6px;
+  color: var(--hint);
+}
+
+.menu-icon.positive {
+  background: color-mix(in srgb, var(--positive) 12%, transparent);
+  color: var(--positive);
+}
+
+.menu-icon.muted {
+  background: var(--secondary-bg);
+  color: var(--hint);
 }
 
 .icon.chevron {
@@ -1694,9 +2048,14 @@ html.has-dock body {
   gap: 14px;
   border-radius: var(--radius);
   padding: 18px 16px;
-  background: linear-gradient(135deg, #8fdcff 0%, #3fa9f5 50%, #1c6fe0 100%);
-  color: #ffffff;
-  box-shadow: 0 6px 18px -8px rgba(28, 111, 224, 0.7);
+  background: var(--button);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--button) 55%, #ffffff),
+    var(--button) 70%
+  );
+  color: var(--button-text);
+  box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--button) 70%, transparent);
 }
 
 .support-icon {
@@ -1840,6 +2199,288 @@ html.has-dock body {
   font-weight: 600;
 }
 
+/* A deal or request on an admin screen: a status pill and how long ago on top, then the people. */
+.admin-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-card-time {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--hint);
+}
+
+/* What a request's author wanted, e.g. "Wanted 100,000 ₩ for KZT". */
+.admin-card-terms {
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-card-label {
+  margin-bottom: -4px;
+  font-size: 13px;
+  color: var(--hint);
+}
+
+.admin-card-flag {
+  align-self: flex-start;
+}
+
+/* The people on an admin's card, one row each, between hairlines. */
+.parties {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-small);
+  background: var(--secondary-bg);
+}
+
+.party {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.party + .party {
+  border-top: 1px solid var(--separator);
+}
+
+.party:active {
+  opacity: 0.7;
+}
+
+/* Their own row on their page in Admin: users: nothing to open. */
+.party.current {
+  cursor: default;
+}
+
+.party.current:active {
+  opacity: 1;
+}
+
+/* An initial in a circle, like a small Profile avatar. */
+.party-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--button) 60%, #ffffff),
+    var(--button) 70%
+  );
+  color: var(--button-text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.party-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.party-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.party-name .username-tag {
+  padding: 1px 7px;
+  font-size: 12px;
+  background: var(--section-bg);
+}
+
+.party-sub {
+  font-size: 13px;
+  color: var(--hint);
+  overflow-wrap: anywhere;
+}
+
+/* What they pay, and whether they confirmed receiving the other's money. */
+.party-money {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  align-self: stretch;
+  margin-top: 4px;
+}
+
+.party-pays {
+  font-size: 13px;
+  color: var(--hint);
+}
+
+.party-amount {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.party-check {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hint);
+}
+
+.party-check.done {
+  color: var(--positive);
+}
+
+.party-check .icon {
+  width: 13px;
+  height: 13px;
+  stroke-width: 3;
+}
+
+/* Banned / open reports / Admin. */
+.person-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.flag {
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--button) 12%, transparent);
+  color: var(--link);
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.flag.danger {
+  background: color-mix(in srgb, var(--destructive) 12%, transparent);
+  color: var(--destructive);
+}
+
+.danger-text {
+  color: var(--destructive);
+}
+
+/* Admin: users. A row per user, in a list like the Profile's menu. */
+.search-input {
+  border-color: transparent;
+  border-radius: 12px;
+  background: var(--section-bg);
+}
+
+.user-list .menu-row {
+  align-items: center;
+}
+
+.user-row .party-avatar {
+  align-self: center;
+}
+
+.user-row .menu-label {
+  min-height: 62px;
+  padding: 8px 0;
+}
+
+.user-row-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.user-row-name {
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.user-row-end {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.user-row-seen {
+  font-size: 12px;
+  color: var(--hint);
+}
+
+/* A user's page: the Profile's head, with a refresh button in its corner. */
+.profile-head {
+  position: relative;
+}
+
+.head-refresh {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+.head-line {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.pill-row .status-pill {
+  margin-top: 0;
+}
+
+.status-pill.admin {
+  color: var(--link);
+  background: color-mix(in srgb, var(--button) 12%, transparent);
+}
+
+.id-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* How many an option holds, e.g. "Reported 2". */
+.segmented-count {
+  margin-left: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- Motion --- */
 
 /* The screen stack (see Navigator): the top screen slides in, from the right when opened and
@@ -1970,6 +2611,24 @@ html.has-dock body {
   --collapse-gap: 14px;
 }
 
+/* Waiting on the viewer: a ring keeps spreading from the badge (or dot), to catch the eye. */
+.count-badge.pulse {
+  --pulse-color: var(--destructive);
+  animation:
+    pop-in 0.4s var(--ease-spring) backwards,
+    pulse-ring 2s ease-out 0.4s infinite;
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--pulse-color) 55%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--pulse-color) 0%, transparent);
+  }
+}
+
 /* Small things that pop in: badges, the "new" dot, checkmarks, success icons. */
 .count-badge,
 .new-dot,
@@ -2026,6 +2685,8 @@ html.has-dock body {
   .list > *,
   .tab-content,
   .count-badge,
+  .count-badge.pulse,
+  .live-dot,
   .new-dot,
   .check-mark .icon,
   .checkbox-box .icon,

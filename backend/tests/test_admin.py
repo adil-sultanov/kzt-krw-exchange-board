@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from tests.conftest import ADMIN_ID, OWNER_ID
-from tests.helpers import AIDA, BEK, DANA, auth_as, create, sql
+from tests.helpers import AIDA, BEK, DANA, auth_as, create, fill_profile, sql
 from tests.test_deals import PAST, accepted_deal, act, get, taken
 from tests.test_reports import report_deal, report_request
 
@@ -32,6 +32,8 @@ def open_reports(client: TestClient, user: dict[str, Any] = ADMIN, **params: Any
         ("POST", "requests/1/remove"),
         ("GET", "requests/cancelled"),
         ("GET", "deals"),
+        ("GET", "users"),
+        ("GET", "users/1"),
     ],
 )
 def test_admin_routes_need_an_admin(client: TestClient, method: str, path: str) -> None:
@@ -267,9 +269,9 @@ def test_banned_users_cannot_become_admins(client: TestClient) -> None:
 
 
 def all_deals(
-    client: TestClient, active: bool = True, user: dict[str, Any] = OWNER
+    client: TestClient, state: str = "active", user: dict[str, Any] = OWNER
 ) -> list[dict[str, Any]]:
-    response = client.get("/api/admin/deals", params={"active": active}, headers=auth_as(user))
+    response = client.get("/api/admin/deals", params={"state": state}, headers=auth_as(user))
     assert response.status_code == 200
     return response.json()
 
@@ -278,7 +280,8 @@ def delete_deal(client: TestClient, deal_id: int) -> Any:
     return client.delete(f"/api/admin/deals/{deal_id}", headers=auth_as(OWNER))
 
 
-def test_admins_list_deals(client: TestClient) -> None:
+def test_admins_list_deals(client: TestClient, settings: Settings) -> None:
+    sql(settings, "INSERT INTO reference_rate VALUES (1, 2.7, 'test', '2026-01-01T00:00:00+00:00')")
     request_id, accepted_id = accepted_deal(client)
     pending_id = taken(client, AIDA, create(client, DANA)["id"])["id"]
     client.patch("/api/me", json={"receive_kzt_account": "SECRET-123"}, headers=auth_as(AIDA))
@@ -292,14 +295,20 @@ def test_admins_list_deals(client: TestClient) -> None:
     assert accepted["request"]["id"] == request_id
     assert accepted["author"]["username"] == "aida"
     assert accepted["responder"]["username"] == "bek"
-    assert all_deals(client, active=False) == []
+    # Accepting locked the rate; a pending deal follows the request's rate now.
+    assert accepted["rate_locked"] and accepted["rate"] == 2.7
+    assert accepted["accepted_at"] is not None
+    pending = listed[1]
+    assert not pending["rate_locked"] and pending["rate"] == 2.7
+    assert all_deals(client, "completed") == all_deals(client, "cancelled") == []
     # Any admin sees the same list; only the owner deletes deals.
     assert all_deals(client, user=ADMIN) == listed
 
     client.post(f"/api/deals/{pending_id}/cancel", headers=auth_as(AIDA))
-    assert [(d["id"], d["status"]) for d in all_deals(client, active=False)] == [
+    assert [(d["id"], d["status"]) for d in all_deals(client, "cancelled")] == [
         (pending_id, "cancelled")
     ]
+    assert all_deals(client, "completed") == []
 
 
 def test_owner_deletes_an_accepted_deal(client: TestClient, settings: Settings) -> None:
@@ -328,7 +337,8 @@ def test_owner_deletes_pending_and_completed_deals(client: TestClient) -> None:
     act(client, AIDA, deal_id, "accept")
     act(client, AIDA, deal_id, "confirm")
     act(client, BEK, deal_id, "confirm")
-    assert [deal["id"] for deal in all_deals(client, active=False)] == [deal_id]
+    assert [deal["id"] for deal in all_deals(client, "completed")] == [deal_id]
+    assert all_deals(client, "cancelled") == []
     assert delete_deal(client, deal_id).status_code == 204
     # Completed-deal counts and the request's status don't change.
     assert get(client, AIDA, "me").json()["completed_deals"] == 1
@@ -395,3 +405,77 @@ def test_admins_list_cancelled_requests(client: TestClient, settings: Settings) 
         by_admin: True,
         by_delete: True,
     }
+
+
+# --- Users ---
+
+
+def users(client: TestClient, user: dict[str, Any] = ADMIN, **params: Any) -> dict[str, Any]:
+    response = client.get("/api/admin/users", params=params, headers=auth_as(user))
+    assert response.status_code == 200, response.json()
+    return response.json()
+
+
+def user_page(client: TestClient, user_id: int, user: dict[str, Any] = ADMIN) -> Any:
+    return client.get(f"/api/admin/users/{user_id}", headers=auth_as(user))
+
+
+def test_admins_list_and_search_users(client: TestClient, settings: Settings) -> None:
+    create(client, AIDA)
+    request_id = create(client, BEK)["id"]
+    fill_profile(client, DANA)
+    report_request(client, AIDA, request_id, category="spam")
+    admin_post(client, ADMIN, f"users/{DANA['id']}/ban")
+    # Seen long ago: listed last.
+    sql(settings, "UPDATE users SET last_seen_at = ? WHERE telegram_id = ?", (PAST, AIDA["id"]))
+
+    listed = users(client)
+    ids = [user["telegram_id"] for user in listed["users"]]
+    assert set(ids) == {AIDA["id"], BEK["id"], DANA["id"], ADMIN_ID}
+    assert ids[-1] == AIDA["id"]
+    assert (listed["total"], listed["seen_this_week"], listed["reported"], listed["banned"]) == (
+        4,
+        3,
+        1,
+        1,
+    )
+    assert listed["users"][0]["last_seen_at"] is not None
+
+    def found(**params: Any) -> list[int]:
+        return [user["telegram_id"] for user in users(client, **params)["users"]]
+
+    assert found(show="reported") == [BEK["id"]]
+    assert found(show="banned") == [DANA["id"]]
+    # By username (with or without the @, any case), name, university or the whole ID.
+    assert found(q="@AID") == [AIDA["id"]]
+    assert found(q="testova", show="banned") == [DANA["id"]]
+    assert set(found(q="unist")) == {AIDA["id"], BEK["id"], DANA["id"]}
+    assert found(q=str(BEK["id"])) == [BEK["id"]]
+    assert found(q="nobody") == []
+
+
+def test_user_page(client: TestClient, settings: Settings) -> None:
+    request_id, deal_id = accepted_deal(client)
+    on_board = create(client, AIDA)["id"]
+    client.patch(
+        "/api/me",
+        json={"receive_kzt_bank": "Kaspi SECRET", "receive_kzt_account": "SECRET-123"},
+        headers=auth_as(AIDA),
+    )
+    client.patch("/api/me/alerts", json={"buy_krw": True}, headers=auth_as(AIDA))
+    report_deal(client, BEK, deal_id, category="disappeared")
+
+    response = user_page(client, AIDA["id"])
+    assert response.status_code == 200, response.json()
+    page = response.json()
+    assert "SECRET" not in str(page)
+    assert (page["has_receive_kzt"], page["has_receive_krw"]) == (True, False)
+    assert (page["alerts_buy_krw"], page["alerts_buy_kzt"]) == (True, False)
+    assert page["profile"]["university"] == "UNIST"
+    assert (page["open_requests"], page["active_deals"]) == (1, 1)
+    assert (page["open_reports"], page["reports_total"], page["reports_sent"]) == (1, 1, 0)
+    assert [r["id"] for r in page["requests"]] == [on_board, request_id]
+    assert [d["id"] for d in page["deals"]] == [deal_id]
+    assert page["deals"][0]["responder"]["username"] == "bek"
+    assert user_page(client, BEK["id"]).json()["reports_sent"] == 1
+    assert user_page(client, 12345).json() == {"detail": "user_not_found"}

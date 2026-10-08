@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-10-07_
+_Last updated: 2026-10-08_
 
 This policy explains what the KZT ↔ KRW Exchange Board Telegram bot and Mini App (the
 "Service") stores and why. The Service is operated by Adil Sultanov
@@ -8,7 +8,8 @@ This policy explains what the KZT ↔ KRW Exchange Board Telegram bot and Mini A
 
 ## What is stored
 - **Telegram account data** that Telegram shares with the Service: your Telegram user ID,
-  username, and first name. The username is refreshed each time you use the Service.
+  username, and first name. The username is refreshed each time you use the Service. Also
+  when you started using the Service and when you last used it (to within a few minutes).
 - **Your profile**: the first and last name, university and year of enrollment you enter
   in the app. They're needed to post or take a request.
 - **Your requests and deals**: amounts (including the smallest counter offer you accept, and
@@ -51,6 +52,10 @@ This policy explains what the KZT ↔ KRW Exchange Board Telegram bot and Mini A
   early: who cancelled or removed it and who had taken it (the same account details, never
   receiving details). The operator can delete a deal, for example one stuck because someone
   stopped replying.
+- Admins can look up any user, to help them or to handle reports: the account details above,
+  when they joined and last used the Service, their alert settings, whether they added
+  receiving details (never the details themselves), how many reports were made about them and
+  by them, and their latest requests and deals.
 - The operator can access the database to run the Service and to handle reports.
 
 Your data is never sold or shared with third parties for advertising. There is no analytics

@@ -1,12 +1,12 @@
-"""Admin tools: review reports, ban and unban users, see every request on the board and take
-any of them off it, and see every deal and every cancelled request. Owner tools: add and
-remove admins, and delete any deal.
+"""Admin tools: review reports, ban and unban users, see every user and look one up, see
+every request on the board and take any of them off it, and see every deal and every
+cancelled request. Owner tools: add and remove admins, and delete any deal.
 
 Every function checks that the actor is an admin (owner included) or the owner.
 Admins see the current usernames of the people in a report, never their receiving details.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import aiosqlite
@@ -20,10 +20,17 @@ from app.models import (
     AdminReportOut,
     AdminRequestOut,
     AdminSource,
+    AdminUserDetailOut,
+    AdminUserListOut,
     AdminUserOut,
+    AdminUserRequestOut,
+    AdminUsersOut,
     CancelledRequestOut,
+    DealListState,
     ListedDealOut,
+    Profile,
     User,
+    UserListFilter,
 )
 from app.services.errors import ConflictError, NotFoundError, PermissionDeniedError
 from app.services.notifications import Notifier
@@ -32,6 +39,10 @@ from app.services.requests import REMOVED_BY_ADMIN, close_open_request
 
 REPORTS_LIMIT = 100
 ALL_DEALS_LIMIT = 100
+USERS_LIMIT = 200
+# On a user's page in Admin: users.
+USER_REQUESTS_LIMIT = 10
+USER_DEALS_LIMIT = 20
 # The board is small (at most 5 open requests per user), so this is effectively all of it.
 BOARD_REQUESTS_LIMIT = 500
 
@@ -51,14 +62,14 @@ LIMIT :limit
 """
 
 # Explicit columns: receiving details must never reach admin output.
-_SELECT_USERS = """
-SELECT u.telegram_id, u.username, u.first_name, u.completed_deals, u.is_banned, u.is_admin,
-       u.admin_granted, u.profile_first_name, u.profile_last_name, u.university,
-       u.enrollment_year,
-       (SELECT COUNT(*) FROM reports WHERE reported_id = u.telegram_id AND resolved = 0)
-           AS open_reports
-FROM users u
+_USER_COLUMNS = """
+u.telegram_id, u.username, u.first_name, u.completed_deals, u.is_banned, u.is_admin,
+u.admin_granted, u.profile_first_name, u.profile_last_name, u.university, u.enrollment_year,
+u.created_at, u.last_seen_at,
+(SELECT COUNT(*) FROM reports WHERE reported_id = u.telegram_id AND resolved = 0)
+    AS open_reports
 """
+_SELECT_USERS = f"SELECT {_USER_COLUMNS} FROM users u"
 
 
 def _require_admin(actor: User) -> None:
@@ -190,6 +201,114 @@ async def unban_user(db: Database, actor: User, user_id: int) -> AdminUserOut:
     if user_id not in users:
         raise NotFoundError("user_not_found")
     return users[user_id]
+
+
+# --- Users ---
+
+_USER_COUNTS = """
+SELECT COUNT(*) AS total,
+       COALESCE(SUM(last_seen_at >= :week_ago), 0) AS seen_this_week,
+       COALESCE(SUM(is_banned), 0) AS banned,
+       (SELECT COUNT(DISTINCT reported_id) FROM reports
+        WHERE resolved = 0 AND reported_id IS NOT NULL) AS reported
+FROM users
+"""
+
+_USER_FILTERS: dict[UserListFilter, str] = {
+    "all": "1",
+    "reported": "EXISTS (SELECT 1 FROM reports WHERE reported_id = u.telegram_id AND resolved = 0)",
+    "banned": "u.is_banned = 1",
+}
+
+
+def _matches(user: AdminUserListOut, query: str) -> bool:
+    """Whether a search (already casefolded, without an @) finds this user: by part of their
+    username, Telegram name, profile name or university, or by their whole Telegram ID."""
+    if query == str(user.telegram_id):
+        return True
+    profile = user.profile
+    texts = [user.username, user.first_name]
+    if profile is not None:
+        texts += [f"{profile.first_name or ''} {profile.last_name or ''}", profile.university]
+    return any(query in text.casefold() for text in texts if text)
+
+
+async def list_users(
+    db: Database, actor: User, *, query: str, show: UserListFilter
+) -> AdminUsersOut:
+    """Everyone who has used the app or the bot (or only those with open reports about them,
+    or banned), most recently seen first; a search narrows them down (see `_matches`). Also
+    counts over everyone: users, seen in the last 7 days, reported, banned.
+
+    The search runs here rather than in SQL, whose LIKE ignores case only for ASCII (names
+    can be Cyrillic). The list is small: members of one group chat.
+    """
+    _require_admin(actor)
+    async with db.conn.execute(
+        f"{_SELECT_USERS} WHERE {_USER_FILTERS[show]} "
+        "ORDER BY u.last_seen_at IS NULL, u.last_seen_at DESC, u.telegram_id DESC"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    users = [AdminUserListOut.from_row(row) for row in rows]
+    query = query.strip().removeprefix("@").casefold()
+    if query:
+        users = [user for user in users if _matches(user, query)]
+    week_ago = utc_iso(datetime.now(UTC) - timedelta(days=7))
+    async with db.conn.execute(_USER_COUNTS, {"week_ago": week_ago}) as cursor:
+        counts = await cursor.fetchone()
+    assert counts is not None
+    return AdminUsersOut(users=users[:USERS_LIMIT], **dict(counts))
+
+
+_SELECT_USER_DETAIL = f"""
+SELECT {_USER_COLUMNS},
+       u.alerts_buy_krw, u.alerts_buy_kzt,
+       u.receive_kzt_account IS NOT NULL AS has_receive_kzt,
+       u.receive_krw_account IS NOT NULL AS has_receive_krw,
+       (SELECT COUNT(*) FROM requests
+        WHERE user_id = u.telegram_id AND status = 'open' AND expires_at > :now) AS open_requests,
+       (SELECT COUNT(*) FROM deals
+        WHERE (author_id = u.telegram_id OR responder_id = u.telegram_id)
+          AND status IN ('pending', 'accepted')) AS active_deals,
+       (SELECT COUNT(*) FROM reports WHERE reported_id = u.telegram_id) AS reports_total,
+       (SELECT COUNT(*) FROM reports WHERE reporter_id = u.telegram_id) AS reports_sent
+FROM users u
+WHERE u.telegram_id = :id
+"""
+
+_SELECT_USER_REQUESTS = f"""
+SELECT r.id, r.direction, r.amount, r.status, {REMOVED_BY_ADMIN} AS removed_by_admin,
+       r.created_at, r.updated_at, r.expires_at
+FROM requests r
+WHERE r.user_id = ?
+ORDER BY r.id DESC
+LIMIT ?
+"""
+
+
+async def get_user(db: Database, actor: User, user_id: int) -> AdminUserDetailOut:
+    """One user's page: their account and profile, what they're doing (counts, their latest
+    requests and deals) and reports about and by them. Whether they added receiving details,
+    never the details themselves (only the other side of their accepted deal sees them).
+    """
+    _require_admin(actor)
+    params = {"id": user_id, "now": utc_iso(datetime.now(UTC))}
+    async with db.conn.execute(_SELECT_USER_DETAIL, params) as cursor:
+        row = await cursor.fetchone()
+    if row is None:
+        raise NotFoundError("user_not_found")
+    async with db.conn.execute(_SELECT_USER_REQUESTS, (user_id, USER_REQUESTS_LIMIT)) as cursor:
+        requests = [AdminUserRequestOut.model_validate(dict(r)) for r in await cursor.fetchall()]
+    deals = await _select_deals(
+        db,
+        "(d.author_id = :user OR d.responder_id = :user)",
+        "DESC",
+        USER_DEALS_LIMIT,
+        {"user": user_id},
+    )
+    return AdminUserDetailOut.model_validate(
+        {**dict(row), "profile": Profile.from_row(row), "requests": requests, "deals": deals}
+    )
 
 
 # --- Board requests ---
@@ -346,28 +465,34 @@ async def remove_admin(db: Database, actor: User, settings: Settings, user_id: i
 
 # --- All deals and cancelled requests ---
 
-_SELECT_ALL_DEALS = f"""
+_SELECT_DEALS = f"""
 SELECT d.id, d.status, d.partial, d.author_confirmed, d.responder_confirmed, d.created_at,
-       d.updated_at, d.author_id, d.responder_id, d.request_id,
+       d.updated_at, d.accepted_at, d.author_id, d.responder_id, d.request_id,
+       COALESCE(d.rate, :ref * (1 + r.rate_value / 100.0)) AS rate,
+       d.rate IS NOT NULL AS rate_locked,
        r.direction, d.amount, r.status AS request_status, {REMOVED_BY_ADMIN} AS removed_by_admin
 FROM deals d
 JOIN requests r ON r.id = d.request_id
-WHERE d.status IN ({{statuses}})
+WHERE {{where}}
 ORDER BY d.updated_at {{order}}, d.id {{order}}
-LIMIT ?
+LIMIT :limit
 """
 
+# Each tab of All deals: which deals, and in what order (see list_deals).
+_DEAL_STATES: dict[DealListState, tuple[str, str]] = {
+    "active": ("d.status IN ('pending', 'accepted')", "ASC"),
+    "completed": ("d.status = 'completed'", "DESC"),
+    "cancelled": ("d.status IN ('declined', 'cancelled')", "DESC"),
+}
 
-async def list_deals(db: Database, actor: User, *, active: bool) -> list[ListedDealOut]:
-    """Active deals (pending or accepted), least recently changed first, so stale ones lead;
-    or finished ones (completed, declined or cancelled by their responder), most recent first.
-    """
-    _require_admin(actor)
-    sql = _SELECT_ALL_DEALS.format(
-        statuses="'pending', 'accepted'" if active else "'completed', 'declined', 'cancelled'",
-        order="ASC" if active else "DESC",
-    )
-    async with db.conn.execute(sql, (ALL_DEALS_LIMIT,)) as cursor:
+
+async def _select_deals(
+    db: Database, where: str, order: str, limit: int, params: dict[str, Any] | None = None
+) -> list[ListedDealOut]:
+    rate = await get_reference_rate(db)
+    sql = _SELECT_DEALS.format(where=where, order=order)
+    params = {**(params or {}), "ref": rate.rate if rate is not None else None, "limit": limit}
+    async with db.conn.execute(sql, params) as cursor:
         rows = await cursor.fetchall()
     users = await _users(
         db.conn, {row["author_id"] for row in rows} | {row["responder_id"] for row in rows}
@@ -381,6 +506,9 @@ async def list_deals(db: Database, actor: User, *, active: bool) -> list[ListedD
             responder_confirmed=row["responder_confirmed"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            accepted_at=row["accepted_at"],
+            rate=row["rate"],
+            rate_locked=row["rate_locked"],
             request=AdminRequestOut(
                 id=row["request_id"],
                 author_id=row["author_id"],
@@ -394,6 +522,16 @@ async def list_deals(db: Database, actor: User, *, active: bool) -> list[ListedD
         )
         for row in rows
     ]
+
+
+async def list_deals(db: Database, actor: User, *, state: DealListState) -> list[ListedDealOut]:
+    """Active deals (pending or accepted), least recently changed first, so stale ones lead;
+    completed ones; or cancelled ones (declined, or cancelled by their responder), most recent
+    first.
+    """
+    _require_admin(actor)
+    where, order = _DEAL_STATES[state]
+    return await _select_deals(db, where, order, ALL_DEALS_LIMIT)
 
 
 _SELECT_CANCELLED = """

@@ -7,6 +7,8 @@ import { initialStack, type Nav, NavContext, type Route } from "./nav";
 import { About } from "./screens/About";
 import { Admin } from "./screens/Admin";
 import { Admins } from "./screens/Admins";
+import { AdminUser } from "./screens/AdminUser";
+import { AdminUsers } from "./screens/AdminUsers";
 import { AllDeals } from "./screens/AllDeals";
 import { Board } from "./screens/Board";
 import { BoardRequests } from "./screens/BoardRequests";
@@ -57,6 +59,10 @@ function Screen(props: { route: Route; active: boolean }) {
       return <Admins active={active} />;
     case "allDeals":
       return <AllDeals active={active} />;
+    case "adminUsers":
+      return <AdminUsers active={active} />;
+    case "adminUser":
+      return <AdminUser id={route.id} active={active} />;
   }
 }
 

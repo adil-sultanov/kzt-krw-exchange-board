@@ -7,7 +7,7 @@ import { t } from "../i18n";
 import { useMe } from "../me";
 import { useTabList } from "../tabList";
 import { confirm, haptic } from "../telegram";
-import { type AdminReport, type AdminUser, amountCurrency } from "../types";
+import { type AdminReport, type AdminUser, amountCurrency, giveCurrency } from "../types";
 
 type Tab = "open" | "resolved";
 
@@ -25,7 +25,7 @@ function ReportCard(props: { report: AdminReport; busy: boolean; onAction: (acti
   };
 
   const deleteDeal = async (id: number, accepted: boolean) => {
-    if (!(await confirm(t.allDeals.deleteConfirm(id, accepted)))) return;
+    if (!(await confirm(t.allDeals.deleteConfirm(accepted)))) return;
     onAction(() => api.deleteDeal(id));
   };
 
@@ -37,12 +37,12 @@ function ReportCard(props: { report: AdminReport; busy: boolean; onAction: (acti
       </div>
       {report.note && <p className="admin-note">{report.note}</p>}
       <p className="small">
-        {t.admin.request(request.id)} · {formatMoney(request.amount, amountCurrency(request.direction))} ·{" "}
-        {requestStatus(request)}
+        {t.admin.request(formatMoney(request.amount, amountCurrency(request.direction)), giveCurrency(request.direction))}{" "}
+        · {requestStatus(request)}
         {deal && (
           <>
             <br />
-            {t.admin.deal(deal.id)} · {t.dealStatus[deal.status]}
+            {t.admin.deal(t.allDeals.status[deal.status])}
             {deal.partial && ` · ${t.admin.counterOffer}`}
             <br />
             <span className="hint">

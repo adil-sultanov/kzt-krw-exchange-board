@@ -123,3 +123,25 @@ async def test_bot_middleware_skips_non_members(db: Database, settings: Settings
     data = await run_middleware(db, settings, "private", fixed_lookup(True))
     assert data["is_member"] is True
     assert await username_of(db, 5) == "bek_new"
+
+
+async def last_seen(db: Database, telegram_id: int) -> str | None:
+    async with db.conn.execute(
+        "SELECT last_seen_at FROM users WHERE telegram_id = ?", (telegram_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row is not None
+    return row[0]
+
+
+async def test_last_seen_is_refreshed_now_and_then(db: Database) -> None:
+    await upsert_user(db, TelegramUser(id=1, username="aida"), config_admin=False)
+    assert await last_seen(db, 1) is not None
+    # Seen a moment ago: no write. Long ago: refreshed, without touching updated_at.
+    await db.conn.execute("UPDATE users SET last_seen_at = '9999', updated_at = 'marker'")
+    await upsert_user(db, TelegramUser(id=1, username="aida"), config_admin=False)
+    assert await last_seen(db, 1) == "9999"
+    await db.conn.execute("UPDATE users SET last_seen_at = '2000-01-01T00:00:00+00:00'")
+    user = await upsert_user(db, TelegramUser(id=1, username="aida"), config_admin=False)
+    assert (await last_seen(db, 1) or "") > "2000-01-01T00:00:00+00:00"
+    assert user.updated_at == "marker"

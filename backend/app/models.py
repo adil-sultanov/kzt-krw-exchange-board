@@ -447,6 +447,43 @@ class AdminUserOut(BaseModel):
         return cls.model_validate({**dict(row), "profile": Profile.from_row(row)})
 
 
+# Admin: users lists everyone, those with open reports about them, or banned users.
+UserListFilter = Literal["all", "reported", "banned"]
+
+
+class AdminUserListOut(AdminUserOut):
+    """A user in Admin: users."""
+
+    created_at: str
+    # When they last used the app or the bot, to within a few minutes (null: never since
+    # this was recorded).
+    last_seen_at: str | None
+
+
+class AdminUsersOut(BaseModel):
+    """Admin: users: the users matching the search, most recently seen first, and counts
+    over everyone."""
+
+    users: list[AdminUserListOut]
+    total: int
+    seen_this_week: int
+    reported: int
+    banned: int
+
+
+class AdminUserRequestOut(BaseModel):
+    """One of a user's requests, on their page in Admin: users."""
+
+    id: int
+    direction: Direction
+    amount: int
+    status: RequestStatus
+    removed_by_admin: bool
+    created_at: str
+    updated_at: str
+    expires_at: str
+
+
 class AdminRequestOut(BaseModel):
     id: int
     author_id: int
@@ -504,6 +541,10 @@ class AdminAdd(BaseModel):
         return value
 
 
+# The tabs of All deals: pending or accepted; completed; declined or cancelled by its responder.
+DealListState = Literal["active", "completed", "cancelled"]
+
+
 class ListedDealOut(BaseModel):
     """Any deal, as admins see it in All deals. Never includes receiving details. The
     request's `amount` is the deal's (part of it, for a counter offer)."""
@@ -515,6 +556,11 @@ class ListedDealOut(BaseModel):
     responder_confirmed: bool
     created_at: str
     updated_at: str
+    accepted_at: str | None
+    # KRW per 1 KZT: locked when the deal was accepted (`rate_locked`), else its request's
+    # rate now (null while no reference rate is known).
+    rate: float | None
+    rate_locked: bool
     request: AdminRequestOut
     author: AdminUserOut
     responder: AdminUserOut
@@ -523,6 +569,25 @@ class ListedDealOut(BaseModel):
 # Why a request was taken off the board: its author cancelled it, an admin removed it, a ban
 # closed it, or the owner deleted its accepted deal.
 CloseReason = Literal["author", "admin", "ban", "deal_deleted"]
+
+
+class AdminUserDetailOut(AdminUserListOut):
+    """A user's page in Admin: users, to help them or check on them. Never their receiving
+    details: only whether they added them."""
+
+    alerts_buy_krw: bool
+    alerts_buy_kzt: bool
+    has_receive_kzt: bool
+    has_receive_krw: bool
+    # Their requests on the board now, and their deals pending or accepted.
+    open_requests: int
+    active_deals: int
+    # Reports about them (open or not), and reports they sent.
+    reports_total: int
+    reports_sent: int
+    # The most recent ones.
+    requests: list[AdminUserRequestOut]
+    deals: list[ListedDealOut]
 
 
 class CancelledRequestOut(BaseModel):

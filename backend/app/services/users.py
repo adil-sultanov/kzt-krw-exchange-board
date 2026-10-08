@@ -1,7 +1,12 @@
 """User records and the username cache."""
 
-from app.db import Database, utc_now
+from datetime import UTC, datetime, timedelta
+
+from app.db import Database, utc_iso, utc_now
 from app.models import MeUpdate, TelegramUser, User
+
+# `users.last_seen_at` is refreshed at most this often: the app polls while it's open.
+LAST_SEEN_INTERVAL = timedelta(minutes=5)
 
 
 async def upsert_user(db: Database, tg_user: TelegramUser, *, config_admin: bool) -> User:
@@ -13,6 +18,9 @@ async def upsert_user(db: Database, tg_user: TelegramUser, *, config_admin: bool
 
     `config_admin`: whether ADMIN_IDS / OWNER_ID make them an admin. Admins the owner added
     in the app (`admin_granted`) stay admins either way.
+
+    Also records when they were last seen (see LAST_SEEN_INTERVAL), without touching
+    `updated_at`.
     """
     username = tg_user.username or None
     # Most calls change nothing (the app polls while open), so they skip the write lock.
@@ -22,20 +30,30 @@ async def upsert_user(db: Database, tg_user: TelegramUser, *, config_admin: bool
         "SELECT * FROM users WHERE telegram_id = ?", (tg_user.id,)
     ) as cursor:
         current = await cursor.fetchone()
+    now = datetime.now(UTC)
+    seen_recently = current is not None and (current["last_seen_at"] or "") > utc_iso(
+        now - LAST_SEEN_INTERVAL
+    )
     if current is not None and (
         current["username"] == username
         and current["first_name"] == tg_user.first_name
         and bool(current["is_admin"]) == (config_admin or bool(current["admin_granted"]))
     ):
+        if not seen_recently:
+            async with db.transaction() as conn:
+                await conn.execute(
+                    "UPDATE users SET last_seen_at = ? WHERE telegram_id = ?",
+                    (utc_iso(now), tg_user.id),
+                )
         return User.from_row(current)
 
-    now = utc_now()
+    now_iso = utc_iso(now)
     async with db.transaction() as conn:
         if username is not None:
             await conn.execute(
                 "UPDATE users SET username = NULL, updated_at = ? "
                 "WHERE username = ? COLLATE NOCASE AND telegram_id != ?",
-                (now, username, tg_user.id),
+                (now_iso, username, tg_user.id),
             )
         # The WHERE clause skips the write (and the updated_at bump) when nothing changed.
         await conn.execute(
@@ -51,7 +69,10 @@ async def upsert_user(db: Database, tg_user: TelegramUser, *, config_admin: bool
                 OR first_name IS NOT excluded.first_name
                 OR is_admin IS NOT MAX(excluded.is_admin, admin_granted)
             """,
-            (tg_user.id, username, tg_user.first_name, int(config_admin), now, now),
+            (tg_user.id, username, tg_user.first_name, int(config_admin), now_iso, now_iso),
+        )
+        await conn.execute(
+            "UPDATE users SET last_seen_at = ? WHERE telegram_id = ?", (now_iso, tg_user.id)
         )
         async with conn.execute(
             "SELECT * FROM users WHERE telegram_id = ?", (tg_user.id,)

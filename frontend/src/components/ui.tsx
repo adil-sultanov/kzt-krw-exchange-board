@@ -2,11 +2,13 @@ import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 
 import { errorMessage, t } from "../i18n";
 import { AUTHOR_URL, AUTHOR_USERNAME } from "../links";
 import { copyText, haptic, openTelegramLink } from "../telegram";
-import { CheckIcon, RefreshIcon } from "./icons";
+import { CheckIcon, ChevronIcon, RefreshIcon } from "./icons";
 
 interface Option<T> {
   value: T;
   label: string;
+  /** How many it holds, after the label. */
+  count?: number;
 }
 
 /** Pick exactly one option. The highlight slides over to the one picked. */
@@ -35,6 +37,7 @@ export function Segmented<T extends string | number>(props: {
           }}
         >
           {option.label}
+          {option.count !== undefined && <span className="segmented-count">{option.count}</span>}
         </button>
       ))}
     </div>
@@ -101,6 +104,81 @@ export function Section(props: { title?: string; children: ReactNode }) {
       {props.title && <h2 className="section-title">{props.title}</h2>}
       <div className="section-body">{props.children}</div>
     </section>
+  );
+}
+
+/** A group of cards under its title, with how many it holds (e.g. My deals' Active). */
+export function Group(props: { title: string; count: number; children: ReactNode }) {
+  return (
+    <section className="section">
+      <h2 className="section-title">
+        {props.title}
+        <span className="section-count">{props.count}</span>
+      </h2>
+      {props.children}
+    </section>
+  );
+}
+
+function readFolded(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A group of cards the viewer can hide and show (e.g. My deals' Completed, a user's recent deals
+ * in Admin: users): a row like the Profile's menu (an icon tinted by `tone`, blue by default; the
+ * title, how many it holds and a chevron), the cards under it. Open at first; the choice is
+ * remembered on this device under `storageKey`.
+ */
+export function FoldableGroup(props: {
+  title: string;
+  count: number;
+  icon: ReactNode;
+  tone?: "positive" | "muted";
+  storageKey: string;
+  children: ReactNode;
+}) {
+  const [folded, setFolded] = useState(() => readFolded(props.storageKey));
+  const toggle = () => {
+    haptic("selection");
+    setFolded(!folded);
+    try {
+      localStorage.setItem(props.storageKey, folded ? "0" : "1");
+    } catch {
+      // Not remembered then; it still folds.
+    }
+  };
+  return (
+    <div className="history-group">
+      <button type="button" className="history-row" aria-expanded={!folded} onClick={toggle}>
+        <span className={props.tone ? `menu-icon ${props.tone}` : "menu-icon"} aria-hidden="true">
+          {props.icon}
+        </span>
+        <span className="history-label">{props.title}</span>
+        <span className="history-count">{props.count}</span>
+        <ChevronIcon open={!folded} />
+      </button>
+      <Collapse open={!folded}>
+        <div className="list">{props.children}</div>
+      </Collapse>
+    </div>
+  );
+}
+
+/** Nothing to show: a centered card like the Profile's head, with an icon. */
+export function EmptyCard(props: { icon: ReactNode; title: string; hint?: string }) {
+  return (
+    <div className="deals-empty">
+      <span className="hero-icon" aria-hidden="true">
+        {props.icon}
+      </span>
+      <p className="empty-title">{props.title}</p>
+      {props.hint && <p className="hint small">{props.hint}</p>}
+    </div>
   );
 }
 
